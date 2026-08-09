@@ -497,60 +497,26 @@ const requestHeaders = {};
           requestHeaders            
         });
 
-    /*
-    ----------------------------------------
-    Authorize Transaction
-    ----------------------------------------
-    */
-
-    const authorization =
-      await this.paymentService
-        .authorizeTransaction({
-
-          transactionId:
-            transaction.id,
-
-          amount:
-            transaction.amount,
-
-          currency:
-            transaction.currency
-
-        });
+      /*
+      ----------------------------------------
+      Transaction Pending
+      ----------------------------------------
+      */
 
       this.stateMachine.assertTransition(
-        TransactionStatus.INITIATED,
+        transaction.status,
         TransactionStatus.PENDING
       );
 
       await this.app.prisma.transaction.update({
-
         where: {
           id: transaction.id
         },
-
         data: {
           status: TransactionStatus.PENDING
         }
-
       });
 
-      this.stateMachine.assertTransition(
-        TransactionStatus.PENDING,
-        TransactionStatus.AUTHORIZED
-      );
-
-      await this.app.prisma.transaction.update({
-
-        where: {
-          id: transaction.id
-        },
-
-        data: {
-          status: TransactionStatus.AUTHORIZED
-        }
-
-      });
 
       if (!transaction.reference) {
 
@@ -713,35 +679,33 @@ const completedTransaction =
     conversion.id
   );
 
-return {
+  return {
 
-  transaction: completedTransaction,
+    transaction: completedTransaction,
 
-  authorization,
+    gatewayRequest,
 
-  gatewayRequest,
+    conversion,
 
-  conversion,
+    quote,
 
-  quote,
+    gateway: {
 
-  gateway: {
+      provider:
+        provider.name,
 
-    provider:
-      provider.name,
+      transactionId:
+        providerResponse.transactionId ?? null,
 
-    transactionId:
-      providerResponse.transactionId ?? null,
+      paymentUrl:
+        providerResponse.paymentUrl ?? null,
 
-    paymentUrl:
-      providerResponse.paymentUrl ?? null,
+      authorizationCode:
+        providerResponse.authorizationCode ?? null
 
-    authorizationCode:
-      providerResponse.authorizationCode ?? null
+    }
 
-  }
-
-};
+  };
 
   }
 
@@ -973,6 +937,12 @@ return {
         "Transaction not found."
       );
     }
+
+if (transaction.status !== TransactionStatus.AUTHORIZED) {
+  throw new Error(
+    "Transaction cannot be completed from status " + transaction.status + "."
+  );
+}
 
     await this.paymentService
       .captureTransaction({
