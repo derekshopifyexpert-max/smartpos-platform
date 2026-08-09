@@ -361,7 +361,7 @@ export default class PaymentService {
       },
       data: {
         status:
-          PaymentStatus.SETTLED,
+          PaymentStatus.CAPTURED,
 
         gatewayResponse:
           gatewayResponse ??
