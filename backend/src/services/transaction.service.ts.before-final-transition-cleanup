@@ -399,60 +399,39 @@ export default class TransactionService {
   */
 
   private async transitionTransactionStatus(data: {
-    transactionId: string;
-    from: TransactionStatus;
-    to: TransactionStatus;
-    title: string;
-    event: string;
-    description: string;
-  }) {
-    const transaction = await this.app.prisma.transaction.findUnique({
-      where: {
-        id: data.transactionId,
-      },
-      select: {
-        id: true,
-        status: true,
-      },
-    });
+  transactionId: string;
+  from: TransactionStatus;
+  to: TransactionStatus;
+  title: string;
+  event: string;
+  description: string;
+}) {
+  this.stateMachine.assertTransition(
+    data.from,
+    data.to
+  );
 
-    if (!transaction) {
-      throw new Error("Transaction not found.");
-    }
+  await this.app.prisma.transaction.update({
+    where: {
+      id: data.transactionId,
+    },
+    data: {
+      status: data.to,
+    },
+  });
 
-    if (transaction.status !== data.from) {
-      throw new Error(
-        `Transaction status mismatch. Expected , found .`
-      );
-    }
+  await this.recordTransactionActivity({
+    transactionId: data.transactionId,
+    title: data.title,
+    event: data.event,
+    previousStatus: data.from,
+    newStatus: data.to,
+    description: data.description,
+  });
 
-    this.stateMachine.assertTransition(
-      transaction.status,
-      data.to
-    );
-
-    await this.app.prisma.transaction.update({
-      where: {
-        id: data.transactionId,
-      },
-      data: {
-        status: data.to,
-      },
-    });
-
-    await this.recordTransactionActivity({
-      transactionId: data.transactionId,
-      title: data.title,
-      event: data.event,
-      previousStatus: transaction.status,
-      newStatus: data.to,
-      description: data.description,
-    });
-
-    return this.getTransaction(
-      data.transactionId
-    );
-  
+  return this.getTransaction(
+    data.transactionId
+  );
 }
 
   async executePayment(data: {
@@ -502,13 +481,18 @@ export default class TransactionService {
       requestHeaders,
     });
 
-    await this.transitionTransactionStatus({
-      transactionId: transaction.id,
-      from: transaction.status,
-      to: TransactionStatus.PENDING,
-      title: "Transaction Pending",
-      event: "TRANSACTION_PENDING",
-      description: "Transaction entered pending payment processing.",
+    this.stateMachine.assertTransition(
+      transaction.status,
+      TransactionStatus.PENDING
+    );
+
+    await this.app.prisma.transaction.update({
+      where: {
+        id: transaction.id,
+      },
+      data: {
+        status: TransactionStatus.PENDING,
+      },
     });
 
     if (!transaction.reference) {
@@ -545,13 +529,18 @@ export default class TransactionService {
       description: "Transaction entered pending payment processing.",
     });
 
-    await this.transitionTransactionStatus({
-      transactionId: transaction.id,
-      from: TransactionStatus.PENDING,
-      to: TransactionStatus.AUTHORIZED,
-      title: "Transaction Authorized",
-      event: "TRANSACTION_AUTHORIZED",
-      description: "Payment authorization completed successfully.",
+    this.stateMachine.assertTransition(
+      TransactionStatus.PENDING,
+      TransactionStatus.AUTHORIZED
+    );
+
+    await this.app.prisma.transaction.update({
+      where: {
+        id: transaction.id,
+      },
+      data: {
+        status: TransactionStatus.AUTHORIZED,
+      },
     });
 
     await this.recordTransactionActivity({
@@ -758,18 +747,27 @@ export default class TransactionService {
         settlement.id
       );
 
-    await this.transitionTransactionStatus({
-      transactionId: data.transactionId,
-      from: TransactionStatus.CAPTURED,
-      to: TransactionStatus.SETTLED,
-      title: "Transaction Settled",
-      event: "TRANSACTION_SETTLED",
-      description: "Settlement completed successfully.",
-    });
+    this.stateMachine.assertTransition(
+      TransactionStatus.CAPTURED,
+      TransactionStatus.SETTLED
+    );
 
     await this.app.prisma.transaction.update({
-      where: { id: data.transactionId },
-      data: { settlementStatus: SettlementStatus.COMPLETED },
+
+      where: {
+        id: data.transactionId
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.SETTLED,
+
+        settlementStatus:
+          SettlementStatus.COMPLETED
+
+      }
+
     });
 
     await this.recordTransactionActivity({
@@ -871,18 +869,29 @@ if (paymentAttempt) {
 
     }
 
-    await this.transitionTransactionStatus({
-      transactionId,
-      from: TransactionStatus.AUTHORIZED,
-      to: TransactionStatus.CAPTURED,
-      title: "Transaction Captured",
-      event: "TRANSACTION_CAPTURED",
-      description: "Payment successfully captured.",
-    });
+    this.stateMachine.assertTransition(
+      TransactionStatus.AUTHORIZED,
+      TransactionStatus.CAPTURED
+    );
 
     await this.app.prisma.transaction.update({
-      where: { id: transactionId },
-      data: { settlementStatus: SettlementStatus.COMPLETED },
+
+      where: {
+
+        id: transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.CAPTURED,
+
+        settlementStatus:
+          SettlementStatus.COMPLETED
+
+      }
+
     });
 
     await this.recordTransactionActivity({
@@ -968,13 +977,26 @@ if (paymentAttempt) {
 
     }
 
-    await this.transitionTransactionStatus({
-      transactionId: data.transactionId,
-      from: TransactionStatus.PENDING,
-      to: TransactionStatus.FAILED,
-      title: "Transaction Failed",
-      event: "TRANSACTION_FAILED",
-      description: data.reason,
+    this.stateMachine.assertTransition(
+      TransactionStatus.PENDING,
+      TransactionStatus.FAILED
+    );
+
+    await this.app.prisma.transaction.update({
+
+      where: {
+
+        id: data.transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.FAILED
+
+      }
+
     });
 
     return this.getTransaction(
@@ -1022,13 +1044,26 @@ if (paymentAttempt) {
 
       });
 
-    await this.transitionTransactionStatus({
-      transactionId,
-      from: TransactionStatus.SETTLED,
-      to: TransactionStatus.REVERSED,
-      title: "Transaction Reversed",
-      event: "TRANSACTION_REVERSED",
-      description: reason ?? "Transaction reversed successfully.",
+    this.stateMachine.assertTransition(
+      TransactionStatus.SETTLED,
+      TransactionStatus.REVERSED
+    );
+
+    await this.app.prisma.transaction.update({
+
+      where: {
+
+        id: transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.REVERSED
+
+      }
+
     });
 
     return this.getTransaction(
@@ -1070,13 +1105,26 @@ if (paymentAttempt) {
 
       });
 
-    await this.transitionTransactionStatus({
-      transactionId,
-      from: TransactionStatus.AUTHORIZED,
-      to: TransactionStatus.VOIDED,
-      title: "Transaction Voided",
-      event: "TRANSACTION_VOIDED",
-      description: reason ?? "Transaction voided successfully.",
+    this.stateMachine.assertTransition(
+      TransactionStatus.AUTHORIZED,
+      TransactionStatus.VOIDED
+    );
+
+    await this.app.prisma.transaction.update({
+
+      where: {
+
+        id: transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.VOIDED
+
+      }
+
     });
 
     return this.getTransaction(

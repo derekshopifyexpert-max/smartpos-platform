@@ -399,60 +399,39 @@ export default class TransactionService {
   */
 
   private async transitionTransactionStatus(data: {
-    transactionId: string;
-    from: TransactionStatus;
-    to: TransactionStatus;
-    title: string;
-    event: string;
-    description: string;
-  }) {
-    const transaction = await this.app.prisma.transaction.findUnique({
-      where: {
-        id: data.transactionId,
-      },
-      select: {
-        id: true,
-        status: true,
-      },
-    });
+  transactionId: string;
+  from: TransactionStatus;
+  to: TransactionStatus;
+  title: string;
+  event: string;
+  description: string;
+}) {
+  this.stateMachine.assertTransition(
+    data.from,
+    data.to
+  );
 
-    if (!transaction) {
-      throw new Error("Transaction not found.");
-    }
+  await this.app.prisma.transaction.update({
+    where: {
+      id: data.transactionId,
+    },
+    data: {
+      status: data.to,
+    },
+  });
 
-    if (transaction.status !== data.from) {
-      throw new Error(
-        `Transaction status mismatch. Expected , found .`
-      );
-    }
+  await this.recordTransactionActivity({
+    transactionId: data.transactionId,
+    title: data.title,
+    event: data.event,
+    previousStatus: data.from,
+    newStatus: data.to,
+    description: data.description,
+  });
 
-    this.stateMachine.assertTransition(
-      transaction.status,
-      data.to
-    );
-
-    await this.app.prisma.transaction.update({
-      where: {
-        id: data.transactionId,
-      },
-      data: {
-        status: data.to,
-      },
-    });
-
-    await this.recordTransactionActivity({
-      transactionId: data.transactionId,
-      title: data.title,
-      event: data.event,
-      previousStatus: transaction.status,
-      newStatus: data.to,
-      description: data.description,
-    });
-
-    return this.getTransaction(
-      data.transactionId
-    );
-  
+  return this.getTransaction(
+    data.transactionId
+  );
 }
 
   async executePayment(data: {
