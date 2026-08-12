@@ -440,10 +440,6 @@ export default class PaymentService {
         },
       });
 
-
-    return authorization;
-
-
     return authorization;
   }
 
