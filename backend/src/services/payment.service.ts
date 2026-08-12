@@ -566,15 +566,6 @@ export default class PaymentService {
         },
       });
 
-    await db.transaction.update({
-      where: {
-        id: data.transactionId,
-      },
-      data: {
-        status:
-          TransactionStatus.REVERSED,
-      },
-    });
 
     return reversal;
   }
