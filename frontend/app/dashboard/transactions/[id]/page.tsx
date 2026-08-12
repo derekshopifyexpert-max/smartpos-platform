@@ -118,8 +118,9 @@ export default function TransactionDetailPage() {
           label="Merchant"
           value={
             transaction.merchant?.name ??
-            transaction.merchantId ??
-            "-"
+            transaction.merchant?.email ??
+              transaction.merchant?.contactEmail ??
+              "-"
           }
           icon={<Store size={20} />}
         />
@@ -349,21 +350,31 @@ export default function TransactionDetailPage() {
               mono
             />
 
-            <InfoItem
+            
+<InfoItem
               label="Email"
               value={
-                transaction.merchantId ??
-                "-"
+                
+              transaction.merchant?.email ??
+              transaction.merchant?.contactEmail ??
+              "-"
+
               }
             />
 
-            <InfoItem
+
+            
+<InfoItem
               label="Phone"
               value={
-                transaction.terminal?.serialNumber ??
-                "-"
+                
+              transaction.merchant?.phone ??
+              transaction.merchant?.contactPhone ??
+              "-"
+
               }
             />
+
 
             {transaction.merchantId && (
               <Link
@@ -421,7 +432,7 @@ export default function TransactionDetailPage() {
             />
 
             <InfoItem
-              label="Last Activity"
+              label="Transaction Created"
               value={formatDate(
                 transaction.createdAt
               )}

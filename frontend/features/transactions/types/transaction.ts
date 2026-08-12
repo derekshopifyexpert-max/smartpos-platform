@@ -1,18 +1,33 @@
 export interface TransactionMerchant {
   id: string;
   name: string;
+  legalName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  website?: string | null;
+  businessType?: string | null;
+  country?: string | null;
+  city?: string | null;
+  state?: string | null;
 }
 
 export interface TransactionTerminal {
   id: string;
   serialNumber?: string | null;
+  status?: string | null;
+  name?: string | null;
 }
 
 export interface TransactionCustomer {
   id?: string | null;
-  firstName?: string |null;
+  firstName?: string | null;
   lastName?: string | null;
+  displayName?: string | null;
   email?: string | null;
+  phone?: string | null;
+  country?: string | null;
 }
 
 export interface GatewayResponseBody {
@@ -44,11 +59,13 @@ export interface Transaction {
   type?: string | null;
 
   reference?: string | null;
+  idempotencyKey?: string | null;
   description?: string | null;
 
   paymentMethod?: string | null;
   cardBrand?: string | null;
   cardLastFour?: string | null;
+  cardExpiry?: string | null;
 
   gatewayTransactionId?: string | null;
   gatewayProvider?: string | null;
@@ -56,7 +73,6 @@ export interface Transaction {
   paymentUrl?: string | null;
 
   authorizationCode?: string | null;
-
   approvalCode?: string | null;
   authCode?: string | null;
 
@@ -72,7 +88,7 @@ export interface Transaction {
   paymentIntentId?: string | null;
 
   createdAt: string;
-  updatedAt?: string;
+  updatedAt?: string | null;
 
   merchant?: TransactionMerchant | null;
   terminal?: TransactionTerminal | null;
