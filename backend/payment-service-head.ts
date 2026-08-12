@@ -1,5 +1,6 @@
 import {
   Prisma,
+  PrismaClient,
   PaymentStatus,
   TransactionStatus,
   SettlementStatus,
@@ -11,9 +12,12 @@ import crypto from "crypto";
 type PrismaTransactionClient =
   Prisma.TransactionClient;
 
+type FastifyInstanceWithPrisma =
+  FastifyInstance & { prisma: PrismaClient };
+
 export default class PaymentService {
   constructor(
-    private readonly app: FastifyInstance
+    private readonly app: FastifyInstanceWithPrisma
   ) {}
 
   /*
