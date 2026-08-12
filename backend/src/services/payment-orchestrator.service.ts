@@ -36,6 +36,355 @@ export default class PaymentOrchestratorService {
 
   }
 
+    async checkoutPaymentIntent(
+    paymentIntentId: string,
+    customer: {
+      email?: string;
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+    } = {}
+  ) {
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
+
+    if (!paymentIntent) {
+      throw new Error(
+        "Payment Intent not found."
+      );
+    }
+
+    if (
+      paymentIntent.status !==
+      "PENDING"
+    ) {
+      throw new Error(
+        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`
+      );
+    }
+
+    if (
+      paymentIntent.expiresAt &&
+      paymentIntent.expiresAt <= new Date()
+    ) {
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+
+      throw new Error(
+        "Payment Intent has expired."
+      );
+    }
+
+    const email =
+      customer.email ??
+      paymentIntent.customer?.email ??
+      undefined;
+
+    if (!email) {
+      throw new Error(
+        "Customer email is required for payment."
+      );
+    }
+
+    const existingTransaction =
+      paymentIntent.transactions.find(
+        transaction =>
+          transaction.status === "INITIATED"
+      );
+
+    const transaction =
+      existingTransaction ??
+      await this.paymentService.createTransaction({
+        merchantId:
+          paymentIntent.merchantId,
+
+        customerId:
+          paymentIntent.customerId ??
+          undefined,
+
+        amount:
+          paymentIntent.amount,
+
+        currency:
+          paymentIntent.currency,
+
+        paymentMethod:
+          "card",
+
+        type:
+          "payment",
+
+        description:
+          paymentIntent.description ??
+          undefined,
+
+        paymentIntentId:
+          paymentIntent.id,
+
+        metadata:
+          paymentIntent.metadata
+      });
+
+    const existingAttempt =
+      paymentIntent.paymentAttempts.find(
+        attempt =>
+          attempt.transactionId ===
+            transaction.id &&
+          attempt.status ===
+            "PENDING"
+      );
+
+    const paymentAttempt =
+      existingAttempt ??
+      await this.paymentService.createPaymentAttempt({
+        paymentIntentId:
+          paymentIntent.id,
+
+        transactionId:
+          transaction.id,
+
+        amount:
+          paymentIntent.amount,
+
+        currency:
+          paymentIntent.currency
+      });
+
+    const providers =
+      await this.gatewayService.activeProviders();
+
+    const providerNames =
+      providers
+        .filter(
+          provider => provider.isActive
+        )
+        .sort(
+          (a, b) =>
+            a.priority - b.priority
+        )
+        .map(
+          provider => provider.name
+        );
+
+    if (!providerNames.length) {
+      throw new Error(
+        "No active payment provider configured."
+      );
+    }
+
+    const selectedProvider =
+      this.selector.select(
+        providers,
+        {
+          merchantId:
+            paymentIntent.merchantId,
+
+          currency:
+            String(
+              paymentIntent.currency
+            ),
+
+          amount:
+            Number(
+              paymentIntent.amount
+            ),
+
+          paymentMethod:
+            "card"
+        }
+      );
+
+    const gatewayRequest =
+      await this.gatewayService.createGatewayRequest({
+        providerId:
+          selectedProvider.id,
+
+        transactionId:
+          transaction.id,
+
+        endpoint:
+          selectedProvider.baseUrl ??
+          "/payment",
+
+        method:
+          "POST",
+
+        requestBody: {
+          amount:
+            paymentIntent.amount.toString(),
+
+          currency:
+            String(
+              paymentIntent.currency
+            ),
+
+          reference:
+            transaction.reference,
+
+          customerEmail:
+            email
+        },
+
+        requestHeaders: {}
+      });
+    
+      if (!transaction.reference) {
+  throw new Error(
+    "Transaction reference is missing."
+  );
+}
+
+    try {
+      const execution =
+        await this.failover.execute(
+          providerNames,
+          async provider =>
+            provider.createPayment({
+              amount:
+                Number(
+                  paymentIntent.amount
+                ),
+
+              currency:
+                String(
+                  paymentIntent.currency
+                ),
+
+              reference:
+                transaction.reference!,
+
+              description:
+                paymentIntent.description ??
+                undefined,
+
+              customer: {
+                email,
+
+                firstName:
+                  customer.firstName ??
+                  paymentIntent.customer?.firstName ??
+                  undefined,
+
+                lastName:
+                  customer.lastName ??
+                  paymentIntent.customer?.lastName ??
+                  undefined,
+
+                phone:
+                  customer.phone ??
+                  paymentIntent.customer?.phone ??
+                  undefined
+              },
+
+              metadata: {
+                paymentIntentId:
+                  paymentIntent.id,
+
+                transactionId:
+                  transaction.id,
+
+                paymentAttemptId:
+                  paymentAttempt.id
+              }
+            })
+        );
+
+      const providerResponse =
+        execution.result;
+
+      await this.app.prisma.transaction.update({
+        where: {
+          id: transaction.id
+        },
+
+        data: {
+          gatewayTransactionId:
+            providerResponse.transactionId ??
+            providerResponse.reference ??
+            null,
+
+          gatewayProvider:
+            execution.providerName
+        }
+      });
+
+      await this.gatewayService.createGatewayResponse({
+        gatewayRequestId:
+          gatewayRequest.id,
+
+        statusCode:
+          200,
+
+        responseBody:
+          providerResponse.raw ??
+          {},
+
+        responseHeaders:
+          {},
+
+        responseTime:
+          0
+      });
+
+      return {
+        paymentIntent,
+
+        transaction,
+
+        paymentAttempt,
+
+        provider:
+          execution.providerName,
+
+        gateway: {
+          transactionId:
+            providerResponse.transactionId ??
+            providerResponse.reference ??
+            null,
+
+          paymentUrl:
+            providerResponse.paymentUrl ??
+            null,
+
+          accessCode:
+            providerResponse.accessCode ??
+            null,
+
+          authorizationCode:
+            providerResponse.authorizationCode ??
+            null
+        },
+
+        response:
+          providerResponse
+      };
+    } catch (error) {
+      await this.gatewayService.createGatewayResponse({
+        gatewayRequestId:
+          gatewayRequest.id,
+
+        statusCode:
+          500,
+
+        responseBody:
+          {},
+
+        responseHeaders:
+          {},
+
+        error:
+          error instanceof Error
+            ? error.message
+            : "Payment failed"
+      });
+
+      throw error;
+    }
+  }
+
   async createPayment(data: {
 
     merchantId: string;
@@ -147,78 +496,83 @@ export default class PaymentOrchestratorService {
         requestHeaders: {} as Prisma.JsonValue
 
       });
+  try {
 
+    const started =
+      Date.now();
 
-    try {
+    const execution =
+      await this.failover.execute(
 
-      const started =
-        Date.now();
+        providerNames,
 
-      const response =
-        await this.failover.execute(
+        async provider =>
+          provider.createPayment({
 
-          providerNames,
+            amount:
+              Number(data.amount),
 
-          async provider =>
+            currency:
+              String(data.currency),
 
-            provider.createPayment({
+            description:
+              data.description,
 
-              amount: Number(data.amount),
+            reference:
+              transaction.reference ??
+              transaction.id,
 
-              currency: String(data.currency),
+            metadata:
+              data.metadata as any
 
-              description: data.description,
-
-              reference:
-                transaction.reference ??
-                transaction.id,
-
-              metadata:
-                data.metadata as any
-
-            })
-
-        );
-
-      this.metrics.record(
-
-        providerRecord.name,
-
-        true,
-
-        Date.now() - started
+          })
 
       );
 
-      await this.gatewayService.createGatewayResponse({
+    const providerResponse =
+      execution.result;
 
-        gatewayRequestId:
-          gatewayRequest.id,
+    this.metrics.record(
 
-        statusCode: 200,
+      execution.providerName,
 
-        responseBody:
-          response.raw,
+      true,
 
-        responseHeaders:
-          {} as Prisma.JsonValue
+      Date.now() - started
 
-      });
+    );
 
-      return {
+    await this.gatewayService.createGatewayResponse({
 
-        paymentIntent,
+      gatewayRequestId:
+        gatewayRequest.id,
 
-        transaction,
+      statusCode:
+        200,
 
-        provider:
-          response.reference,
+      responseBody:
+        providerResponse.raw,
 
-        response
+      responseHeaders:
+        {} as Prisma.JsonValue
 
-      };
+    });
 
-    } catch (error) {
+    return {
+
+      paymentIntent,
+
+      transaction,
+
+      provider:
+        providerResponse.reference,
+
+      response:
+        providerResponse
+
+    };
+
+  } catch (error) {
 
       this.metrics.record(
 

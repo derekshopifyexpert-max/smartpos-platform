@@ -12,7 +12,6 @@ import {
 
 import {
   createPaymentIntentSchema,
-  paymentIntentCheckoutSchema,
   paymentIntentIdSchema,
   paymentIntentListQuerySchema
 } from "../validators/payment.validator.js";
@@ -21,28 +20,11 @@ export default async function paymentRoutes(
   app: FastifyInstance
 ) {
 
-  const service =
+new PaymentOrchestratorService(app);
     new PaymentService(app);
 
-  const orchestrator =
-    new PaymentOrchestratorService(app);
-
   const controller =
-    new PaymentController(
-      service,
-      orchestrator
-    );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Create Payment
-  |--------------------------------------------------------------------------
-  */
-
-  app.post(
-    "/payments",
-    controller.createPayment
-  );
+    new PaymentController(service, orchestrator);
 
   /*
   |--------------------------------------------------------------------------
@@ -58,27 +40,6 @@ export default async function paymentRoutes(
       )
     },
     controller.createPaymentIntent
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Checkout Payment Intent
-  |--------------------------------------------------------------------------
-  */
-
-  app.post(
-    "/payment-intents/:id/checkout",
-    {
-      preHandler: [
-        validateParams(
-          paymentIntentIdSchema
-        ),
-        validateBody(
-          paymentIntentCheckoutSchema
-        )
-      ]
-    },
-    controller.checkoutPaymentIntent
   );
 
   /*

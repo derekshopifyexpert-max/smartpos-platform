@@ -4,32 +4,12 @@ import {
 } from "fastify";
 
 import PaymentService from "../services/payment.service.js";
-import PaymentOrchestratorService from "../services/payment-orchestrator.service.js";
 
 export default class PaymentController {
 
   constructor(
-    private readonly paymentService: PaymentService,
-private readonly paymentOrchestratorService: PaymentOrchestratorService
+    private readonly paymentService: PaymentService
   ) {}
-
-createPayment = async (
-request: FastifyRequest,
-reply: FastifyReply
-) => {
-
-const payment =
-await this.paymentOrchestratorService.createPayment(
-request.body as any
-);
-
-return reply.code(201).send({
-success: true,
-message: "Payment Created",
-data: payment
-});
-
-};
 
   createPaymentIntent = async (
     request: FastifyRequest,
@@ -96,36 +76,6 @@ data: payment
     return reply.send({
       success: true,
       data: payment
-    });
-  };
-
-  checkoutPaymentIntent = async (
-    request: FastifyRequest,
-    reply: FastifyReply
-  ) => {
-
-    const { id } =
-      request.params as {
-        id: string;
-      };
-
-    const customer =
-      request.body as {
-        email?: string;
-        firstName?: string;
-        lastName?: string;
-        phone?: string;
-      };
-
-    const result =
-  await this.paymentOrchestratorService.checkoutPaymentIntent(
-    id,
-    customer
-  );
-
-    return reply.send({
-      success: true,
-      data: result
     });
   };
 

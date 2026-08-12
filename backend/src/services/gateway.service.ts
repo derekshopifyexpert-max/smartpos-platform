@@ -16,31 +16,22 @@ export default class GatewayService {
   async getProvider(
     providerId: string
   ) {
-
     return this.app.prisma.paymentProvider.findUnique({
-
       where: {
         id: providerId
       }
-
     });
-
   }
 
   async activeProviders() {
-
     return this.app.prisma.paymentProvider.findMany({
-
       where: {
         isActive: true
       },
-
       orderBy: {
         createdAt: "desc"
       }
-
     });
-
   }
 
   async createProvider(data: {
@@ -66,41 +57,46 @@ export default class GatewayService {
   */
 
   async createGatewayRequest(data: {
-
     providerId: string;
-
     transactionId?: string;
-
     endpoint: string;
-
     method: string;
-
     requestBody: Prisma.JsonValue;
-
     requestHeaders: Prisma.JsonValue;
-
   }) {
 
-    return this.app.prisma.gatewayRequest.create({
+    /*
+     * A transaction can have only one GatewayRequest because
+     * transactionId is unique in the Prisma schema.
+     *
+     * Reuse the existing request when checkout is retried.
+     */
 
-      data: {
+    if (data.transactionId) {
+      const existing =
+        await this.app.prisma.gatewayRequest.findUnique({
+          where: {
+            transactionId: data.transactionId
+          }
+        });
 
-        providerId: data.providerId,
-
-        transactionId: data.transactionId,
-
-        endpoint: data.endpoint,
-
-        method: data.method,
-
-        requestBody: data.requestBody ?? Prisma.JsonNull,
-
-        requestHeaders: data.requestHeaders ?? Prisma.JsonNull,
-
+      if (existing) {
+        return existing;
       }
+    }
 
+    return this.app.prisma.gatewayRequest.create({
+      data: {
+        providerId: data.providerId,
+        transactionId: data.transactionId,
+        endpoint: data.endpoint,
+        method: data.method,
+        requestBody:
+          data.requestBody ?? Prisma.JsonNull,
+        requestHeaders:
+          data.requestHeaders ?? Prisma.JsonNull
+      }
     });
-
   }
 
   /*
@@ -110,41 +106,52 @@ export default class GatewayService {
   */
 
   async createGatewayResponse(data: {
-
     gatewayRequestId: string;
-
     statusCode: number;
-
     responseBody: Prisma.JsonValue;
-
     responseHeaders: Prisma.JsonValue;
-
     error?: string;
-
     responseTime?: number;
-
   }) {
 
+    /*
+     * GatewayResponse.gatewayRequestId is also unique.
+     * Reuse the existing response on a repeated lifecycle operation.
+     */
+
+    const existing =
+      await this.app.prisma.gatewayResponse.findUnique({
+        where: {
+          gatewayRequestId:
+            data.gatewayRequestId
+        }
+      });
+
+    if (existing) {
+      return existing;
+    }
+
     return this.app.prisma.gatewayResponse.create({
-
       data: {
+        gatewayRequestId:
+          data.gatewayRequestId,
 
-        gatewayRequestId: data.gatewayRequestId,
+        statusCode:
+          data.statusCode,
 
-        statusCode: data.statusCode,
+        responseBody:
+          data.responseBody ?? Prisma.JsonNull,
 
-        responseBody: data.responseBody ?? Prisma.JsonNull,
+        responseHeaders:
+          data.responseHeaders ?? Prisma.JsonNull,
 
-        responseHeaders: data.responseHeaders ?? Prisma.JsonNull,
+        error:
+          data.error,
 
-        error: data.error,
-
-        responseTime: data.responseTime
-
+        responseTime:
+          data.responseTime
       }
-
     });
-
   }
 
   /*
@@ -156,182 +163,81 @@ export default class GatewayService {
   async getGatewayRequest(
     id: string
   ) {
-
     return this.app.prisma.gatewayRequest.findUnique({
-
       where: {
-
         id
-
       },
-
       include: {
-
         provider: true,
-
         response: true,
-
         transaction: true
-
       }
-
     });
-
-  }
-
-  async getGatewayResponse(
-    id: string
-  ) {
-
-    return this.app.prisma.gatewayResponse.findUnique({
-
-      where: {
-
-        id
-
-      },
-
-      include: {
-
-        gatewayRequest: {
-
-          include: {
-
-            provider: true,
-
-            transaction: true
-
-          }
-
-        }
-
-      }
-
-    });
-
-  }
-
-  async transactionGateway(
-    transactionId: string
-  ) {
-
-    return this.app.prisma.gatewayRequest.findFirst({
-
-      where: {
-
-        transactionId
-
-      },
-
-      include: {
-
-        provider: true,
-
-        response: true
-
-      }
-
-    });
-
   }
 
   /*
   |--------------------------------------------------------------------------
-  | Retry
-  |--------------------------------------------------------------------------
-  */
-
-  async recreateGatewayRequest(
-
-    gatewayRequestId: string
-
-  ) {
-
-    const previous =
-      await this.getGatewayRequest(
-        gatewayRequestId
-      );
-
-    if (!previous) {
-
-      throw new Error(
-        "Gateway request not found."
-      );
-
-    }
-
-    return this.createGatewayRequest({
-
-      providerId:
-        previous.providerId,
-
-      transactionId:
-        previous.transactionId ?? undefined,
-
-      endpoint:
-        previous.endpoint,
-
-      method:
-        previous.method,
-
-      requestBody:
-        previous.requestBody,
-
-      requestHeaders:
-        previous.requestHeaders
-
-    });
-
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Statistics
+  | Provider Statistics
   |--------------------------------------------------------------------------
   */
 
   async providerStatistics(
-
     providerId: string
-
   ) {
 
-    const totalRequests =
-      await this.app.prisma.gatewayRequest.count({
+    const [
+      totalRequests,
+      successfulRequests,
+      failedRequests
+    ] = await Promise.all([
 
+      this.app.prisma.gatewayRequest.count({
         where: {
-
           providerId
-
         }
+      }),
 
-      });
-
-    const totalResponses =
-      await this.app.prisma.gatewayResponse.count({
-
+      this.app.prisma.gatewayResponse.count({
         where: {
-
           gatewayRequest: {
-
             providerId
-
+          },
+          statusCode: {
+            gte: 200,
+            lt: 400
           }
-
         }
+      }),
 
-      });
+      this.app.prisma.gatewayResponse.count({
+        where: {
+          gatewayRequest: {
+            providerId
+          },
+          statusCode: {
+            gte: 400
+          }
+        }
+      })
+
+    ]);
 
     return {
-
       providerId,
-
       totalRequests,
-
-      totalResponses
-
+      successfulRequests,
+      failedRequests,
+      successRate:
+        totalRequests > 0
+          ? Number(
+              (
+                successfulRequests /
+                totalRequests *
+                100
+              ).toFixed(2)
+            )
+          : 0
     };
-
   }
 
 }

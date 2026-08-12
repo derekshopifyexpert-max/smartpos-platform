@@ -1,38 +1,36 @@
-import fp from "fastify-plugin";
-import { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { FastifyInstance } from "fastify";
 
-export default fp(async (app: FastifyInstance) => {
+export default async function errorHandler(
+  app: FastifyInstance
+) {
   app.setErrorHandler(
-    (
-      error: FastifyError & {
-        statusCode?: number;
-      },
-      request: FastifyRequest,
-      reply: FastifyReply
-    ) => {
+    async (error: any, request, reply) => {
+
       request.log.error(error);
 
       const statusCode =
-        typeof error.statusCode === "number" &&
-        error.statusCode >= 400 &&
-        error.statusCode < 600
+        error.statusCode && error.statusCode >= 400
           ? error.statusCode
           : 500;
 
-      return reply.status(statusCode).send({
+      return reply.code(statusCode).send({
         success: false,
         statusCode,
         error:
-          statusCode >= 500
-            ? "Internal Server Error"
-            : statusCode === 401
-              ? "Unauthorized"
-              : error.name || "Error",
+          error.name ||
+          "Internal Server Error",
         message:
-          statusCode >= 500
-            ? "Internal server error."
-            : error.message,
+          error.message ||
+          "Internal server error.",
+        ...(process.env.NODE_ENV !== "production"
+          ? {
+              details: error.meta ?? undefined,
+              code: error.code ?? undefined,
+              stack: error.stack ?? undefined
+            }
+          : {})
       });
+
     }
   );
-});
+}

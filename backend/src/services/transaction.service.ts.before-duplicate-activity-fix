@@ -858,7 +858,23 @@ if (paymentAttempt) {
       },
     });
 
-return this.getTransaction(
+    await this.recordTransactionActivity({
+
+  transactionId,
+
+  title: "Transaction Captured",
+
+  event: "TRANSACTION_CAPTURED",
+
+  previousStatus: TransactionStatus.AUTHORIZED,
+
+  newStatus: TransactionStatus.CAPTURED,
+
+  description: "Payment successfully captured."
+
+});
+
+    return this.getTransaction(
       transactionId
     );
 

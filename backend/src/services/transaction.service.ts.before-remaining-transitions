@@ -719,24 +719,27 @@ const quote = await this.exchangeService.calculateQuote(
         settlement.id
       );
 
-    await this.transitionTransactionStatus(
-      data.transactionId,
+    this.stateMachine.assertTransition(
       TransactionStatus.CAPTURED,
-      TransactionStatus.SETTLED,
-      {
-        title: "Transaction Settled",
-        event: "TRANSACTION_SETTLED",
-        description: "Settlement completed successfully.",
-      }
+      TransactionStatus.SETTLED
     );
 
     await this.app.prisma.transaction.update({
+
       where: {
-        id: data.transactionId,
+        id: data.transactionId
       },
+
       data: {
-        settlementStatus: SettlementStatus.COMPLETED,
-      },
+
+        status:
+          TransactionStatus.SETTLED,
+
+        settlementStatus:
+          SettlementStatus.COMPLETED
+
+      }
+
     });
 
     await this.recordTransactionActivity({
@@ -858,7 +861,23 @@ if (paymentAttempt) {
       },
     });
 
-return this.getTransaction(
+    await this.recordTransactionActivity({
+
+  transactionId,
+
+  title: "Transaction Captured",
+
+  event: "TRANSACTION_CAPTURED",
+
+  previousStatus: TransactionStatus.AUTHORIZED,
+
+  newStatus: TransactionStatus.CAPTURED,
+
+  description: "Payment successfully captured."
+
+});
+
+    return this.getTransaction(
       transactionId
     );
 
@@ -925,16 +944,27 @@ if (paymentAttempt) {
 
     }
 
-    await this.transitionTransactionStatus(
-      data.transactionId,
+    this.stateMachine.assertTransition(
       TransactionStatus.PENDING,
-      TransactionStatus.FAILED,
-      {
-        title: "Transaction Failed",
-        event: "TRANSACTION_FAILED",
-        description: data.reason ?? "Transaction payment processing failed.",
-      }
+      TransactionStatus.FAILED
     );
+
+    await this.app.prisma.transaction.update({
+
+      where: {
+
+        id: data.transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.FAILED
+
+      }
+
+    });
 
     return this.getTransaction(
       data.transactionId
@@ -981,16 +1011,27 @@ if (paymentAttempt) {
 
       });
 
-    await this.transitionTransactionStatus(
-      transactionId,
+    this.stateMachine.assertTransition(
       TransactionStatus.SETTLED,
-      TransactionStatus.REVERSED,
-      {
-        title: "Transaction Reversed",
-        event: "TRANSACTION_REVERSED",
-        description: reason ?? "Transaction reversed successfully.",
-      }
+      TransactionStatus.REVERSED
     );
+
+    await this.app.prisma.transaction.update({
+
+      where: {
+
+        id: transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.REVERSED
+
+      }
+
+    });
 
     return this.getTransaction(
       transactionId
@@ -1031,16 +1072,27 @@ if (paymentAttempt) {
 
       });
 
-    await this.transitionTransactionStatus(
-      transactionId,
+    this.stateMachine.assertTransition(
       TransactionStatus.AUTHORIZED,
-      TransactionStatus.VOIDED,
-      {
-        title: "Transaction Voided",
-        event: "TRANSACTION_VOIDED",
-        description: reason ?? "Transaction voided successfully.",
-      }
+      TransactionStatus.VOIDED
     );
+
+    await this.app.prisma.transaction.update({
+
+      where: {
+
+        id: transactionId
+
+      },
+
+      data: {
+
+        status:
+          TransactionStatus.VOIDED
+
+      }
+
+    });
 
     return this.getTransaction(
       transactionId

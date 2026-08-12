@@ -1,0 +1,353 @@
+diff --git a/backend/src/services/payment.service.ts b/backend/src/services/payment.service.ts
+index 9b2e68b..e7e71bd 100644
+--- a/backend/src/services/payment.service.ts
++++ b/backend/src/services/payment.service.ts
+@@ -73,6 +73,16 @@ export default class PaymentService {
+     },
+     tx?: PrismaTransactionClient
+   ) {
++    const metadataValue:
++      | Prisma.InputJsonValue
++      | typeof Prisma.JsonNull
++      | undefined =
++      data.metadata === undefined
++        ? undefined
++        : data.metadata === null
++          ? Prisma.JsonNull
++          : data.metadata;
++
+     return this.db(tx).paymentIntent.create({
+       data: {
+         merchantId: data.merchantId,
+@@ -82,7 +92,9 @@ export default class PaymentService {
+         currency: data.currency,
+         description: data.description,
+         metadata:
+-          data.metadata ?? Prisma.JsonNull,
++          metadataValue === undefined
++            ? undefined
++            : metadataValue,
+         clientSecret:
+           this.generateClientSecret(),
+         expiresAt: data.expiresAt,
+@@ -107,6 +119,320 @@ export default class PaymentService {
+     });
+   }
+ 
++  async checkoutPaymentIntent(
++    paymentIntentId: string,
++    customer: {
++      email?: string;
++      firstName?: string;
++      lastName?: string;
++      phone?: string;
++    } = {}
++  ) {
++    const paymentIntent =
++      await this.getPaymentIntent(
++        paymentIntentId
++      );
++
++    if (!paymentIntent) {
++      throw new Error(
++        "Payment Intent not found."
++      );
++    }
++
++    if (
++      paymentIntent.status !==
++      PaymentStatus.PENDING
++    ) {
++      throw new Error(
++        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`
++      );
++    }
++
++    if (
++      paymentIntent.expiresAt &&
++      paymentIntent.expiresAt <= new Date()
++    ) {
++      await this.expirePaymentIntent(
++        paymentIntent.id
++      );
++
++      throw new Error(
++        "Payment Intent has expired."
++      );
++    }
++
++    const email =
++      customer.email ??
++      paymentIntent.customer?.email ??
++      undefined;
++
++    if (!email) {
++      throw new Error(
++        "Customer email is required for payment."
++      );
++    }
++
++    const existingTransaction =
++      paymentIntent.transactions.find(
++        (transaction) =>
++          transaction.status ===
++          TransactionStatus.INITIATED
++      );
++
++    let transaction =
++      existingTransaction;
++
++    if (!transaction) {
++      transaction =
++        await this.createTransaction({
++          merchantId:
++            paymentIntent.merchantId,
++
++          customerId:
++            paymentIntent.customerId ??
++            undefined,
++
++          amount:
++            paymentIntent.amount,
++
++          currency:
++            paymentIntent.currency,
++
++          paymentMethod:
++            "card",
++
++          type:
++            "PAYMENT",
++
++          description:
++            paymentIntent.description ??
++            undefined,
++
++          paymentIntentId:
++            paymentIntent.id,
++
++          metadata:
++            paymentIntent.metadata ??
++            Prisma.JsonNull
++        });
++    }
++
++    let paymentAttempt =
++      await this.app.prisma.paymentAttempt.findFirst({
++        where: {
++          paymentIntentId:
++            paymentIntent.id,
++
++          transactionId:
++            transaction.id,
++
++          status:
++            PaymentStatus.PENDING
++        },
++
++        orderBy: {
++          createdAt: "desc"
++        }
++      });
++
++    if (!paymentAttempt) {
++      paymentAttempt =
++        await this.createPaymentAttempt({
++          paymentIntentId:
++            paymentIntent.id,
++
++          transactionId:
++            transaction.id,
++
++          amount:
++            paymentIntent.amount,
++
++          currency:
++            paymentIntent.currency
++        });
++    }
++
++    const providers =
++      await this.gatewayService.activeProviders();
++
++    if (!providers.length) {
++      throw new Error(
++        "No active payment provider configured."
++      );
++    }
++
++    providers.sort(
++      (a, b) =>
++        b.priority - a.priority
++    );
++
++    const provider =
++      providers[0];
++
++    const providerClient =
++      this.providerManager.getProvider(
++        provider.name
++      );
++
++    const gatewayRequest =
++      await this.gatewayService.createGatewayRequest({
++        providerId:
++          provider.id,
++
++        transactionId:
++          transaction.id,
++
++        endpoint:
++          provider.baseUrl ??
++          "/transaction/initialize",
++
++        method:
++          "POST",
++
++        requestBody: {
++          amount:
++            paymentIntent.amount.toString(),
++
++          currency:
++            String(paymentIntent.currency),
++
++          reference:
++            transaction.reference,
++
++          customerEmail:
++            email
++        },
++
++        requestHeaders: {}
++      });
++
++    try {
++      if (!transaction.reference) {
++        throw new Error(
++          "Transaction reference is missing."
++        );
++      }
++
++      const providerResponse =
++        await providerClient.createPayment({
++          amount:
++            Number(paymentIntent.amount),
++
++          currency:
++            String(paymentIntent.currency),
++
++          reference:
++            transaction.reference,
++
++          description:
++            paymentIntent.description ??
++            undefined,
++
++          customer: {
++            email,
++
++            firstName:
++              customer.firstName ??
++              paymentIntent.customer?.firstName ??
++              undefined,
++
++            lastName:
++              customer.lastName ??
++              paymentIntent.customer?.lastName ??
++              undefined,
++
++            phone:
++              customer.phone ??
++              paymentIntent.customer?.phone ??
++              undefined
++          },
++
++          metadata: {
++            paymentIntentId:
++              paymentIntent.id,
++
++            transactionId:
++              transaction.id,
++
++            paymentAttemptId:
++              paymentAttempt.id
++          }
++        });
++
++      await this.app.prisma.transaction.update({
++        where: {
++          id:
++            transaction.id
++        },
++
++        data: {
++          gatewayTransactionId:
++            providerResponse.transactionId ??
++            providerResponse.reference ??
++            null,
++
++          gatewayProvider:
++            provider.name
++        }
++      });
++
++      await this.gatewayService.createGatewayResponse({
++        gatewayRequestId:
++          gatewayRequest.id,
++
++        statusCode: 200,
++
++        responseBody: JSON.parse(
++          JSON.stringify(providerResponse)
++        ),
++
++        responseHeaders: {},
++
++        responseTime: 150
++      });
++
++      return {
++        paymentIntent,
++        transaction,
++        paymentAttempt,
++        provider: provider.name,
++        gatewayRequest,
++        gateway: {
++          provider:
++            provider.name,
++
++          transactionId:
++            providerResponse.transactionId ??
++            providerResponse.reference ??
++            null,
++
++          paymentUrl:
++            providerResponse.paymentUrl ??
++            null,
++
++          authorizationCode:
++            providerResponse.authorizationCode ??
++            null,
++        }
++      };
++    } catch (error) {
++      await this.app.prisma.paymentAttempt.update({
++        where: {
++          id: paymentAttempt.id
++        },
++        data: {
++          status: PaymentStatus.FAILED,
++          errorMessage:
++            error instanceof Error
++              ? error.message
++              : "Payment failed"
++        }
++      });
++
++      throw error;
++    }
++  }
++
+   async listPaymentIntents(
+     page = 1,
+     limit = 10
