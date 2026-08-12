@@ -422,7 +422,7 @@ export default class TransactionService {
 
     if (transaction.status !== data.from) {
       throw new Error(
-        `Transaction status mismatch. Expected , found .`
+        `Transaction status mismatch. Expected ${data.from}, found ${transaction.status}.`
       );
     }
 
