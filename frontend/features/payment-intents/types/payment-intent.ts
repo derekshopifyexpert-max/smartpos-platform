@@ -1,3 +1,24 @@
+import type {
+  PaymentIntent,
+  PaymentIntentResponse,
+  CheckoutPaymentIntentResponse,
+} from "../types/payment-intent";
+
+export async function checkoutPaymentIntent(
+  id: string,
+  customer: CheckoutPaymentIntentPayload = {}
+): Promise<CheckoutPaymentIntentResponse> {
+  const response = await api.post<{
+    success: boolean;
+    data: CheckoutPaymentIntentResponse;
+  }>(
+    ENDPOINTS.paymentIntents.checkout(id),
+    customer
+  );
+
+  return response.data.data;
+}
+
 export interface PaymentIntentMerchant {
   id: string;
   name: string;
@@ -104,4 +125,21 @@ export interface PaymentIntentResponse {
 export interface PaymentIntentDetailResponse {
   success: boolean;
   data: PaymentIntent;
+}
+
+export interface CheckoutPaymentIntentResponse {
+  paymentIntent: PaymentIntent;
+  transaction: PaymentIntentTransaction;
+  paymentAttempt: PaymentAttempt;
+
+  provider: string;
+
+  gateway: {
+    transactionId?: string | null;
+    paymentUrl?: string | null;
+    accessCode?: string | null;
+    authorizationCode?: string | null;
+  };
+
+  response: unknown;
 }
