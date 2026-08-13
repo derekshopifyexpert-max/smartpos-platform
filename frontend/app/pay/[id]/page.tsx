@@ -93,7 +93,8 @@ useEffect(() => {
 
   const isExpired =
     Boolean(intent.expiresAt) &&
-    new Date(intent.expiresAt as string).getTime() <= Date.now();
+    currentTime !== null &&
+    new Date(intent.expiresAt as string).getTime() <= currentTime;
 
   const isUnavailable =
     normalizedStatus !== "PENDING" || isExpired;

@@ -47,6 +47,60 @@ export default function CustomerPaymentCheckout() {
   const [paymentError, setPaymentError] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
 
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    if (!intent?.expiresAt) {
+      setIsExpired(false);
+      return;
+    }
+
+    const expiresAt = new Date(intent.expiresAt as string).getTime();
+
+    const updateExpiration = () => {
+      setIsExpired(expiresAt <= Date.now());
+    };
+
+    updateExpiration();
+
+    const remaining = expiresAt - Date.now();
+
+    if (remaining > 0) {
+      const timeout = window.setTimeout(updateExpiration, remaining);
+
+      return () => {
+        window.clearTimeout(timeout);
+      };
+    }
+  }, [intent?.expiresAt]);
+
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    if (!intent?.expiresAt) {
+      setIsExpired(false);
+      return;
+    }
+
+    const expiresAt = new Date(intent.expiresAt as string).getTime();
+
+    const updateExpiration = () => {
+      setIsExpired(expiresAt <= Date.now());
+    };
+
+    updateExpiration();
+
+    const remaining = expiresAt - Date.now();
+
+    if (remaining > 0) {
+      const timeout = window.setTimeout(updateExpiration, remaining);
+
+      return () => {
+        window.clearTimeout(timeout);
+      };
+    }
+  }, [intent?.expiresAt]);
+
   const amount = useMemo(() => {
     if (!intent) {
       return "";
@@ -197,33 +251,6 @@ export default function CustomerPaymentCheckout() {
 
   const normalizedStatus = intent.status.toUpperCase();
 
-  const [isExpired, setIsExpired] = useState(false);
-
-useEffect(() => {
-  if (!intent.expiresAt) {
-    setIsExpired(false);
-    return;
-  }
-
-  const expiresAt = new Date(
-    intent.expiresAt as string
-  ).getTime();
-
-  const updateExpiration = () => {
-    setIsExpired(expiresAt <= Date.now());
-  };
-
-  updateExpiration();
-
-  const remaining = expiresAt - Date.now();
-
-  if (remaining > 0) {
-    const timeout = window.setTimeout(
-      updateExpiration,
-      remaining
-    );
-
-    return () => {
       window.clearTimeout(timeout);
     };
   }
