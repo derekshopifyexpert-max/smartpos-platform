@@ -300,21 +300,6 @@ export default class PaymentService {
     return transaction;
   }
 
-  async updateTransactionStatus(
-    transactionId: string,
-    status: TransactionStatus,
-    tx?: PrismaTransactionClient
-  ) {
-    return this.db(tx).transaction.update({
-      where: {
-        id: transactionId,
-      },
-      data: {
-        status,
-      },
-    });
-  }
-
   /*
   |--------------------------------------------------------------------------
   | Payment Attempts
@@ -509,17 +494,6 @@ export default class PaymentService {
             Prisma.JsonNull,
         },
       });
-
-    await db.transaction.update({
-      where: {
-        id: data.transactionId,
-      },
-      data: {
-        status:
-          TransactionStatus.SETTLED,
-      },
-    });
-
     return capture;
   }
 
@@ -641,7 +615,8 @@ export default class PaymentService {
     }
 
     if (
-      transaction.status === TransactionStatus.SETTLED
+      transaction.status ===
+      TransactionStatus.SETTLED
     ) {
 
       throw new Error(
@@ -651,12 +626,20 @@ export default class PaymentService {
     }
 
     if (
-      transaction.status === TransactionStatus.VOIDED
+      transaction.status ===
+      TransactionStatus.VOIDED
     ) {
 
       return transaction;
 
     }
+
+    const existingMetadata =
+      transaction.metadata &&
+      typeof transaction.metadata === "object" &&
+      !Array.isArray(transaction.metadata)
+        ? transaction.metadata
+        : {};
 
     return this.app.prisma.transaction.update({
 
@@ -668,16 +651,9 @@ export default class PaymentService {
 
       data: {
 
-        status:
-          TransactionStatus.VOIDED,
-
         metadata: {
 
-          ...(transaction.metadata &&
-          typeof transaction.metadata === "object" &&
-          !Array.isArray(transaction.metadata)
-            ? transaction.metadata
-            : {}),
+          ...existingMetadata,
 
           voidReason:
             data.reason ??

@@ -1,3 +1,10 @@
+export type CheckoutPaymentIntentPayload = {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+};
+
 import { api } from "@/lib/api/client";
 import { ENDPOINTS } from "@/lib/api/endpoints";
 
@@ -31,6 +38,18 @@ export async function getPaymentIntent(
     data: PaymentIntent;
   }>(
     ENDPOINTS.paymentIntents.detail(id)
+  );
+
+  return response.data.data;
+}
+
+export async function checkoutPaymentIntent(
+  id: string,
+  customer: CheckoutPaymentIntentPayload = {}
+) {
+  const response = await api.post(
+    ENDPOINTS.paymentIntents.checkout(id),
+    customer
   );
 
   return response.data.data;

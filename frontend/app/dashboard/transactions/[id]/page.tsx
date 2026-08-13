@@ -14,7 +14,6 @@ import { useTransaction } from "@/features/transactions/hooks/use-transaction";
 
 export default function TransactionDetailPage() {
   const params = useParams();
-
   const id = String(params.id);
 
   const {
@@ -58,8 +57,7 @@ export default function TransactionDetailPage() {
     );
   }
 
-  const status =
-    transaction.status?.toUpperCase() ?? "UNKNOWN";
+  const status = transaction.status?.toUpperCase() ?? "UNKNOWN";
 
   return (
     <div className="space-y-8">
@@ -83,8 +81,7 @@ export default function TransactionDetailPage() {
             </div>
 
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-              {transaction.reference ??
-                transaction.id}
+              {transaction.reference ?? transaction.id}
             </h1>
 
             <p className="mt-2 font-mono text-sm text-slate-500">
@@ -126,10 +123,7 @@ export default function TransactionDetailPage() {
 
         <SummaryCard
           label="Payment Method"
-          value={
-            transaction.paymentMethod ??
-            "-"
-          }
+          value={transaction.paymentMethod ?? "-"}
           icon={<CreditCard size={20} />}
         />
       </div>
@@ -154,10 +148,7 @@ export default function TransactionDetailPage() {
 
           <InfoItem
             label="Reference"
-            value={
-              transaction.reference ??
-              "-"
-            }
+            value={transaction.reference ?? "-"}
             mono
           />
 
@@ -181,18 +172,12 @@ export default function TransactionDetailPage() {
 
           <InfoItem
             label="Customer ID"
-            value={
-              transaction.customerId ??
-              "-"
-            }
+            value={transaction.customerId ?? "-"}
           />
 
           <InfoItem
             label="Payment Intent ID"
-            value={
-              transaction.paymentIntentId ??
-              "-"
-            }
+            value={transaction.paymentIntentId ?? "-"}
             mono
           />
 
@@ -216,79 +201,56 @@ export default function TransactionDetailPage() {
 
           <InfoItem
             label="Type"
-            value={
-              transaction.type ??
-              "-"
-            }
+            value={transaction.type ?? "-"}
           />
 
           <InfoItem
             label="Payment Method"
-            value={
-              transaction.paymentMethod ??
-              "-"
-            }
+            value={transaction.paymentMethod ?? "-"}
           />
 
           <InfoItem
             label="Gateway"
-            value={
-              transaction.gatewayProvider ??
-              "-"
-            }
+            value={transaction.gatewayProvider ?? "-"}
           />
 
           <InfoItem
             label="Gateway Transaction"
-            value={
-              transaction.gatewayTransactionId ??
-              "-"
-            }
+            value={transaction.gatewayTransactionId ?? "-"}
             mono
           />
 
           <InfoItem
             label="Payment URL"
             value={
-              transaction.gatewayRequest
-                ?.response
-                ?.responseBody
-                ?.paymentUrl ??
-              "-"
+              transaction.gatewayRequest?.response?.responseBody
+                ?.paymentUrl ?? "-"
             }
           />
 
           <InfoItem
             label="Created"
-            value={formatDate(
-              transaction.createdAt
-            )}
+            value={formatDate(transaction.createdAt)}
           />
 
           <InfoItem
             label="Updated"
             value={
               transaction.updatedAt
-                ? formatDate(
-                    transaction.updatedAt
-                  )
+                ? formatDate(transaction.updatedAt)
                 : "-"
             }
           />
 
           <InfoItem
             label="Settlement Status"
-            value={
-              transaction.settlementStatus ??
-              "-"
-            }
+            value={transaction.settlementStatus ?? "-"}
           />
 
           <InfoItem
             label="Settlement Amount"
             value={
-              transaction.settlementAmount !=
-              null
+              transaction.settlementAmount != null
                 ? formatAmount(
                     transaction.settlementAmount,
                     transaction.settlementCurrency ??
@@ -302,9 +264,7 @@ export default function TransactionDetailPage() {
             label="Settlement Date"
             value={
               transaction.settlementDate
-                ? formatDate(
-                    transaction.settlementDate
-                  )
+                ? formatDate(transaction.settlementDate)
                 : "-"
             }
           />
@@ -334,25 +294,20 @@ export default function TransactionDetailPage() {
           <div className="space-y-5 p-6">
             <InfoItem
               label="Business Name"
-              value={
-                transaction.merchant?.name ??
-                "-"
-              }
+              value={transaction.merchant?.name ?? "-"}
             />
 
             <InfoItem
               label="Merchant ID"
-              value={
-                transaction.merchantId ??
-                "-"
-              }
+              value={transaction.merchantId ?? "-"}
               mono
             />
 
             <InfoItem
               label="Email"
               value={
-                transaction.merchantId ??
+                transaction.merchant?.email ??
+                transaction.merchant?.contactEmail ??
                 "-"
               }
             />
@@ -360,7 +315,8 @@ export default function TransactionDetailPage() {
             <InfoItem
               label="Phone"
               value={
-                transaction.terminal?.serialNumber ??
+                transaction.merchant?.phone ??
+                transaction.merchant?.contactPhone ??
                 "-"
               }
             />
@@ -408,10 +364,7 @@ export default function TransactionDetailPage() {
 
             <InfoItem
               label="Terminal ID"
-              value={
-                transaction.terminalId ??
-                "-"
-              }
+              value={transaction.terminalId ?? "-"}
               mono
             />
 
@@ -421,10 +374,8 @@ export default function TransactionDetailPage() {
             />
 
             <InfoItem
-              label="Last Activity"
-              value={formatDate(
-                transaction.createdAt
-              )}
+              label="Transaction Created"
+              value={formatDate(transaction.createdAt)}
             />
           </div>
         </section>
@@ -506,8 +457,7 @@ function StatusBadge({
 }: {
   status: string;
 }) {
-  const normalized =
-    status.toUpperCase();
+  const normalized = status.toUpperCase();
 
   const styles =
     normalized === "SETTLED" ||
@@ -533,51 +483,33 @@ function formatAmount(
   amount: number | string,
   currency: string
 ) {
-  const numericAmount =
-    Number(amount);
+  const numericAmount = Number(amount);
 
-  if (
-    Number.isNaN(
-      numericAmount
-    )
-  ) {
+  if (Number.isNaN(numericAmount)) {
     return `${amount} ${currency}`;
   }
 
   try {
-    return new Intl.NumberFormat(
-      "en-US",
-      {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 2,
-      }
-    ).format(
-      numericAmount
-    );
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(numericAmount);
   } catch {
     return `${numericAmount.toLocaleString()} ${currency}`;
   }
 }
 
 function formatDate(
-  value:
-    | string
-    | null
-    | undefined
+  value: string | null | undefined
 ) {
   if (!value) {
     return "-";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return "-";
   }
 

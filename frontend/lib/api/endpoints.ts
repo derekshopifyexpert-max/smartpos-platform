@@ -21,7 +21,8 @@ export const ENDPOINTS = {
   },
 
   paymentIntents: {
-    list: "/payment-intents",
-    detail: (id: string) => `/payment-intents/${id}`,
-  },
-} as const;
+  list: "/payment-intents",
+  detail: (id: string) => `/payment-intents/${id}`,
+  checkout: (id: string) => `/payment-intents/${id}/checkout`,
+},
+};

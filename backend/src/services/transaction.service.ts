@@ -440,15 +440,6 @@ export default class TransactionService {
       },
     });
 
-    await this.recordTransactionActivity({
-      transactionId: data.transactionId,
-      title: data.title,
-      event: data.event,
-      previousStatus: transaction.status,
-      newStatus: data.to,
-      description: data.description,
-    });
-
     return this.getTransaction(
       data.transactionId
     );
@@ -810,102 +801,80 @@ export default class TransactionService {
   */
 
   async completeTransaction(
-    transactionId: string,
-    conversionId?: string
+  transactionId: string,
+  conversionId?: string
+) {
+  const transaction =
+    await this.getTransaction(transactionId);
+
+  if (!transaction) {
+    throw new Error(
+      "Transaction not found."
+    );
+  }
+
+  if (
+    transaction.status !==
+    TransactionStatus.AUTHORIZED
   ) {
+    throw new Error(
+      "Transaction cannot be completed from status " +
+      transaction.status +
+      "."
+    );
+  }
 
-    const transaction =
-      await this.getTransaction(
-        transactionId
-      );
+  await this.paymentService.captureTransaction({
+    transactionId,
 
-    if (!transaction) {
-      throw new Error(
-        "Transaction not found."
-      );
-    }
+    amount:
+      transaction.amount,
 
-if (transaction.status !== TransactionStatus.AUTHORIZED) {
-  throw new Error(
-    "Transaction cannot be completed from status " + transaction.status + "."
-  );
-}
+    currency:
+      transaction.currency
+  });
 
-    await this.paymentService
-      .captureTransaction({
+  const paymentAttempt =
+    transaction.paymentAttempts?.[0];
 
-        transactionId,
-
-        amount:
-          transaction.amount,
-
-        currency:
-          transaction.currency
-
-      });
-
-    const paymentAttempt =
-  transaction.paymentAttempts?.[0];
-
-if (paymentAttempt) {
-
-  await this.paymentService
-    .completePaymentAttempt(
-
+  if (paymentAttempt) {
+    await this.paymentService.completePaymentAttempt(
       paymentAttempt.id,
-
       {
         completed: true
       }
-
     );
-
-}
-
-    if (conversionId) {
-
-      await this.exchangeService
-        .completeConversion(
-          conversionId
-        );
-
-    }
-
-    await this.transitionTransactionStatus({
-      transactionId,
-      from: TransactionStatus.AUTHORIZED,
-      to: TransactionStatus.CAPTURED,
-      title: "Transaction Captured",
-      event: "TRANSACTION_CAPTURED",
-      description: "Payment successfully captured.",
-    });
-
-    await this.app.prisma.transaction.update({
-      where: { id: transactionId },
-      data: { settlementStatus: SettlementStatus.COMPLETED },
-    });
-
-    await this.recordTransactionActivity({
-
-  transactionId,
-
-  title: "Transaction Captured",
-
-  event: "TRANSACTION_CAPTURED",
-
-  previousStatus: TransactionStatus.AUTHORIZED,
-
-  newStatus: TransactionStatus.CAPTURED,
-
-  description: "Payment successfully captured."
-
-});
-
-    return this.getTransaction(
-      transactionId
-    );
-
   }
+
+  if (conversionId) {
+    await this.exchangeService.completeConversion(
+      conversionId
+    );
+  }
+
+  await this.transitionTransactionStatus({
+    transactionId,
+
+    from:
+      TransactionStatus.AUTHORIZED,
+
+    to:
+      TransactionStatus.CAPTURED,
+
+    title:
+      "Transaction Captured",
+
+    event:
+      "TRANSACTION_CAPTURED",
+
+    description:
+      "Payment successfully captured."
+  });
+
+  return this.getTransaction(
+    transactionId
+  );
+}
 
   /*
   |--------------------------------------------------------------------------
@@ -1082,96 +1051,6 @@ if (paymentAttempt) {
     return this.getTransaction(
       transactionId
     );
-
-  }
-
-    /*
-  |--------------------------------------------------------------------------
-  | Void Transaction
-  |--------------------------------------------------------------------------
-  */
-
-  async voidTransaction(data: {
-
-    transactionId: string;
-
-    reason?: string;
-
-  }) {
-
-    const transaction =
-      await this.app.prisma.transaction.findUnique({
-
-        where: {
-          id: data.transactionId
-        }
-
-      });
-
-    if (!transaction) {
-
-      throw new Error(
-        "Transaction not found."
-      );
-
-    }
-
-    if (
-      transaction.status ===
-      TransactionStatus.SETTLED
-    ) {
-
-      throw new Error(
-        "A settled transaction cannot be voided."
-      );
-
-    }
-
-    if (
-      transaction.status ===
-      TransactionStatus.VOIDED
-    ) {
-
-      return transaction;
-
-    }
-
-    const existingMetadata =
-      transaction.metadata &&
-      typeof transaction.metadata === "object" &&
-      !Array.isArray(transaction.metadata)
-        ? transaction.metadata
-        : {};
-
-    return this.app.prisma.transaction.update({
-
-      where: {
-
-        id: data.transactionId
-
-      },
-
-      data: {
-
-        status:
-          TransactionStatus.VOIDED,
-
-        metadata: {
-
-          ...existingMetadata,
-
-          voidReason:
-            data.reason ??
-            "Transaction voided",
-
-          voidedAt:
-            new Date().toISOString(),
-
-        }
-
-      }
-
-    });
 
   }
 
