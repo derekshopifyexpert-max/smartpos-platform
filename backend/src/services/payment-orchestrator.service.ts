@@ -295,6 +295,10 @@ export default class PaymentOrchestratorService {
       const providerResponse =
         execution.result;
 
+      const authorizationCode =
+        providerResponse.authorizationCode ??
+        null;
+
       await this.app.prisma.transaction.update({
         where: {
           id: transaction.id
@@ -307,9 +311,27 @@ export default class PaymentOrchestratorService {
             null,
 
           gatewayProvider:
-            execution.providerName
+            execution.providerName,
+
+          authCode:
+            authorizationCode,
+
+          approvalCode:
+            authorizationCode
         }
       });
+
+      if (authorizationCode) {
+        await this.paymentService.authorizeTransaction({
+          transactionId: transaction.id,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          authorizationCode,
+          gatewayResponse:
+            (providerResponse.raw ?? providerResponse) as Prisma.JsonValue,
+          message: "Provider authorization captured for reusable customer payment."
+        });
+      }
 
       await this.gatewayService.createGatewayResponse({
         gatewayRequestId:
@@ -383,6 +405,373 @@ export default class PaymentOrchestratorService {
 
       throw error;
     }
+  }
+
+  async getPaymentIntentAuthorizations(
+    paymentIntentId: string,
+    customerId?: string
+  ) {
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
+
+    if (!paymentIntent) {
+      throw new Error(
+        "Payment Intent not found."
+      );
+    }
+
+    if (
+      paymentIntent.status !== "PENDING"
+    ) {
+      throw new Error(
+        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot accept saved authorizations.`
+      );
+    }
+
+    if (
+      paymentIntent.expiresAt &&
+      paymentIntent.expiresAt <= new Date()
+    ) {
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+      throw new Error(
+        "Payment Intent has expired."
+      );
+    }
+
+    if (
+      customerId &&
+      paymentIntent.customerId &&
+      paymentIntent.customerId !== customerId
+    ) {
+      throw new Error(
+        "This payment intent does not belong to the current customer."
+      );
+    }
+
+    const authorizations =
+      await this.paymentService.listAuthorizationsForPaymentIntent(
+        paymentIntent.id,
+        customerId
+      );
+
+    return {
+      paymentIntent,
+      authorizations
+    };
+  }
+
+  async chargeSavedAuthorization(
+    paymentIntentId: string,
+    customerId: string | undefined,
+    authorizationId: string,
+    payload?: {
+      idempotencyKey?: string;
+      metadata?: Prisma.JsonValue;
+    }
+  ) {
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
+
+    if (!paymentIntent) {
+      throw new Error(
+        "Payment Intent not found."
+      );
+    }
+
+    if (
+      paymentIntent.status !== "PENDING"
+    ) {
+      throw new Error(
+        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`
+      );
+    }
+
+    if (
+      paymentIntent.expiresAt &&
+      paymentIntent.expiresAt <= new Date()
+    ) {
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+      throw new Error(
+        "Payment Intent has expired."
+      );
+    }
+
+    if (
+      customerId &&
+      paymentIntent.customerId &&
+      paymentIntent.customerId !== customerId
+    ) {
+      throw new Error(
+        "This payment intent does not belong to the current customer."
+      );
+    }
+
+    const authorization =
+      await this.paymentService.getAuthorizationForPaymentIntent(
+        paymentIntent.id,
+        customerId,
+        authorizationId
+      );
+
+    if (!authorization) {
+      throw new Error(
+        "No reusable payment authorization is available for this customer."
+      );
+    }
+
+    const requestKey =
+      payload?.idempotencyKey ??
+      `saved-auth:${paymentIntent.id}:${authorization.id}`;
+
+    const existingTransaction =
+      await this.app.prisma.transaction.findUnique({
+        where: {
+          idempotencyKey: requestKey
+        }
+      });
+
+    if (existingTransaction) {
+      return {
+        paymentIntent,
+        transaction: existingTransaction,
+        authorization,
+        duplicate: true
+      };
+    }
+
+    const providers =
+      await this.gatewayService.activeProviders();
+
+    const providerNames =
+      providers
+        .filter(provider => provider.isActive)
+        .sort((a, b) => a.priority - b.priority)
+        .map(provider => provider.name);
+
+    if (!providerNames.length) {
+      throw new Error(
+        "No active payment provider configured."
+      );
+    }
+
+    const selectedProvider =
+      this.selector.select(
+        providers,
+        {
+          merchantId: paymentIntent.merchantId,
+          currency: String(paymentIntent.currency),
+          amount: Number(paymentIntent.amount),
+          paymentMethod: "card"
+        }
+      );
+
+    const provider =
+      this.providerManager.getProvider(
+        selectedProvider.name
+      );
+
+    const transaction =
+      await this.paymentService.createTransaction({
+        merchantId: paymentIntent.merchantId,
+        customerId: paymentIntent.customerId ?? customerId,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        paymentMethod: "card",
+        type: "payment",
+        description: paymentIntent.description ?? undefined,
+        paymentIntentId: paymentIntent.id,
+        idempotencyKey: requestKey,
+        metadata: payload?.metadata ?? paymentIntent.metadata
+      });
+
+    const paymentAttempt =
+      await this.paymentService.createPaymentAttempt({
+        paymentIntentId: paymentIntent.id,
+        transactionId: transaction.id,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency
+      });
+
+    const providerResponse =
+      await this.failover.execute(
+        providerNames,
+        async () =>
+          provider.chargeWithAuthorization({
+            amount: Number(paymentIntent.amount),
+            currency: String(paymentIntent.currency),
+            email:
+              paymentIntent.customer?.email ??
+              customerId ??
+              "customer@example.com",
+            authorizationCode:
+              authorization.authorizationCode ??
+              "",
+            reference: transaction.reference!,
+            description:
+              paymentIntent.description ??
+              undefined,
+            metadata: {
+              paymentIntentId: paymentIntent.id,
+              transactionId: transaction.id,
+              paymentAttemptId: paymentAttempt.id,
+              authorizationId: authorization.id
+            }
+          })
+      );
+
+    const response = providerResponse.result;
+
+    await this.app.prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        gatewayTransactionId:
+          response.transactionId ?? response.reference ?? null,
+        gatewayProvider: providerResponse.providerName,
+        authCode: response.authorizationCode ?? authorization.authorizationCode ?? null,
+        approvalCode: response.authorizationCode ?? authorization.authorizationCode ?? null
+      }
+    });
+
+    if (
+      response.authorizationCode ||
+      authorization.authorizationCode
+    ) {
+      await this.paymentService.authorizeTransaction({
+        transactionId: transaction.id,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        authorizationCode:
+          response.authorizationCode ??
+          authorization.authorizationCode ??
+          undefined,
+        gatewayResponse:
+          (response.raw ?? response) as Prisma.JsonValue,
+        message:
+          "Saved customer authorization charged successfully."
+      });
+    }
+
+    await this.paymentService.completePaymentAttempt(
+      paymentAttempt.id,
+      (response.raw ?? response) as Prisma.JsonValue
+    );
+
+    return {
+      paymentIntent,
+      transaction,
+      paymentAttempt,
+      authorization,
+      provider: providerResponse.providerName,
+      gateway: {
+        transactionId:
+          response.transactionId ?? response.reference ?? null,
+        paymentUrl: response.paymentUrl ?? null,
+        accessCode: response.accessCode ?? null,
+        authorizationCode:
+          response.authorizationCode ??
+          authorization.authorizationCode ??
+          null
+      },
+      response
+    };
+  }
+
+  async listCustomerPaymentMethods(paymentIntentId: string) {
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(paymentIntentId);
+
+    if (!paymentIntent) {
+      throw new Error("Payment Intent not found.");
+    }
+
+    if (paymentIntent.status !== "PENDING") {
+      throw new Error(
+        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot accept saved payment methods.`
+      );
+    }
+
+    if (
+      paymentIntent.expiresAt &&
+      paymentIntent.expiresAt <= new Date()
+    ) {
+      await this.paymentService.expirePaymentIntent(paymentIntent.id);
+      throw new Error("Payment Intent has expired.");
+    }
+
+    const authorizations =
+      await this.paymentService.listAuthorizationsForPaymentIntent(
+        paymentIntent.id,
+        paymentIntent.customerId ?? undefined
+      );
+
+    return authorizations.map((authorization) => ({
+      id: authorization.id,
+      type: "card",
+      label: "Saved card",
+      brand: null,
+      last4: null,
+      isReusable: true,
+      status: authorization.status,
+      createdAt: authorization.createdAt,
+    }));
+  }
+
+  async chargeCustomerPaymentMethod(
+    paymentMethodId: string,
+    paymentIntentId: string,
+    payload?: {
+      idempotencyKey?: string;
+      metadata?: Prisma.JsonValue;
+    }
+  ) {
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(paymentIntentId);
+
+    if (!paymentIntent) {
+      throw new Error("Payment Intent not found.");
+    }
+
+    if (paymentIntent.status !== "PENDING") {
+      throw new Error(
+        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`
+      );
+    }
+
+    if (
+      paymentIntent.expiresAt &&
+      paymentIntent.expiresAt <= new Date()
+    ) {
+      await this.paymentService.expirePaymentIntent(paymentIntent.id);
+      throw new Error("Payment Intent has expired.");
+    }
+
+    const authorization =
+      await this.paymentService.getAuthorizationForPaymentIntent(
+        paymentIntent.id,
+        paymentIntent.customerId ?? undefined,
+        paymentMethodId
+      );
+
+    if (!authorization) {
+      throw new Error(
+        "No reusable payment method is available for this customer."
+      );
+    }
+
+    return this.chargeSavedAuthorization(
+      paymentIntent.id,
+      paymentIntent.customerId ?? undefined,
+      authorization.id,
+      payload
+    );
   }
 
   async createPayment(data: {

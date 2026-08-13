@@ -22,6 +22,16 @@ export interface VerifyPaymentInput {
   transactionId: string;
 }
 
+export interface ChargeAuthorizationInput {
+  amount: number;
+  currency: string;
+  email: string;
+  authorizationCode: string;
+  reference: string;
+  description?: string;
+  metadata?: Record<string, any>;
+}
+
 export interface ProviderResponse {
   success: boolean;
   message: string;
@@ -42,6 +52,10 @@ export default abstract class BaseProvider {
 
   abstract verifyPayment(
     input: VerifyPaymentInput
+  ): Promise<ProviderResponse>;
+
+  abstract chargeWithAuthorization(
+    input: ChargeAuthorizationInput
   ): Promise<ProviderResponse>;
 
   abstract refundPayment(

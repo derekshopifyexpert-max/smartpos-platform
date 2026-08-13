@@ -21,8 +21,11 @@ export const ENDPOINTS = {
   },
 
   paymentIntents: {
-  list: "/payment-intents",
-  detail: (id: string) => `/payment-intents/${id}`,
-  checkout: (id: string) => `/payment-intents/${id}/checkout`,
-},
+    list: "/payment-intents",
+    detail: (id: string) => `/payment-intents/${id}`,
+    checkout: (id: string) => `/payment-intents/${id}/checkout`,
+    authorizations: (id: string) => `/payment-intents/${id}/authorizations`,
+    chargeAuthorization: (id: string, authorizationId: string) =>
+      `/payment-intents/${id}/authorizations/${authorizationId}/charge`,
+  },
 };

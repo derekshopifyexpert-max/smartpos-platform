@@ -12,9 +12,14 @@ import {
 
 import {
   createPaymentIntentSchema,
+  paymentIntentAuthorizationChargeSchema,
   paymentIntentCheckoutSchema,
   paymentIntentIdSchema,
-  paymentIntentListQuerySchema
+  paymentAuthorizationIdSchema,
+  paymentIntentListQuerySchema,
+  paymentMethodChargeSchema,
+  paymentMethodIdSchema,
+  paymentMethodListQuerySchema
 } from "../validators/payment.validator.js";
 
 export default async function paymentRoutes(
@@ -111,6 +116,83 @@ export default async function paymentRoutes(
       )
     },
     controller.getPaymentIntent
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | List Saved Authorizations
+  |--------------------------------------------------------------------------
+  */
+
+  app.get(
+    "/payment-intents/:id/authorizations",
+    {
+      preHandler: validateParams(
+        paymentIntentIdSchema
+      )
+    },
+    controller.getPaymentIntentAuthorizations
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Charge Saved Authorization
+  |--------------------------------------------------------------------------
+  */
+
+  app.post(
+    "/payment-intents/:id/authorizations/:authorizationId/charge",
+    {
+      preHandler: [
+        validateParams(
+          paymentIntentIdSchema
+        ),
+        validateParams(
+          paymentAuthorizationIdSchema
+        ),
+        validateBody(
+          paymentIntentAuthorizationChargeSchema
+        )
+      ]
+    },
+    controller.chargeSavedAuthorization
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | List Reusable Customer Payment Methods
+  |--------------------------------------------------------------------------
+  */
+
+  app.get(
+    "/payment-methods",
+    {
+      preHandler: validateQuery(
+        paymentMethodListQuerySchema
+      )
+    },
+    controller.listCustomerPaymentMethods
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | Charge Reusable Customer Payment Method
+  |--------------------------------------------------------------------------
+  */
+
+  app.post(
+    "/payment-methods/:id/charge",
+    {
+      preHandler: [
+        validateParams(
+          paymentMethodIdSchema
+        ),
+        validateBody(
+          paymentMethodChargeSchema
+        )
+      ]
+    },
+    controller.chargeCustomerPaymentMethod
   );
 
   /*

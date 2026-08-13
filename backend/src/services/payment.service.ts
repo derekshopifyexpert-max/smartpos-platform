@@ -399,8 +399,28 @@ export default class PaymentService {
       this.db(tx);
 
     const authorization =
-      await db.authorization.create({
-        data: {
+      await db.authorization.upsert({
+        where: {
+          transactionId:
+            data.transactionId,
+        },
+        update: {
+          authorizationCode:
+            data.authorizationCode ??
+            undefined,
+          amount:
+            data.amount,
+          currency:
+            data.currency,
+          status:
+            "approved",
+          message:
+            data.message,
+          gatewayResponse:
+            data.gatewayResponse ??
+            Prisma.JsonNull,
+        },
+        create: {
           transactionId:
             data.transactionId,
 
@@ -453,6 +473,64 @@ export default class PaymentService {
           gatewayResponse ??
           Prisma.JsonNull,
       },
+    });
+  }
+
+  async listAuthorizationsForPaymentIntent(
+    paymentIntentId: string,
+    customerId?: string,
+    tx?: PrismaTransactionClient
+  ) {
+    const db = this.db(tx);
+
+    return db.authorization.findMany({
+      where: {
+        status: {
+          in: ["approved", "authorized"]
+        },
+        transaction: {
+          paymentIntentId,
+          ...(customerId
+            ? { customerId }
+            : {})
+        }
+      },
+      include: {
+        transaction: true
+      },
+      orderBy: {
+        authorizedAt: "desc"
+      }
+    });
+  }
+
+  async getAuthorizationForPaymentIntent(
+    paymentIntentId: string,
+    customerId: string | undefined,
+    authorizationId?: string,
+    authorizationCode?: string,
+    tx?: PrismaTransactionClient
+  ) {
+    const db = this.db(tx);
+
+    return db.authorization.findFirst({
+      where: {
+        ...(authorizationId
+          ? { id: authorizationId }
+          : {}),
+        ...(authorizationCode
+          ? { authorizationCode }
+          : {}),
+        transaction: {
+          paymentIntentId,
+          ...(customerId
+            ? { customerId }
+            : {})
+        }
+      },
+      include: {
+        transaction: true
+      }
     });
   }
 

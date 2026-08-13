@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock3,
+  CreditCard,
   LockKeyhole,
   ShieldCheck,
   XCircle,
@@ -14,11 +15,16 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
 import { useCheckoutPaymentIntent } from "@/features/payment-intents/hooks/use-checkout-payment-intent";
+import {
+  chargeCustomerPaymentMethod,
+  getCustomerPaymentMethods,
+} from "@/features/payment-intents/services/payment-intent.service";
 
 type PaymentViewState =
   | "form"
   | "preparing"
   | "opening"
+  | "saved-auth"
   | "success"
   | "cancelled"
   | "failed";
@@ -46,6 +52,9 @@ export default function CustomerPaymentCheckout() {
 
   const [paymentError, setPaymentError] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [savedPaymentMethods, setSavedPaymentMethods] = useState<any[]>([]);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string | null>(null);
+  const [isLoadingSavedMethods, setIsLoadingSavedMethods] = useState(false);
 
   const [currentTime, setCurrentTime] = useState<number | null>(null);
 
@@ -60,6 +69,44 @@ export default function CustomerPaymentCheckout() {
       window.clearInterval(interval);
     };
   }, []);
+
+  useEffect(() => {
+    if (!intent?.id) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadSavedMethods() {
+      setIsLoadingSavedMethods(true);
+
+      try {
+        const methods = await getCustomerPaymentMethods(intent.id);
+
+        if (active) {
+          setSavedPaymentMethods(methods || []);
+          if (methods?.[0]?.id) {
+            setSelectedPaymentMethodId(methods[0].id);
+          }
+        }
+      } catch {
+        if (active) {
+          setSavedPaymentMethods([]);
+          setSelectedPaymentMethodId(null);
+        }
+      } finally {
+        if (active) {
+          setIsLoadingSavedMethods(false);
+        }
+      }
+    }
+
+    void loadSavedMethods();
+
+    return () => {
+      active = false;
+    };
+  }, [intent?.id]);
 
   const amount = useMemo(() => {
     if (!intent) {
@@ -165,6 +212,43 @@ export default function CustomerPaymentCheckout() {
     setPaymentState("form");
 
     await refetch();
+  }
+
+  async function handleSavedAuthorizationCharge() {
+    if (!intent || !selectedPaymentMethodId) {
+      return;
+    }
+
+    if (checkoutMutation.isPending) {
+      return;
+    }
+
+    setPaymentError("");
+    setPaymentReference("");
+    setPaymentState("preparing");
+
+    try {
+      const result = await chargeCustomerPaymentMethod(selectedPaymentMethodId, intent.id, {
+        idempotencyKey: `checkout-saved-method:${intent.id}:${selectedPaymentMethodId}`,
+      });
+
+      if (result.duplicate) {
+        setPaymentReference(result.transaction?.reference ?? intent.id);
+        setPaymentState("success");
+        return;
+      }
+
+      setPaymentReference(result.transaction?.reference ?? result.gateway?.transactionId ?? intent.id);
+      setPaymentState("success");
+    } catch (error) {
+      console.error("Saved payment method charge error:", error);
+      setPaymentState("failed");
+      setPaymentError(
+        error instanceof Error
+          ? error.message
+          : "The saved payment method could not be charged. Please try again."
+      );
+    }
   }
 
   if (isLoading) {
@@ -302,6 +386,7 @@ export default function CustomerPaymentCheckout() {
     checkoutMutation.isPending;
 
   const isOpening = paymentState === "opening";
+  const hasSavedMethods = savedPaymentMethods.length > 0;
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:py-12">
@@ -427,6 +512,58 @@ export default function CustomerPaymentCheckout() {
                   placeholder="+234..."
                 />
               </div>
+
+              {hasSavedMethods ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Saved payment method</p>
+                      <p className="text-xs text-slate-500">Securely saved for future payments.</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                      available
+                    </span>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {savedPaymentMethods.map((method) => (
+                      <label
+                        key={method.id}
+                        className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-3 transition ${selectedPaymentMethodId === method.id ? "border-slate-900 bg-white" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-slate-100 p-2 text-slate-700">
+                            <CreditCard size={16} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{method.label}</p>
+                            <p className="text-xs text-slate-500">Ready for payment</p>
+                          </div>
+                        </div>
+
+                        <input
+                          type="radio"
+                          name="saved-payment-method"
+                          checked={selectedPaymentMethodId === method.id}
+                          onChange={() => setSelectedPaymentMethodId(method.id)}
+                          className="h-4 w-4 accent-slate-900"
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  {selectedPaymentMethodId ? (
+                    <button
+                      type="button"
+                      onClick={handleSavedAuthorizationCharge}
+                      disabled={isPreparing || isOpening || isLoadingSavedMethods}
+                      className="mt-4 flex h-12 w-full items-center justify-center rounded-xl bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isPreparing ? "Processing payment..." : `Pay with saved method · ${amount}`}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
 
               {paymentError ? (
                 <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">

@@ -17,7 +17,30 @@ export const paymentIntentCheckoutSchema = z.object({
   phone: z.string().optional(),
 });
 
+export const paymentIntentAuthorizationChargeSchema = z.object({
+  idempotencyKey: z.string().min(1).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const paymentMethodChargeSchema = z.object({
+  paymentIntentId: z.string().min(1),
+  idempotencyKey: z.string().min(1).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const paymentMethodListQuerySchema = z.object({
+  paymentIntentId: z.string().min(1).optional(),
+});
+
 export const paymentIntentIdSchema = z.object({
+  id: z.string().min(1),
+});
+
+export const paymentAuthorizationIdSchema = z.object({
+  authorizationId: z.string().min(1),
+});
+
+export const paymentMethodIdSchema = z.object({
   id: z.string().min(1),
 });
 

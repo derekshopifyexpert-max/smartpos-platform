@@ -3,6 +3,7 @@ import axios, {
 } from "axios";
 
 import BaseProvider, {
+  ChargeAuthorizationInput,
   CreatePaymentInput,
   RefundPaymentInput,
   VerifyPaymentInput,
@@ -166,6 +167,62 @@ export default class PaystackProvider extends BaseProvider {
 
       raw:
         response.data
+    };
+  }
+
+  async chargeWithAuthorization(
+    input: ChargeAuthorizationInput
+  ): Promise<ProviderResponse> {
+    const response =
+      await this.client.post(
+        "/transaction/charge_authorization",
+        {
+          authorization_code:
+            input.authorizationCode,
+          email:
+            input.email,
+          amount:
+            Math.round(
+              input.amount * 100
+            ).toString(),
+          currency:
+            input.currency.toUpperCase(),
+          reference:
+            input.reference,
+          description:
+            input.description,
+          metadata:
+            JSON.stringify(
+              input.metadata ?? {}
+            )
+        }
+      );
+
+    const data = response.data?.data;
+
+    if (
+      response.data?.status !== true ||
+      !data?.reference
+    ) {
+      throw new Error(
+        response.data?.message ??
+        "Paystack authorization charge failed."
+      );
+    }
+
+    return {
+      success: true,
+      message:
+        response.data.message ??
+        "Authorization charge completed",
+      reference:
+        data.reference,
+      transactionId:
+        data.reference,
+      authorizationCode:
+        data.authorization?.authorization_code ??
+        input.authorizationCode,
+      raw: response.data
     };
   }
 

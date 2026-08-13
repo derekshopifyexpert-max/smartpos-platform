@@ -105,6 +105,33 @@ export interface PaymentIntentDetailResponse {
   data: PaymentIntent;
 }
 
+export interface PaymentIntentAuthorization {
+  id: string;
+  transactionId: string;
+  authorizationCode?: string | null;
+  amount: number | string;
+  currency: string;
+  status: string;
+  message?: string | null;
+  gatewayResponse?: unknown;
+  authorizedAt?: string | null;
+  expiresAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  transaction?: PaymentIntentTransaction | null;
+}
+
+export interface CustomerPaymentMethod {
+  id: string;
+  type: "card";
+  label: string;
+  brand: string | null;
+  last4: string | null;
+  isReusable: boolean;
+  status?: string | null;
+  createdAt?: string | null;
+}
+
 export interface CheckoutPaymentIntentResponse {
   paymentIntent: PaymentIntent;
   transaction: PaymentIntentTransaction;
@@ -117,4 +144,33 @@ export interface CheckoutPaymentIntentResponse {
     authorizationCode: string | null;
   };
   response?: unknown;
+}
+
+export interface PaymentIntentAuthorizationsResponse {
+  success: boolean;
+  data: {
+    paymentIntent: PaymentIntent;
+    authorizations: PaymentIntentAuthorization[];
+  };
+}
+
+export interface CustomerPaymentMethodsResponse {
+  success: boolean;
+  data: CustomerPaymentMethod[];
+}
+
+export interface ChargeSavedAuthorizationResponse {
+  paymentIntent: PaymentIntent;
+  transaction: PaymentIntentTransaction;
+  paymentAttempt: PaymentAttempt;
+  authorization: PaymentIntentAuthorization;
+  provider: string;
+  gateway: {
+    transactionId: string | null;
+    paymentUrl: string | null;
+    accessCode: string | null;
+    authorizationCode: string | null;
+  };
+  response?: unknown;
+  duplicate?: boolean;
 }
