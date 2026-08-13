@@ -12,7 +12,7 @@ import {
   Store,
 } from "lucide-react";
 
-import { FormEvent, useMemo, useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
 
 export default function CustomerPaymentPage() {

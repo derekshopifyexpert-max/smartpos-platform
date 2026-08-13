@@ -47,59 +47,19 @@ export default function CustomerPaymentCheckout() {
   const [paymentError, setPaymentError] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
 
-  const [isExpired, setIsExpired] = useState(false);
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!intent?.expiresAt) {
-      setIsExpired(false);
-      return;
-    }
-
-    const expiresAt = new Date(intent.expiresAt as string).getTime();
-
-    const updateExpiration = () => {
-      setIsExpired(expiresAt <= Date.now());
+    const updateTime = () => {
+      setCurrentTime(Date.now());
     };
 
-    updateExpiration();
+    const interval = window.setInterval(updateTime, 1000);
 
-    const remaining = expiresAt - Date.now();
-
-    if (remaining > 0) {
-      const timeout = window.setTimeout(updateExpiration, remaining);
-
-      return () => {
-        window.clearTimeout(timeout);
-      };
-    }
-  }, [intent?.expiresAt]);
-
-  const [isExpired, setIsExpired] = useState(false);
-
-  useEffect(() => {
-    if (!intent?.expiresAt) {
-      setIsExpired(false);
-      return;
-    }
-
-    const expiresAt = new Date(intent.expiresAt as string).getTime();
-
-    const updateExpiration = () => {
-      setIsExpired(expiresAt <= Date.now());
+    return () => {
+      window.clearInterval(interval);
     };
-
-    updateExpiration();
-
-    const remaining = expiresAt - Date.now();
-
-    if (remaining > 0) {
-      const timeout = window.setTimeout(updateExpiration, remaining);
-
-      return () => {
-        window.clearTimeout(timeout);
-      };
-    }
-  }, [intent?.expiresAt]);
+  }, []);
 
   const amount = useMemo(() => {
     if (!intent) {
@@ -155,15 +115,21 @@ export default function CustomerPaymentCheckout() {
         },
       });
 
-      const accessCode = result.gateway?.accessCode;
+      const paymentUrl = result.gateway?.paymentUrl ?? null;
+      const accessCode = result.gateway?.accessCode ?? null;
 
-      if (!accessCode) {
+      if (!paymentUrl && !accessCode) {
         throw new Error(
           "The payment gateway did not return a valid checkout session."
         );
       }
 
       setPaymentState("opening");
+
+      if (paymentUrl) {
+        window.location.href = paymentUrl;
+        return;
+      }
 
       const PaystackModule = await import("@paystack/inline-js");
 
@@ -176,14 +142,10 @@ export default function CustomerPaymentCheckout() {
       const popup = new Paystack();
 
       /*
-       * resumeTransaction only accepts the access code.
-       *
-       * Paystack's inline-js instance manages the transaction lifecycle
-       * internally. The customer checkout page therefore enters the
-       * "opening" state here and relies on the payment verification flow
-       * to determine the final transaction status.
+       * Paystack inline-js resumes the transaction using the access code
+       * returned by the backend when the authorization URL is not used.
        */
-      popup.resumeTransaction(accessCode);
+      popup.resumeTransaction(accessCode as string);
     } catch (error) {
       console.error("Customer checkout error:", error);
 
@@ -251,10 +213,10 @@ export default function CustomerPaymentCheckout() {
 
   const normalizedStatus = intent.status.toUpperCase();
 
-      window.clearTimeout(timeout);
-    };
-  }
-}, [intent.expiresAt]);
+  const isExpired =
+    Boolean(intent.expiresAt) &&
+    currentTime !== null &&
+    new Date(intent.expiresAt as string).getTime() <= currentTime;
 
   const isUnavailable =
     normalizedStatus !== "PENDING" || isExpired;
