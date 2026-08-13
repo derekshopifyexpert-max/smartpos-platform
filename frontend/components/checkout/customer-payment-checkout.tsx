@@ -1,6 +1,5 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -12,6 +11,7 @@ import {
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
 import { useCheckoutPaymentIntent } from "@/features/payment-intents/hooks/use-checkout-payment-intent";
 
@@ -197,9 +197,37 @@ export default function CustomerPaymentCheckout() {
 
   const normalizedStatus = intent.status.toUpperCase();
 
-  const isExpired =
-    Boolean(intent.expiresAt) &&
-    new Date(intent.expiresAt as string).getTime() <= Date.now();
+  const [isExpired, setIsExpired] = useState(false);
+
+useEffect(() => {
+  if (!intent.expiresAt) {
+    setIsExpired(false);
+    return;
+  }
+
+  const expiresAt = new Date(
+    intent.expiresAt as string
+  ).getTime();
+
+  const updateExpiration = () => {
+    setIsExpired(expiresAt <= Date.now());
+  };
+
+  updateExpiration();
+
+  const remaining = expiresAt - Date.now();
+
+  if (remaining > 0) {
+    const timeout = window.setTimeout(
+      updateExpiration,
+      remaining
+    );
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }
+}, [intent.expiresAt]);
 
   const isUnavailable =
     normalizedStatus !== "PENDING" || isExpired;

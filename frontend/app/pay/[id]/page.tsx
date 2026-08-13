@@ -12,6 +12,7 @@ import {
   Store,
 } from "lucide-react";
 
+import { FormEvent, useMemo, useState, useEffect } from "react";
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
 
 export default function CustomerPaymentPage() {
@@ -23,6 +24,18 @@ export default function CustomerPaymentPage() {
     isLoading,
     isError,
   } = usePaymentIntent(id);
+
+  const [currentTime, setCurrentTime] = useState<number | null>(null);
+
+useEffect(() => {
+  const interval = window.setInterval(() => {
+    setCurrentTime(new Date().getTime());
+  }, 1000);
+
+  return () => {
+    window.clearInterval(interval);
+  };
+}, []);
 
   if (isLoading) {
     return (
