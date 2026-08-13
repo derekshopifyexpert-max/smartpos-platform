@@ -1,51 +1,28 @@
 import request from "supertest";
 
-import app from "../../src/app";
+import buildApp from "../../src/app";
 
-describe(
+describe("Authentication", () => {
+  let app: Awaited<ReturnType<typeof buildApp>>;
 
-  "Authentication",
+  beforeAll(async () => {
+    app = await buildApp();
 
-  () => {
+    await app.ready();
+  });
 
-    it(
+  afterAll(async () => {
+    await app.close();
+  });
 
-      "should reject invalid credentials",
+  it("should reject invalid credentials", async () => {
+    const response = await request(app.server)
+      .post("/api/auth/login")
+      .send({
+        email: "invalid@test.com",
+        password: "wrong",
+      });
 
-      async () => {
-
-        const response =
-
-          await request(app.server)
-
-            .post("/api/auth/login")
-
-            .send({
-
-              email:
-
-                "invalid@test.com",
-
-              password:
-
-                "wrong"
-
-            });
-
-        expect(
-
-          response.status
-
-        ).toBeGreaterThanOrEqual(
-
-          400
-
-        );
-
-      }
-
-    );
-
-  }
-
-);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+  });
+});

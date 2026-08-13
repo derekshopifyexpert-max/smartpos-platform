@@ -1,35 +1,14 @@
-import request from "supertest";
-
 import app from "../../src/app";
 
-describe(
+describe("Health Endpoint", () => {
+  it("returns 200", async () => {
+    const server = await app();
 
-  "Health Endpoint",
+    const response = await server.inject({
+      method: "GET",
+      url: "/health",
+    });
 
-  () => {
-
-    it(
-
-      "returns 200",
-
-      async () => {
-
-        const response =
-
-          await request(app.server)
-
-            .get("/health");
-
-        expect(
-
-          response.status
-
-        ).toBe(200);
-
-      }
-
-    );
-
-  }
-
-);
+    expect(response.statusCode).toBe(200);
+  });
+});
