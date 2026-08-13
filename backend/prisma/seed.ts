@@ -65,7 +65,7 @@ async function main() {
     update: {
       name: "Demo Merchant",
       businessType: "Retail",
-      phone: "+2348000000000",
+      phone: "+2348000000001",
       currency: CurrencyType.USD,
       status: MerchantStatus.ACTIVE,
       isVerified: true,
@@ -74,7 +74,7 @@ async function main() {
       name: "Demo Merchant",
       businessType: "Retail",
       email: "merchant@smartpos.com",
-      phone: "+2348000000000",
+      phone: "+2348000000001",
       currency: CurrencyType.USD,
       status: MerchantStatus.ACTIVE,
       isVerified: true,
