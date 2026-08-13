@@ -1,7 +1,5 @@
 "use client";
 
-
-import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -15,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
-import { useCheckoutPaymentIntent } from "@/features/payment-intents/hooks/use-checkout-payment-intent";
 
 export default function CustomerPaymentPage() {
   const params = useParams();
@@ -27,350 +24,297 @@ export default function CustomerPaymentPage() {
     isError,
   } = usePaymentIntent(id);
 
-  <Link
-  href={`/checkout/${intent.id}`}
-  target="_blank"
-  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
->
-  <ExternalLink size={16} />
-  Open Customer Checkout
-</Link>
-
-  const checkoutMutation = useCheckoutPaymentIntent();
-
-  const [firstName, setFirstName] = useState(
-    intent?.customer?.firstName ?? ""
-  );
-  const [lastName, setLastName] = useState(
-    intent?.customer?.lastName ?? ""
-  );
-  const [email, setEmail] = useState(
-    intent?.customer?.email ?? ""
-  );
-  const [phone, setPhone] = useState("");
-
   if (isLoading) {
     return (
       <main className="min-h-screen bg-slate-50 px-4 py-10">
-        <div className="mx-auto max-w-md">
-          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/40">
-            <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-slate-200" />
-            <div className="mx-auto mt-5 h-6 w-48 animate-pulse rounded bg-slate-200" />
-            <div className="mx-auto mt-3 h-4 w-64 animate-pulse rounded bg-slate-200" />
-            <div className="mt-8 h-24 animate-pulse rounded-2xl bg-slate-100" />
-            <div className="mt-6 h-12 animate-pulse rounded-xl bg-slate-200" />
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            <div className="animate-pulse space-y-5">
+              <div className="h-5 w-28 rounded bg-slate-200" />
+              <div className="h-8 w-64 rounded bg-slate-200" />
+              <div className="h-4 w-48 rounded bg-slate-200" />
+              <div className="h-32 rounded-xl bg-slate-100" />
+            </div>
           </div>
         </div>
       </main>
     );
   }
+
   if (isError || !intent) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-xl shadow-slate-200/40">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-600">
-            <CreditCard size={22} />
+      <main className="min-h-screen bg-slate-50 px-4 py-10">
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-2xl border border-red-200 bg-white p-8 shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+              <CreditCard className="text-red-600" size={22} />
+            </div>
+
+            <h1 className="mt-5 text-2xl font-bold text-slate-950">
+              Payment unavailable
+            </h1>
+
+            <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+              This payment request could not be loaded. It may be invalid,
+              expired, or no longer available.
+            </p>
+
+            <Link
+              href="/"
+              className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-700 transition hover:text-slate-950"
+            >
+              <ArrowLeft size={16} />
+              Return
+            </Link>
           </div>
-
-          <h1 className="mt-5 text-xl font-semibold text-slate-950">
-            Payment unavailable
-          </h1>
-
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            We could not load this payment request.
-          </p>
-
-          <Link
-            href="/pay"
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            <ArrowLeft size={16} />
-            Back to payment requests
-          </Link>
         </div>
       </main>
     );
   }
 
-  const merchantName =
-    intent.merchant?.name ??
-    intent.merchantId ??
-    "SmartPOS Merchant";
+  const normalizedStatus = intent.status.toUpperCase();
+
+  const isCompleted =
+    normalizedStatus === "SUCCEEDED" ||
+    normalizedStatus === "SETTLED";
+
+  const isExpired =
+    Boolean(intent.expiresAt) &&
+    new Date(intent.expiresAt as string).getTime() <= Date.now();
+
+  const isUnavailable =
+    normalizedStatus !== "PENDING" || isExpired;
 
   const amount = formatAmount(
     intent.amount,
     intent.currency
   );
 
-  const status =
-    intent.status?.toUpperCase() ?? "UNKNOWN";
-
-  const isCompleted =
-    status === "SUCCEEDED" ||
-    status === "SETTLED";
-
-  const isFailed =
-    status === "FAILED" ||
-    status === "CANCELED" ||
-    status === "CANCELLED";
-
-  async function handleCheckout(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    checkoutMutation.reset();
-
-    try {
-      const result = await checkoutMutation.mutateAsync({
-        id,
-        payload: {
-          email: email.trim(),
-          firstName: firstName.trim() || undefined,
-          lastName: lastName.trim() || undefined,
-          phone: phone.trim() || undefined,
-        },
-      });
-
-      const paymentUrl = result.gateway?.paymentUrl;
-
-      if (!paymentUrl) {
-        throw new Error(
-          "The payment provider did not return a payment URL."
-        );
-      }
-
-      window.location.assign(paymentUrl);
-    } catch {
-      // The mutation error is displayed below the form.
-    }
-  }
+  const merchantName =
+    intent.merchant?.name ?? "SmartPOS merchant";
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-4 py-8 sm:px-6">
-        <div className="w-full max-w-md">
+    <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-slate-950"
+          >
+            <ArrowLeft size={16} />
+            Back
+          </Link>
+        </div>
 
-          <div className="mb-5 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-            <LockKeyhole size={13} />
-            Secure payment
-          </div>
-
-          <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/50">
-
-            <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-blue-50/80 px-6 pb-7 pt-7">
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
-                  <Store size={20} />
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-200/50">
+          <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-blue-50/70 px-6 py-8 sm:px-8">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-lg">
+                  <Store size={21} />
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-950">
+                  <p className="truncate text-base font-semibold text-slate-950">
                     {merchantName}
                   </p>
 
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-1 text-sm text-slate-500">
                     Payment request
                   </p>
                 </div>
               </div>
 
-              <div className="mt-7 text-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  Amount due
-                </p>
-
-                <p className="mt-2 text-4xl font-bold tracking-tight text-slate-950">
-                  {amount}
-                </p>
-
-                {intent.description ? (
-                  <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">
-                    {intent.description}
-                  </p>
-                ) : null}
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
+                {isCompleted ? (
+                  <>
+                    <CheckCircle2
+                      size={14}
+                      className="text-emerald-600"
+                    />
+                    Payment completed
+                  </>
+                ) : isUnavailable ? (
+                  <>
+                    <LockKeyhole
+                      size={14}
+                      className="text-amber-600"
+                    />
+                    Payment unavailable
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck
+                      size={14}
+                      className="text-emerald-600"
+                    />
+                    Secure payment
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="p-6">
+            <div className="mt-8">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Amount due
+              </p>
 
+              <p className="mt-2 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">
+                {amount}
+              </p>
+
+              {intent.description ? (
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
+                  {intent.description}
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_280px]">
+            <div>
               {isCompleted ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
-                  <CheckCircle2
-                    className="mx-auto text-emerald-600"
-                    size={30}
-                  />
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white">
+                    <CheckCircle2
+                      size={24}
+                      className="text-emerald-600"
+                    />
+                  </div>
 
-                  <h2 className="mt-3 font-semibold text-emerald-950">
+                  <h2 className="mt-4 text-lg font-semibold text-emerald-950">
                     Payment completed
                   </h2>
 
-                  <p className="mt-1 text-sm text-emerald-700">
-                    This payment has already been completed.
+                  <p className="mt-2 text-sm leading-6 text-emerald-800">
+                    This payment has already been completed and does not
+                    require any further action.
                   </p>
                 </div>
-              ) : isFailed ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
-                  <h2 className="font-semibold text-red-950">
-                    Payment unavailable
+              ) : isUnavailable ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white">
+                    <LockKeyhole
+                      size={22}
+                      className="text-amber-600"
+                    />
+                  </div>
+
+                  <h2 className="mt-4 text-lg font-semibold text-amber-950">
+                    Payment request unavailable
                   </h2>
 
-                  <p className="mt-1 text-sm leading-6 text-red-700">
-                    This payment request can no longer be completed.
+                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                    This payment request is no longer available for
+                    payment.
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleCheckout}>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    Ready to pay?
+                  </h2>
 
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-950">
-                      Your information
-                    </h2>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Enter your details before continuing to secure payment.
-                    </p>
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-
-                    <div>
-                      <label
-                        htmlFor="firstName"
-                        className="text-xs font-semibold text-slate-700"
-                      >
-                        First name
-                      </label>
-
-                      <input
-                        id="firstName"
-                        name="firstName"
-                        type="text"
-                        autoComplete="given-name"
-                        value={firstName}
-                        onChange={(event) =>
-                          setFirstName(event.target.value)
-                        }
-                        className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                        placeholder="John"
-                      />
-                    </div>
-
-                    <div>
-                      <label
-                        htmlFor="lastName"
-                        className="text-xs font-semibold text-slate-700"
-                      >
-                        Last name
-                      </label>
-
-                      <input
-                        id="lastName"
-                        name="lastName"
-                        type="text"
-                        autoComplete="family-name"
-                        value={lastName}
-                        onChange={(event) =>
-                          setLastName(event.target.value)
-                        }
-                        className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                        placeholder="Doe"
-                      />
-                    </div>
-
-                  </div>
-
-                  <div className="mt-4">
-                    <label
-                      htmlFor="email"
-                      className="text-xs font-semibold text-slate-700"
-                    >
-                      Email address
-                    </label>
-
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      required
-                      value={email}
-                      onChange={(event) =>
-                        setEmail(event.target.value)
-                      }
-                      className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                      placeholder="you@example.com"
-                    />
-                  </div>
-
-                  <div className="mt-4">
-                    <label
-                      htmlFor="phone"
-                      className="text-xs font-semibold text-slate-700"
-                    >
-                      Phone number
-                      <span className="ml-1 font-normal text-slate-400">
-                        (optional)
-                      </span>
-                    </label>
-
-                    <input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      autoComplete="tel"
-                      value={phone}
-                      onChange={(event) =>
-                        setPhone(event.target.value)
-                      }
-                      className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
-                      placeholder="+234..."
-                    />
-                  </div>
-
-                  {checkoutMutation.isError ? (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                      <p className="text-sm font-medium text-red-900">
-                        {getErrorMessage(checkoutMutation.error)}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <button
-                    type="submit"
-                    disabled={checkoutMutation.isPending}
-                    className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {checkoutMutation.isPending
-                      ? "Preparing secure payment..."
-                      : "Continue to payment"}
-                  </button>
-
-                  <p className="mt-4 text-center text-xs leading-5 text-slate-400">
-                    You will be redirected to our secure payment provider to
-                    complete your payment.
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
+                    Continue to secure checkout to enter your customer
+                    information and complete this payment.
                   </p>
 
-                </form>
+                  <Link
+                    href={`/checkout/${intent.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:bg-slate-800 sm:w-auto"
+                  >
+                    <ExternalLink size={16} />
+                    Open Customer Checkout
+                  </Link>
+
+                  <div className="mt-5 flex items-center gap-2 text-xs text-slate-500">
+                    <LockKeyhole size={13} />
+                    Secure checkout powered by SmartPOS and Paystack
+                  </div>
+                </div>
               )}
-
-              <div className="mt-6 flex items-center justify-center gap-5 border-t border-slate-100 pt-5 text-xs text-slate-400">
-                <span className="inline-flex items-center gap-1.5">
-                  <LockKeyhole size={12} />
-                  Encrypted
-                </span>
-
-                <span className="inline-flex items-center gap-1.5">
-                  <ShieldCheck size={13} />
-                  Secure checkout
-                </span>
-              </div>
             </div>
-          </section>
 
-          <p className="mt-5 text-center text-xs text-slate-400">
-            Powered by SmartPOS
-          </p>
+            <aside className="h-fit rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Payment details
+              </p>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Merchant
+                  </p>
+
+                  <p className="mt-1 text-sm font-semibold text-slate-950">
+                    {merchantName}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Amount
+                  </p>
+
+                  <p className="mt-1 text-sm font-semibold text-slate-950">
+                    {amount}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Status
+                  </p>
+
+                  <p className="mt-1 text-sm font-semibold text-slate-950">
+                    {normalizedStatus}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs text-slate-500">
+                    Payment reference
+                  </p>
+
+                  <p className="mt-1 break-all font-mono text-xs text-slate-700">
+                    {intent.id}
+                  </p>
+                </div>
+
+                {intent.expiresAt ? (
+                  <div>
+                    <p className="text-xs text-slate-500">
+                      Expires
+                    </p>
+
+                    <p className="mt-1 text-sm font-medium text-slate-950">
+                      {formatDate(intent.expiresAt)}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <div className="mt-6 flex items-center justify-center gap-5 text-xs text-slate-400">
+          <span className="inline-flex items-center gap-1.5">
+            <LockKeyhole size={12} />
+            Encrypted
+          </span>
+
+          <span className="inline-flex items-center gap-1.5">
+            <ShieldCheck size={13} />
+            Secure checkout
+          </span>
         </div>
+
+        <p className="mt-4 text-center text-xs text-slate-400">
+          Powered by SmartPOS
+        </p>
       </div>
     </main>
   );
@@ -397,30 +341,18 @@ function formatAmount(
   }
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
+function formatDate(
+  value: string | null | undefined
+) {
+  if (!value) {
+    return "-";
   }
 
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          data?: {
-            message?: string;
-          };
-        };
-      }
-    ).response;
+  const date = new Date(value);
 
-    if (response?.data?.message) {
-      return response.data.message;
-    }
+  if (Number.isNaN(date.getTime())) {
+    return "-";
   }
 
-  return "We could not start the payment. Please try again.";
+  return date.toLocaleString();
 }
