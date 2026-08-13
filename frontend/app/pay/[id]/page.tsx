@@ -27,15 +27,19 @@ export default function CustomerPaymentPage() {
 
   const [currentTime, setCurrentTime] = useState<number | null>(null);
 
-useEffect(() => {
-  const interval = window.setInterval(() => {
-    setCurrentTime(new Date().getTime());
-  }, 1000);
+  useEffect(() => {
+    const updateTime = () => {
+      setCurrentTime(Date.now());
+    };
 
-  return () => {
-    window.clearInterval(interval);
-  };
-}, []);
+    updateTime();
+
+    const interval = window.setInterval(updateTime, 1000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
 
   if (isLoading) {
     return (

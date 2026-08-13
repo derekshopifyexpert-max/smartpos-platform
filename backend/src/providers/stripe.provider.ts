@@ -186,7 +186,33 @@ export default class StripeProvider extends BaseProvider {
 
   }
 
-  async validateWebhook(
+async chargeWithAuthorization(
+
+    input: {
+
+      amount: number;
+
+      currency: string;
+
+      email: string;
+
+      authorizationCode: string;
+
+      reference: string;
+
+      description?: string;
+
+      metadata?: Record<string, any>;
+
+    }
+
+  ): Promise<ProviderResponse> {
+
+    throw new Error("Stripe authorization charging is not supported in this backend integration.");
+
+  }
+
+  async validateWebhook( 
 
     payload: any,
 

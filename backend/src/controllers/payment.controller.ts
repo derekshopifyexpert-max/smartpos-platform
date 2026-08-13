@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import {
   FastifyReply,
   FastifyRequest
@@ -186,7 +187,7 @@ data: payment
           authorizationId,
           {
             idempotencyKey: body?.idempotencyKey,
-            metadata: body?.metadata ?? undefined
+            metadata: (body?.metadata ?? undefined) as Prisma.JsonValue | undefined
           }
         );
 
@@ -244,7 +245,7 @@ data: payment
           body.paymentIntentId,
           {
             idempotencyKey: body?.idempotencyKey,
-            metadata: body?.metadata ?? undefined
+            metadata: (body?.metadata ?? undefined) as Prisma.JsonValue | undefined
           }
         );
 

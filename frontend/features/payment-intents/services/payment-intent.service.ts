@@ -74,6 +74,40 @@ export async function getPaymentIntentAuthorizations(
   return response.data.data.authorizations;
 }
 
+export async function getCustomerPaymentMethods(
+  paymentIntentId: string
+): Promise<CustomerPaymentMethod[]> {
+  const response = await api.get<CustomerPaymentMethodsResponse>(
+    ENDPOINTS.paymentMethods.list,
+    {
+      params: {
+        paymentIntentId,
+      },
+    }
+  );
+
+  return response.data.data;
+}
+
+export async function chargeCustomerPaymentMethod(
+  paymentMethodId: string,
+  paymentIntentId: string,
+  payload: {
+    idempotencyKey?: string;
+    metadata?: Record<string, unknown>;
+  } = {}
+): Promise<ChargeSavedAuthorizationResponse> {
+  const response = await api.post<{
+    success: boolean;
+    data: ChargeSavedAuthorizationResponse;
+  }>(ENDPOINTS.paymentMethods.charge(paymentMethodId), {
+    paymentIntentId,
+    ...payload,
+  });
+
+  return response.data.data;
+}
+
 export async function chargeSavedAuthorization(
   id: string,
   authorizationId: string,

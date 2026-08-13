@@ -28,4 +28,10 @@ export const ENDPOINTS = {
     chargeAuthorization: (id: string, authorizationId: string) =>
       `/payment-intents/${id}/authorizations/${authorizationId}/charge`,
   },
+
+  paymentMethods: {
+    list: "/payment-methods",
+    detail: (id: string) => `/payment-methods/${id}`,
+    charge: (id: string) => `/payment-methods/${id}/charge`,
+  },
 };

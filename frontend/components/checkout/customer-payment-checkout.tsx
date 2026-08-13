@@ -19,6 +19,7 @@ import {
   chargeCustomerPaymentMethod,
   getCustomerPaymentMethods,
 } from "@/features/payment-intents/services/payment-intent.service";
+import type { CustomerPaymentMethod } from "@/features/payment-intents/types/payment-intent";
 
 type PaymentViewState =
   | "form"
@@ -52,7 +53,9 @@ export default function CustomerPaymentCheckout() {
 
   const [paymentError, setPaymentError] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
-  const [savedPaymentMethods, setSavedPaymentMethods] = useState<any[]>([]);
+  const [savedPaymentMethods, setSavedPaymentMethods] = useState<
+    CustomerPaymentMethod[]
+  >([]);
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string | null>(null);
   const [isLoadingSavedMethods, setIsLoadingSavedMethods] = useState(false);
 
@@ -63,6 +66,8 @@ export default function CustomerPaymentCheckout() {
       setCurrentTime(Date.now());
     };
 
+    updateTime();
+
     const interval = window.setInterval(updateTime, 1000);
 
     return () => {
@@ -71,9 +76,13 @@ export default function CustomerPaymentCheckout() {
   }, []);
 
   useEffect(() => {
-    if (!intent?.id) {
+    const currentIntentId = intent?.id ?? null;
+
+    if (!currentIntentId) {
       return;
     }
+
+    const paymentIntentId = currentIntentId;
 
     let active = true;
 
@@ -81,7 +90,7 @@ export default function CustomerPaymentCheckout() {
       setIsLoadingSavedMethods(true);
 
       try {
-        const methods = await getCustomerPaymentMethods(intent.id);
+        const methods = await getCustomerPaymentMethods(paymentIntentId);
 
         if (active) {
           setSavedPaymentMethods(methods || []);
@@ -297,10 +306,13 @@ export default function CustomerPaymentCheckout() {
 
   const normalizedStatus = intent.status.toUpperCase();
 
+  const expiresAtMs =
+    intent.expiresAt ? new Date(intent.expiresAt).getTime() : null;
+
   const isExpired =
-    Boolean(intent.expiresAt) &&
+    expiresAtMs !== null &&
     currentTime !== null &&
-    new Date(intent.expiresAt as string).getTime() <= currentTime;
+    expiresAtMs <= currentTime;
 
   const isUnavailable =
     normalizedStatus !== "PENDING" || isExpired;

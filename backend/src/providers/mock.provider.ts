@@ -43,6 +43,32 @@ export default class MockProvider extends BaseProvider {
     };
   }
 
+  async chargeWithAuthorization(
+    input: {
+      amount: number;
+      currency: string;
+      email: string;
+      authorizationCode: string;
+      reference: string;
+      description?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<ProviderResponse> {
+    return {
+      success: true,
+      message: "Mock authorization charge completed.",
+      reference: input.reference,
+      transactionId: "MOCK_AUTH_TX_" + Date.now(),
+      authorizationCode: input.authorizationCode,
+      raw: {
+        provider: "mock",
+        status: "approved",
+        amount: input.amount,
+        currency: input.currency,
+      },
+    };
+  }
+
   async refundPayment(
     input: RefundPaymentInput
   ): Promise<ProviderResponse> {

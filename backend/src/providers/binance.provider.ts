@@ -142,6 +142,20 @@ export default class BinanceProvider extends BaseProvider {
         response.data
     };
   }
+  async chargeWithAuthorization(
+    input: {
+      amount: number;
+      currency: string;
+      email: string;
+      authorizationCode: string;
+      reference: string;
+      description?: string;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<ProviderResponse> {
+    throw new Error("Binance authorization charging is not supported in this backend integration.");
+  }
+
   async refundPayment(
     input: RefundPaymentInput
   ): Promise<ProviderResponse> {
