@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
-  Loader2,
   LockKeyhole,
   ShieldCheck,
   Store,
