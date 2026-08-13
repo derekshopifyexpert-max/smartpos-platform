@@ -2,12 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { login } from "../services/auth.service";
-
 import { useAuthStore } from "@/store/auth.store";
-
-import { toast } from "sonner";
 
 export function useLogin() {
   const router = useRouter();
@@ -20,8 +18,6 @@ export function useLogin() {
     mutationFn: login,
 
     onSuccess(response) {
-      console.log("LOGIN RESPONSE:", response);
-
       setAuth(
         response.accessToken,
         response.user
@@ -33,25 +29,26 @@ export function useLogin() {
     },
 
     onError(error: unknown) {
-      console.error("LOGIN ERROR:", error);
+      console.error("Login failed:", error);
+
       const responseData =
         typeof error === "object" &&
         error !== null &&
         "response" in error
-          ? (error as {
-              response?: {
-                data?: {
-                  message?: string;
+          ? (
+              error as {
+                response?: {
+                  data?: {
+                    message?: string;
+                  };
                 };
-              };
-            }).response?.data
+              }
+            ).response?.data
           : undefined;
-
-      console.error("LOGIN RESPONSE:", responseData);
 
       toast.error(
         responseData?.message ??
-        "Unable to login."
+          "Unable to login."
       );
     },
   });

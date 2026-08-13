@@ -6,8 +6,6 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:3000/api/v1";
 
-console.log("API URL:", API_URL);
-
 export const api = axios.create({
   baseURL: API_URL,
   timeout: 15000,
@@ -19,15 +17,9 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
 
-console.log("REQUEST:", `${config.baseURL}${config.url}`);
-console.log("TOKEN:", token);
-
-if (token) {
-  console.log("AUTH HEADER:", `Bearer ${token}`);
-  config.headers.Authorization = `Bearer ${token}`;
-} else {
-  console.log("NO TOKEN FOUND");
-}
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
 
   return config;
 });

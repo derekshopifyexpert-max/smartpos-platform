@@ -1,12 +1,27 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, LockKeyhole, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
+  LockKeyhole,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
 import { useCheckoutPaymentIntent } from "@/features/payment-intents/hooks/use-checkout-payment-intent";
+
+type PaymentViewState =
+  | "form"
+  | "preparing"
+  | "opening"
+  | "success"
+  | "cancelled"
+  | "failed";
 
 export default function CustomerPaymentCheckout() {
   const params = useParams();
@@ -16,6 +31,7 @@ export default function CustomerPaymentCheckout() {
     data: intent,
     isLoading,
     isError,
+    refetch,
   } = usePaymentIntent(id);
 
   const checkoutMutation = useCheckoutPaymentIntent();
@@ -25,11 +41,16 @@ export default function CustomerPaymentCheckout() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
 
-  const [checkoutStarted, setCheckoutStarted] = useState(false);
+  const [paymentState, setPaymentState] =
+    useState<PaymentViewState>("form");
+
   const [paymentError, setPaymentError] = useState("");
+  const [paymentReference, setPaymentReference] = useState("");
 
   const amount = useMemo(() => {
-    if (!intent) return "";
+    if (!intent) {
+      return "";
+    }
 
     const numericAmount = Number(intent.amount);
 
@@ -55,13 +76,19 @@ export default function CustomerPaymentCheckout() {
       return;
     }
 
+    if (checkoutMutation.isPending) {
+      return;
+    }
+
     setPaymentError("");
-    setCheckoutStarted(false);
+    setPaymentReference("");
 
     if (!email.trim()) {
       setPaymentError("Email address is required.");
       return;
     }
+
+    setPaymentState("preparing");
 
     try {
       const result = await checkoutMutation.mutateAsync({
@@ -82,17 +109,11 @@ export default function CustomerPaymentCheckout() {
         );
       }
 
-      setCheckoutStarted(true);
+      setPaymentState("opening");
 
       const PaystackModule = await import("@paystack/inline-js");
 
-      const Paystack =
-        PaystackModule.default ??
-        (PaystackModule as unknown as {
-          Paystack?: new () => {
-            resumeTransaction: (accessCode: string) => void;
-          };
-        }).Paystack;
+      const Paystack = PaystackModule.default;
 
       if (!Paystack) {
         throw new Error("Paystack checkout could not be loaded.");
@@ -100,11 +121,19 @@ export default function CustomerPaymentCheckout() {
 
       const popup = new Paystack();
 
+      /*
+       * resumeTransaction only accepts the access code.
+       *
+       * Paystack's inline-js instance manages the transaction lifecycle
+       * internally. The customer checkout page therefore enters the
+       * "opening" state here and relies on the payment verification flow
+       * to determine the final transaction status.
+       */
       popup.resumeTransaction(accessCode);
     } catch (error) {
       console.error("Customer checkout error:", error);
 
-      setCheckoutStarted(false);
+      setPaymentState("failed");
 
       setPaymentError(
         error instanceof Error
@@ -112,6 +141,14 @@ export default function CustomerPaymentCheckout() {
           : "Unable to start the payment. Please try again."
       );
     }
+  }
+
+  async function handleTryAgain() {
+    setPaymentError("");
+    setPaymentReference("");
+    setPaymentState("form");
+
+    await refetch();
   }
 
   if (isLoading) {
@@ -140,7 +177,7 @@ export default function CustomerPaymentCheckout() {
               Payment unavailable
             </h1>
 
-            <p className="mt-2 text-sm text-slate-600">
+            <p className="mt-2 text-sm leading-6 text-slate-600">
               This payment request could not be loaded. It may be invalid,
               expired, or no longer available.
             </p>
@@ -158,20 +195,25 @@ export default function CustomerPaymentCheckout() {
     );
   }
 
-  const unavailable =
-    intent.status.toUpperCase() !== "PENDING" ||
-    Boolean(
-      intent.expiresAt &&
-        new Date(intent.expiresAt).getTime() <= Date.now()
-    );
+  const normalizedStatus = intent.status.toUpperCase();
 
-  if (unavailable) {
+  const isExpired =
+    Boolean(intent.expiresAt) &&
+    new Date(intent.expiresAt as string).getTime() <= Date.now();
+
+  const isUnavailable =
+    normalizedStatus !== "PENDING" || isExpired;
+
+  if (isUnavailable) {
     return (
-      <main className="min-h-screen bg-slate-50 px-4 py-10">
+      <main className="min-h-screen bg-slate-50 px-4 py-8 sm:py-12">
         <div className="mx-auto max-w-2xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50">
-              <LockKeyhole className="text-amber-600" size={22} />
+              <LockKeyhole
+                className="text-amber-600"
+                size={22}
+              />
             </div>
 
             <h1 className="mt-5 text-2xl font-bold text-slate-900">
@@ -197,6 +239,53 @@ export default function CustomerPaymentCheckout() {
     );
   }
 
+  if (paymentState === "success") {
+    return (
+      <PaymentResult
+        type="success"
+        amount={amount}
+        merchantName={
+          intent.merchant?.name ?? "SmartPOS merchant"
+        }
+        reference={paymentReference}
+        onTryAgain={handleTryAgain}
+      />
+    );
+  }
+
+  if (paymentState === "cancelled") {
+    return (
+      <PaymentResult
+        type="cancelled"
+        amount={amount}
+        merchantName={
+          intent.merchant?.name ?? "SmartPOS merchant"
+        }
+        onTryAgain={handleTryAgain}
+      />
+    );
+  }
+
+  if (paymentState === "failed") {
+    return (
+      <PaymentResult
+        type="failed"
+        amount={amount}
+        merchantName={
+          intent.merchant?.name ?? "SmartPOS merchant"
+        }
+        error={paymentError}
+        onTryAgain={handleTryAgain}
+      />
+    );
+  }
+
+  const isPreparing =
+    paymentState === "preparing" ||
+    checkoutMutation.isPending;
+
+  const isOpening = paymentState === "opening";
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:py-12">
       <div className="mx-auto max-w-5xl">
@@ -210,8 +299,7 @@ export default function CustomerPaymentCheckout() {
           </h1>
 
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">
-            Enter your details below, then continue to the secure payment
-            window.
+            Enter your details below, then continue to secure payment.
           </p>
         </div>
 
@@ -227,7 +315,10 @@ export default function CustomerPaymentCheckout() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-5"
+            >
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
                   <label
@@ -240,9 +331,12 @@ export default function CustomerPaymentCheckout() {
                   <input
                     id="firstName"
                     value={firstName}
-                    onChange={(event) => setFirstName(event.target.value)}
+                    onChange={(event) =>
+                      setFirstName(event.target.value)
+                    }
                     autoComplete="given-name"
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
+                    disabled={isPreparing || isOpening}
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10 disabled:cursor-not-allowed disabled:bg-slate-50"
                     placeholder="John"
                   />
                 </div>
@@ -258,9 +352,12 @@ export default function CustomerPaymentCheckout() {
                   <input
                     id="lastName"
                     value={lastName}
-                    onChange={(event) => setLastName(event.target.value)}
+                    onChange={(event) =>
+                      setLastName(event.target.value)
+                    }
                     autoComplete="family-name"
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
+                    disabled={isPreparing || isOpening}
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10 disabled:cursor-not-allowed disabled:bg-slate-50"
                     placeholder="Doe"
                   />
                 </div>
@@ -279,9 +376,12 @@ export default function CustomerPaymentCheckout() {
                   type="email"
                   required
                   value={email}
-                  onChange={(event) => setEmail(event.target.value)}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
                   autoComplete="email"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
+                  disabled={isPreparing || isOpening}
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10 disabled:cursor-not-allowed disabled:bg-slate-50"
                   placeholder="you@example.com"
                 />
               </div>
@@ -301,34 +401,39 @@ export default function CustomerPaymentCheckout() {
                   id="phone"
                   type="tel"
                   value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={(event) =>
+                    setPhone(event.target.value)
+                  }
                   autoComplete="tel"
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
+                  disabled={isPreparing || isOpening}
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10 disabled:cursor-not-allowed disabled:bg-slate-50"
                   placeholder="+234..."
                 />
               </div>
 
               {paymentError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
                   {paymentError}
                 </div>
               ) : null}
 
-              {checkoutStarted ? (
+              {isOpening ? (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
-                  Secure payment is opening. Complete your card or other
-                  available payment method in the Paystack window.
+                  Secure payment is opening. Complete your payment in the
+                  Paystack window.
                 </div>
               ) : null}
 
               <button
                 type="submit"
-                disabled={checkoutMutation.isPending}
+                disabled={isPreparing || isOpening}
                 className="flex h-13 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {checkoutMutation.isPending
+                {isPreparing
                   ? "Preparing secure payment..."
-                  : `Continue to payment · ${amount}`}
+                  : isOpening
+                    ? "Payment window open..."
+                    : `Continue to payment · ${amount}`}
               </button>
 
               <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
@@ -364,7 +469,10 @@ export default function CustomerPaymentCheckout() {
             <div className="space-y-4">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 rounded-lg bg-slate-100 p-2">
-                  <LockKeyhole size={15} className="text-slate-700" />
+                  <LockKeyhole
+                    size={15}
+                    className="text-slate-700"
+                  />
                 </div>
 
                 <div>
@@ -373,15 +481,18 @@ export default function CustomerPaymentCheckout() {
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Your card details are entered in Paystack&apos;s secure
-                    payment interface.
+                    Your payment details are entered in Paystack&apos;s
+                    secure payment interface.
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 rounded-lg bg-slate-100 p-2">
-                  <CheckCircle2 size={15} className="text-slate-700" />
+                  <CheckCircle2
+                    size={15}
+                    className="text-slate-700"
+                  />
                 </div>
 
                 <div>
@@ -390,15 +501,17 @@ export default function CustomerPaymentCheckout() {
                   </p>
 
                   <p className="mt-1 text-xs leading-5 text-slate-500">
-                    After payment, the transaction can be verified against
-                    the payment reference.
+                    A successful payment returns a Paystack reference
+                    that can be verified by SmartPOS.
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="mt-6 rounded-xl bg-slate-50 p-4">
-              <p className="text-xs text-slate-500">Payment reference</p>
+              <p className="text-xs text-slate-500">
+                Payment reference
+              </p>
 
               <p className="mt-1 break-all font-mono text-xs text-slate-700">
                 {intent.id}
@@ -406,6 +519,158 @@ export default function CustomerPaymentCheckout() {
             </div>
           </aside>
         </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-center gap-5 text-xs text-slate-400">
+        <span className="inline-flex items-center gap-1.5">
+          <LockKeyhole size={12} />
+          Encrypted
+        </span>
+
+        <span className="inline-flex items-center gap-1.5">
+          <ShieldCheck size={13} />
+          Secure checkout
+        </span>
+      </div>
+
+      <p className="mt-4 text-center text-xs text-slate-400">
+        Powered by SmartPOS
+      </p>
+    </main>
+  );
+}
+
+function PaymentResult({
+  type,
+  amount,
+  merchantName,
+  reference,
+  error,
+  onTryAgain,
+}: {
+  type: "success" | "cancelled" | "failed";
+  amount: string;
+  merchantName: string;
+  reference?: string;
+  error?: string;
+  onTryAgain: () => void;
+}) {
+  const isSuccess = type === "success";
+  const isCancelled = type === "cancelled";
+
+  return (
+    <main className="min-h-screen bg-slate-50 px-4 py-10 sm:py-16">
+      <div className="mx-auto max-w-lg">
+        <section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-xl shadow-slate-200/50 sm:p-10">
+          <div
+            className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${
+              isSuccess
+                ? "bg-emerald-50"
+                : isCancelled
+                  ? "bg-amber-50"
+                  : "bg-red-50"
+            }`}
+          >
+            {isSuccess ? (
+              <CheckCircle2
+                size={32}
+                className="text-emerald-600"
+              />
+            ) : isCancelled ? (
+              <Clock3
+                size={32}
+                className="text-amber-600"
+              />
+            ) : (
+              <XCircle
+                size={32}
+                className="text-red-600"
+              />
+            )}
+          </div>
+
+          <div className="mt-6 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              {merchantName}
+            </p>
+
+            <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
+              {isSuccess
+                ? "Payment completed"
+                : isCancelled
+                  ? "Payment cancelled"
+                  : "Payment failed"}
+            </h1>
+
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-600">
+              {isSuccess
+                ? "Paystack reported that the payment was successfully completed."
+                : isCancelled
+                  ? "The payment window was closed before the payment was completed."
+                  : error ||
+                    "The payment could not be completed. You can try again."}
+            </p>
+          </div>
+
+          <div className="mt-7 rounded-2xl bg-slate-50 p-5">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-sm text-slate-500">
+                Amount
+              </span>
+
+              <span className="text-lg font-bold text-slate-950">
+                {amount}
+              </span>
+            </div>
+
+            {reference ? (
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <p className="text-xs text-slate-500">
+                  Paystack reference
+                </p>
+
+                <p className="mt-1 break-all font-mono text-xs text-slate-700">
+                  {reference}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {!isSuccess ? (
+              <button
+                type="button"
+                onClick={onTryAgain}
+                className="flex h-12 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Try payment again
+              </button>
+            ) : null}
+
+            <Link
+              href="/"
+              className="flex h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Return
+            </Link>
+          </div>
+        </section>
+
+        <div className="mt-6 flex items-center justify-center gap-5 text-xs text-slate-400">
+          <span className="inline-flex items-center gap-1.5">
+            <LockKeyhole size={12} />
+            Encrypted
+          </span>
+
+          <span className="inline-flex items-center gap-1.5">
+            <ShieldCheck size={13} />
+            Secure checkout
+          </span>
+        </div>
+
+        <p className="mt-4 text-center text-xs text-slate-400">
+          Powered by SmartPOS
+        </p>
       </div>
     </main>
   );
