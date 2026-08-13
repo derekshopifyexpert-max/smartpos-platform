@@ -1,17 +1,20 @@
 "use client";
 
+import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
+  Loader2,
   LockKeyhole,
   ShieldCheck,
   Store,
 } from "lucide-react";
 
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
+import { useCheckoutPaymentIntent } from "@/features/payment-intents/hooks/use-checkout-payment-intent";
 
 export default function CustomerPaymentPage() {
   const params = useParams();
@@ -22,6 +25,19 @@ export default function CustomerPaymentPage() {
     isLoading,
     isError,
   } = usePaymentIntent(id);
+
+  const checkoutMutation = useCheckoutPaymentIntent();
+
+  const [firstName, setFirstName] = useState(
+    intent?.customer?.firstName ?? ""
+  );
+  const [lastName, setLastName] = useState(
+    intent?.customer?.lastName ?? ""
+  );
+  const [email, setEmail] = useState(
+    intent?.customer?.email ?? ""
+  );
+  const [phone, setPhone] = useState("");
 
   if (isLoading) {
     return (
@@ -38,7 +54,6 @@ export default function CustomerPaymentPage() {
       </main>
     );
   }
-
   if (isError || !intent) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
@@ -88,6 +103,36 @@ export default function CustomerPaymentPage() {
     status === "FAILED" ||
     status === "CANCELED" ||
     status === "CANCELLED";
+
+  async function handleCheckout(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    checkoutMutation.reset();
+
+    try {
+      const result = await checkoutMutation.mutateAsync({
+        id,
+        payload: {
+          email: email.trim(),
+          firstName: firstName.trim() || undefined,
+          lastName: lastName.trim() || undefined,
+          phone: phone.trim() || undefined,
+        },
+      });
+
+      const paymentUrl = result.gateway?.paymentUrl;
+
+      if (!paymentUrl) {
+        throw new Error(
+          "The payment provider did not return a payment URL."
+        );
+      }
+
+      window.location.assign(paymentUrl);
+    } catch {
+      // The mutation error is displayed below the form.
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -164,38 +209,138 @@ export default function CustomerPaymentPage() {
                   </p>
                 </div>
               ) : (
-                <>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
-                        <CreditCard size={19} />
-                      </div>
+                <form onSubmit={handleCheckout}>
 
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          Pay securely
-                        </p>
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-950">
+                      Your information
+                    </h2>
 
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          Your payment details are protected.
-                        </p>
-                      </div>
-                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Enter your details before continuing to secure payment.
+                    </p>
                   </div>
 
+                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+                    <div>
+                      <label
+                        htmlFor="firstName"
+                        className="text-xs font-semibold text-slate-700"
+                      >
+                        First name
+                      </label>
+
+                      <input
+                        id="firstName"
+                        name="firstName"
+                        type="text"
+                        autoComplete="given-name"
+                        value={firstName}
+                        onChange={(event) =>
+                          setFirstName(event.target.value)
+                        }
+                        className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                        placeholder="John"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="lastName"
+                        className="text-xs font-semibold text-slate-700"
+                      >
+                        Last name
+                      </label>
+
+                      <input
+                        id="lastName"
+                        name="lastName"
+                        type="text"
+                        autoComplete="family-name"
+                        value={lastName}
+                        onChange={(event) =>
+                          setLastName(event.target.value)
+                        }
+                        className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                        placeholder="Doe"
+                      />
+                    </div>
+
+                  </div>
+
+                  <div className="mt-4">
+                    <label
+                      htmlFor="email"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Email address
+                    </label>
+
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(event) =>
+                        setEmail(event.target.value)
+                      }
+                      className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                      placeholder="you@example.com"
+                    />
+                  </div>
+
+                  <div className="mt-4">
+                    <label
+                      htmlFor="phone"
+                      className="text-xs font-semibold text-slate-700"
+                    >
+                      Phone number
+                      <span className="ml-1 font-normal text-slate-400">
+                        (optional)
+                      </span>
+                    </label>
+
+                    <input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={(event) =>
+                        setPhone(event.target.value)
+                      }
+                      className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                      placeholder="+234..."
+                    />
+                  </div>
+
+                  {checkoutMutation.isError ? (
+                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                      <p className="text-sm font-medium text-red-900">
+                        {getErrorMessage(checkoutMutation.error)}
+                      </p>
+                    </div>
+                  ) : null}
+
                   <button
-                    type="button"
-                    disabled
-                    className="mt-5 flex h-13 w-full items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 disabled:cursor-not-allowed disabled:opacity-100"
+                    type="submit"
+                    disabled={checkoutMutation.isPending}
+                    className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    Continue to payment
+                    {checkoutMutation.isPending
+                      ? "Preparing secure payment..."
+                      : "Continue to payment"}
                   </button>
 
                   <p className="mt-4 text-center text-xs leading-5 text-slate-400">
-                    Secure payment processing will be connected to this
-                    checkout next.
+                    You will be redirected to our secure payment provider to
+                    complete your payment.
                   </p>
-                </>
+
+                </form>
               )}
 
               <div className="mt-6 flex items-center justify-center gap-5 border-t border-slate-100 pt-5 text-xs text-slate-400">
@@ -240,4 +385,32 @@ function formatAmount(
   } catch {
     return `${numericAmount.toLocaleString()} ${currency}`;
   }
+}
+
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const response = (
+      error as {
+        response?: {
+          data?: {
+            message?: string;
+          };
+        };
+      }
+    ).response;
+
+    if (response?.data?.message) {
+      return response.data.message;
+    }
+  }
+
+  return "We could not start the payment. Please try again.";
 }

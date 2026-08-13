@@ -107,19 +107,14 @@ export interface PaymentIntentDetailResponse {
 
 export interface CheckoutPaymentIntentResponse {
   paymentIntent: PaymentIntent;
-
   transaction: PaymentIntentTransaction;
-
   paymentAttempt: PaymentAttempt;
-
   provider: string;
-
   gateway: {
-    transactionId?: string | null;
-    paymentUrl?: string | null;
-    accessCode?: string | null;
-    authorizationCode?: string | null;
+    transactionId: string | null;
+    paymentUrl: string | null;
+    accessCode: string | null;
+    authorizationCode: string | null;
   };
-
-  response: unknown;
+  response?: unknown;
 }
