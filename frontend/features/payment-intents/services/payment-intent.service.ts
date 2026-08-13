@@ -1,17 +1,18 @@
+import { api } from "@/lib/api/client";
+import { ENDPOINTS } from "@/lib/api/endpoints";
+
+import type {
+  CheckoutPaymentIntentResponse,
+  PaymentIntent,
+  PaymentIntentResponse,
+} from "../types/payment-intent";
+
 export type CheckoutPaymentIntentPayload = {
   email?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
 };
-
-import { api } from "@/lib/api/client";
-import { ENDPOINTS } from "@/lib/api/endpoints";
-
-import type {
-  PaymentIntent,
-  PaymentIntentResponse,
-} from "../types/payment-intent";
 
 export async function getPaymentIntents(
   page = 1,
@@ -46,8 +47,11 @@ export async function getPaymentIntent(
 export async function checkoutPaymentIntent(
   id: string,
   customer: CheckoutPaymentIntentPayload = {}
-) {
-  const response = await api.post(
+): Promise<CheckoutPaymentIntentResponse> {
+  const response = await api.post<{
+    success: boolean;
+    data: CheckoutPaymentIntentResponse;
+  }>(
     ENDPOINTS.paymentIntents.checkout(id),
     customer
   );
