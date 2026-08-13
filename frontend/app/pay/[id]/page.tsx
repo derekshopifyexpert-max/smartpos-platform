@@ -1,10 +1,12 @@
 "use client";
 
+
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
+  ExternalLink,
   CheckCircle2,
   CreditCard,
   LockKeyhole,
@@ -24,6 +26,15 @@ export default function CustomerPaymentPage() {
     isLoading,
     isError,
   } = usePaymentIntent(id);
+
+  <Link
+  href={`/checkout/${intent.id}`}
+  target="_blank"
+  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+>
+  <ExternalLink size={16} />
+  Open Customer Checkout
+</Link>
 
   const checkoutMutation = useCheckoutPaymentIntent();
 
