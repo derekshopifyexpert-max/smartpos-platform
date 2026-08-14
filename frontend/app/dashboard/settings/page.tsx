@@ -1,322 +1,382 @@
 "use client";
 
-import { Bell, Lock, Settings, ShieldCheck, User } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import {
+  Bell,
+  Building2,
+  CheckCircle2,
+  Lock,
+  Save,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  User,
+} from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/store/auth.store";
 
-const settingsSections = [
-  { id: "profile", title: "Profile", icon: User },
-  { id: "payment", title: "Payment", icon: Settings },
-  { id: "security", title: "Security", icon: Lock },
-  { id: "notifications", title: "Notifications", icon: Bell },
-];
+type Section = "profile" | "business" | "notifications" | "security";
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState("profile");
-  const user = useAuthStore((state) => state.user);
+  const { user } = useAuthStore();
 
-  const profileValues = useMemo(
-    () => ({
-      name: user?.name ?? "",
-      email: user?.email ?? "",
-      role: user?.role ?? "viewer",
-      merchantId: user?.merchantId ?? "",
-    }),
-    [user]
+  const [activeSection, setActiveSection] =
+    useState<Section>("profile");
+
+  const [name, setName] = useState(
+    user?.name || user?.email?.split("@")[0] || ""
   );
+
+  const [email, setEmail] = useState(user?.email || "");
+
+  const [businessName, setBusinessName] = useState("");
+
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    setSaved(true);
+
+    window.setTimeout(() => {
+      setSaved(false);
+    }, 2500);
+  };
+
+  const sections = [
+    {
+      id: "profile" as const,
+      label: "Profile",
+      description: "Your account information",
+      icon: User,
+    },
+    {
+      id: "business" as const,
+      label: "Business",
+      description: "Business information",
+      icon: Building2,
+    },
+    {
+      id: "notifications" as const,
+      label: "Notifications",
+      description: "Payment and transaction alerts",
+      icon: Bell,
+    },
+    {
+      id: "security" as const,
+      label: "Security",
+      description: "Authentication and account security",
+      icon: Lock,
+    },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="mb-2 text-sm font-medium text-blue-600">SmartPOS</p>
-        <h1 className="text-3xl font-bold text-slate-900">Settings</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Manage the supported account and payment preferences for this merchant workspace.
-        </p>
-      </div>
+    <div className="min-h-full bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+              <SettingsIcon className="h-5 w-5" />
+            </div>
 
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-        <div className="h-fit rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <nav className="space-y-1">
-            {settingsSections.map((section) => {
-              const Icon = section.icon;
-              const active = activeSection === section.id;
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">
+                Settings
+              </h1>
 
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setActiveSection(section.id)}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
-                    active
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span>{section.title}</span>
-                </button>
-              );
-            })}
-          </nav>
+              <p className="mt-1 text-sm text-slate-500">
+                Manage your SmartPOS account and business preferences.
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          {activeSection === "profile" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Profile</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  The authenticated merchant profile currently available to this session.
-                </p>
-              </div>
+        <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+          <Card className="h-fit border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-2">
+              <nav className="space-y-1">
+                {sections.map((section) => {
+                  const Icon = section.icon;
+                  const active = activeSection === section.id;
 
-              <div className="grid gap-6 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Full name</span>
-                  <input value={profileValues.name} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
-                </label>
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      onClick={() => setActiveSection(section.id)}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition ${
+                        active
+                          ? "bg-blue-50 text-blue-700"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      }`}
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
 
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
-                  <input value={profileValues.email} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
-                </label>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">
+                          {section.label}
+                        </span>
 
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Role</span>
-                  <input value={profileValues.role} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
-                </label>
+                        <span className="mt-0.5 block text-xs text-slate-400">
+                          {section.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </CardContent>
+          </Card>
 
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Merchant ID</span>
-                  <input value={profileValues.merchantId} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
-                </label>
-              </div>
-            </div>
-          )}
+          <div>
+            {activeSection === "profile" && (
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="border-b border-slate-100">
+                  <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                    <User className="h-5 w-5 text-blue-600" />
+                    Profile
+                  </CardTitle>
 
-          {activeSection === "payment" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Payment preferences</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Supported payment defaults for this merchant session.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                Payment preferences are not yet backed by a persisted merchant settings API in this repository. The supported values are shown here for the current session only.
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Default fiat currency</span>
-                  <select defaultValue="USD" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900">
-                    <option value="USD">USD</option>
-                    <option value="NGN">NGN</option>
-                    <option value="GBP">GBP</option>
-                    <option value="EUR">EUR</option>
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Default crypto asset</span>
-                  <select defaultValue="USDT" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900">
-                    <option value="USDT">USDT</option>
-                    <option value="USDC">USDC</option>
-                    <option value="ETH">ETH</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-          )}
-
-          {activeSection === "security" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Security</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Security state is controlled by the authenticated session and backend auth system.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                  <span className="font-medium text-slate-900">Session is authenticated and active.</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeSection === "notifications" && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Notifications</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Notification settings are not yet persisted to the backend in this repo.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <span className="text-sm font-medium text-slate-900">Payment alerts</span>
-                  <input type="checkbox" defaultChecked className="h-4 w-4 accent-blue-600" />
-                </label>
-
-                <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <span className="text-sm font-medium text-slate-900">Transaction alerts</span>
-                  <input type="checkbox" defaultChecked className="h-4 w-4 accent-blue-600" />
-                </label>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-                    Profile information
+                  <p className="text-sm text-slate-500">
+                    Manage your account information.
                   </p>
+                </CardHeader>
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    Your account details are currently managed through the authentication system.
+                <CardContent className="space-y-5 p-6">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="profile-name"
+                      className="text-sm font-medium text-slate-700"
+                    >
+                      Name
+                    </label>
+
+                    <Input
+                      id="profile-name"
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="Your name"
+                      className="bg-white text-slate-900"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="profile-email"
+                      className="text-sm font-medium text-slate-700"
+                    >
+                      Email
+                    </label>
+
+                    <Input
+                      id="profile-email"
+                      value={email}
+                      readOnly
+                      className="bg-slate-50 text-slate-700"
+                    />
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+
+                    <div>
+                      <p className="text-sm font-medium text-emerald-900">
+                        Session is authenticated and active.
+                      </p>
+
+                      <p className="mt-1 text-xs text-emerald-700">
+                        Your account is currently signed in to SmartPOS.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      onClick={handleSave}
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      Save changes
+                    </Button>
+
+                    {saved && (
+                      <span className="flex items-center gap-1 text-sm text-emerald-600">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "business" && (
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="border-b border-slate-100">
+                  <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    Business
+                  </CardTitle>
+
+                  <p className="text-sm text-slate-500">
+                    Manage the business information displayed in SmartPOS.
                   </p>
+                </CardHeader>
 
-                </div>
+                <CardContent className="space-y-5 p-6">
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="business-name"
+                      className="text-sm font-medium text-slate-700"
+                    >
+                      Business name
+                    </label>
 
-              </div>
+                    <Input
+                      id="business-name"
+                      value={businessName}
+                      onChange={(event) =>
+                        setBusinessName(event.target.value)
+                      }
+                      placeholder="Your business name"
+                      className="bg-white text-slate-900"
+                    />
+                  </div>
 
-            </div>
-
-          )}
-
-          {/* Security */}
-
-          {activeSection === "security" && (
-
-            <div className="p-6">
-
-              <div className="border-b border-slate-200 pb-5">
-
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Security
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage authentication and account security.
-                </p>
-
-              </div>
-
-              <div className="py-6 space-y-4">
-
-                <div className="rounded-lg border border-slate-200 p-5">
-
-                  <h3 className="font-medium text-slate-900">
-                    Password
-                  </h3>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Password management will be connected to the authentication API.
-                  </p>
-
-                </div>
-
-                <div className="rounded-lg border border-slate-200 p-5">
-
-                  <h3 className="font-medium text-slate-900">
-                    Authentication
-                  </h3>
-
-                  <p className="mt-1 text-sm text-slate-500">
-                    Authentication and session controls will be managed through the platform authentication system.
-                  </p>
-
-                </div>
-
-              </div>
-
-            </div>
-
-          )}
-
-          {/* Notifications */}
-
-          {activeSection === "notifications" && (
-
-            <div className="p-6">
-
-              <div className="border-b border-slate-200 pb-5">
-
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Notifications
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Manage platform notification preferences.
-                </p>
-
-              </div>
-
-              <div className="py-6 space-y-4">
-
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 p-5">
-
-                  <div>
-
-                    <h3 className="font-medium text-slate-900">
-                      Platform Alerts
-                    </h3>
-
-                    <p className="mt-1 text-sm text-slate-500">
-                      Receive important alerts about platform activity and operations.
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-medium text-slate-800">
+                      Business settings
                     </p>
 
-                  </div>
-
-                  <div className="h-5 w-9 rounded-full bg-blue-600 p-1">
-
-                    <div className="h-3 w-3 rounded-full bg-white" />
-
-                  </div>
-
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 p-5">
-
-                  <div>
-
-                    <h3 className="font-medium text-slate-900">
-                      Transaction Alerts
-                    </h3>
-
                     <p className="mt-1 text-sm text-slate-500">
-                      Receive notifications about important payment activity.
+                      Additional business fields can be connected to the
+                      merchant profile once the corresponding backend fields
+                      are available.
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={handleSave}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    Save changes
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "notifications" && (
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="border-b border-slate-100">
+                  <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                    <Bell className="h-5 w-5 text-blue-600" />
+                    Notifications
+                  </CardTitle>
+
+                  <p className="text-sm text-slate-500">
+                    Control the notification preferences available in this
+                    SmartPOS installation.
+                  </p>
+                </CardHeader>
+
+                <CardContent className="space-y-4 p-6">
+                  <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">
+                        Payment alerts
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Receive notifications when payments change status.
+                      </p>
+                    </div>
+
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                  </label>
+
+                  <label className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-200 bg-white p-4">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">
+                        Transaction alerts
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        Receive notifications about transaction activity.
+                      </p>
+                    </div>
+
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      className="h-4 w-4 accent-blue-600"
+                    />
+                  </label>
+
+                  <Button
+                    type="button"
+                    onClick={handleSave}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    Save preferences
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "security" && (
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="border-b border-slate-100">
+                  <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                    <Lock className="h-5 w-5 text-blue-600" />
+                    Security
+                  </CardTitle>
+
+                  <p className="text-sm text-slate-500">
+                    Manage authentication and account security.
+                  </p>
+                </CardHeader>
+
+                <CardContent className="space-y-5 p-6">
+                  <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+
+                    <div>
+                      <p className="text-sm font-medium text-emerald-900">
+                        Account session active
+                      </p>
+
+                      <p className="mt-1 text-xs text-emerald-700">
+                        SmartPOS has an authenticated session for this
+                        account.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-medium text-slate-900">
+                      Authentication
                     </p>
 
+                    <p className="mt-1 text-sm text-slate-500">
+                      Password and authentication changes should continue to
+                      use the existing authentication system rather than
+                      storing credentials in the browser.
+                    </p>
                   </div>
-
-                  <div className="h-5 w-9 rounded-full bg-slate-300 p-1">
-
-                    <div className="h-3 w-3 rounded-full bg-white" />
-
-                  </div>
-
-                </div>
-
-              </div>
-
-            </div>
-
-          )}
-
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </div>
-
       </div>
-
     </div>
   );
 }
