@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+export const cryptoDestinationSchema = z.object({
+  asset: z.string().min(1).optional(),
+  network: z.string().min(1).optional(),
+  address: z.string().min(1).optional(),
+  walletId: z.string().min(1).optional(),
+  amount: z.coerce.number().positive().optional(),
+  currency: z.string().min(3).max(10).optional(),
+  reference: z.string().min(1).optional(),
+}).passthrough();
+
 export const createPaymentIntentSchema = z.object({
   merchantId: z.string().min(1),
   amount: z.coerce.number().positive(),
@@ -7,7 +17,11 @@ export const createPaymentIntentSchema = z.object({
   customerId: z.string().optional(),
   paymentMethodId: z.string().optional(),
   description: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  metadata: z.object({
+    cryptoDestination: cryptoDestinationSchema.optional(),
+    crypto_destination: cryptoDestinationSchema.optional(),
+    destination: cryptoDestinationSchema.optional(),
+  }).passthrough().optional(),
 });
 
 export const paymentIntentCheckoutSchema = z.object({

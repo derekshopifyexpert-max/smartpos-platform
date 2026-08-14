@@ -12,11 +12,22 @@ import type {
   PaymentIntentResponse,
 } from "../types/payment-intent";
 
+export type CryptoDestinationPayload = {
+  asset?: string;
+  network?: string;
+  address?: string;
+  walletId?: string;
+  amount?: number;
+  currency?: string;
+  reference?: string;
+};
+
 export type CheckoutPaymentIntentPayload = {
   email?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
+  cryptoDestination?: CryptoDestinationPayload;
 };
 
 export async function getPaymentIntents(

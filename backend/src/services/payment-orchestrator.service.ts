@@ -3,11 +3,17 @@ import { Prisma } from "@prisma/client";
 
 import PaymentService from "./payment.service.js";
 import GatewayService from "./gateway.service.js";
+import ExchangeService from "./exchange.service.js";
+import BlockchainService from "./blockchain.service.js";
 
 import ProviderManager from "../providers/provider.manager.js";
 import SmartGatewaySelector from "../providers/smart-gateway-selector.js";
 import ProviderFailover from "../providers/provider-failover.js";
 import ProviderMetricsService from "../providers/provider-metrics.service.js";
+import {
+  NotConfiguredCryptoTransferProvider,
+  type CryptoTransferProvider,
+} from "../providers/crypto-transfer.provider.js";
 
 export default class PaymentOrchestratorService {
 
@@ -24,6 +30,12 @@ export default class PaymentOrchestratorService {
   private readonly metrics =
     new ProviderMetricsService();
 
+  private readonly exchangeService: ExchangeService;
+
+  private readonly blockchainService: BlockchainService;
+
+  private readonly cryptoTransferProvider: CryptoTransferProvider;
+
   constructor(
     private readonly app: FastifyInstance
   ) {
@@ -33,7 +45,190 @@ export default class PaymentOrchestratorService {
 
     this.gatewayService =
       new GatewayService(app);
+    this.exchangeService =
+      new ExchangeService(app);
+    this.blockchainService =
+      new BlockchainService(app);
+    this.cryptoTransferProvider =
+      new NotConfiguredCryptoTransferProvider();
 
+  }
+
+  normalizeCryptoDestinationMetadata(
+    metadata?: Prisma.JsonValue | Record<string, unknown>
+  ): Record<string, unknown> {
+    const source =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? (metadata as Record<string, unknown>)
+        : {};
+
+    const normalized: Record<string, unknown> = { ...source };
+
+    const destinationCandidates = [
+      normalized.cryptoDestination,
+      normalized.crypto_destination,
+      normalized.destination,
+    ];
+
+    const resolvedDestination = destinationCandidates.find(
+      (candidate): candidate is Record<string, unknown> =>
+        candidate !== undefined && typeof candidate === "object" && !Array.isArray(candidate)
+    );
+
+    if (resolvedDestination) {
+      normalized.cryptoDestination = {
+        ...resolvedDestination,
+      };
+    }
+
+    return normalized;
+  }
+
+  async processFiatToCryptoSettlement(
+    paymentIntentId: string,
+    payload: {
+      transactionId?: string;
+      asset?: string;
+      network?: string;
+      destinationAddress?: string;
+      walletId?: string;
+    }
+  ) {
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
+
+    if (!paymentIntent) {
+      throw new Error("Payment Intent not found.");
+    }
+
+    const metadata =
+      this.normalizeCryptoDestinationMetadata(
+        paymentIntent.metadata
+      );
+
+    const destination =
+      (metadata.cryptoDestination as Record<string, unknown> | undefined) ??
+      { };
+
+    const asset =
+      String(
+        payload.asset ??
+          destination.asset ??
+          "USDT"
+      ).toUpperCase();
+
+    const network =
+      String(
+        payload.network ??
+          destination.network ??
+          "TRON"
+      ).toUpperCase();
+
+    const destinationAddress =
+      payload.destinationAddress ??
+      (typeof destination.address === "string"
+        ? destination.address
+        : "");
+
+    if (!destinationAddress.trim()) {
+      throw new Error("Crypto destination address is required.");
+    }
+
+    const transaction =
+      payload.transactionId
+        ? await this.paymentService.findTransactionById(
+            payload.transactionId
+          )
+        : paymentIntent.transactions.find(
+            (item) =>
+              item.status === "CAPTURED" ||
+              item.status === "AUTHORIZED" ||
+              item.status === "SETTLED"
+          );
+
+    if (!transaction) {
+      throw new Error("Verified payment transaction is required before crypto settlement.");
+    }
+
+    const quote = await this.exchangeService.calculateQuote(
+      paymentIntent.currency as any,
+      asset as any,
+      new Prisma.Decimal(Number(paymentIntent.amount))
+    );
+
+    const conversion = await this.exchangeService.createConversion({
+      merchantId: paymentIntent.merchantId,
+      transactionId: transaction.id,
+      fromCurrency: paymentIntent.currency as any,
+      toCurrency: asset as any,
+      fromAmount: new Prisma.Decimal(Number(paymentIntent.amount)),
+      exchangeProvider: "smartpos",
+      metadata: {
+        paymentIntentId: paymentIntent.id,
+        destinationAddress,
+        network,
+        asset,
+        quote,
+      },
+    });
+
+    const addressValid = await this.cryptoTransferProvider.validateAddress({
+      asset,
+      network,
+      address: destinationAddress,
+    });
+
+    if (!addressValid) {
+      return {
+        paymentIntent,
+        transaction,
+        quote,
+        conversion,
+        settlement: {
+          status: "FAILED",
+          message: `The destination wallet for ${asset} on ${network} is invalid or unavailable.`,
+        },
+      };
+    }
+
+    const settlementResult = await this.cryptoTransferProvider.sendTransaction({
+      asset,
+      network,
+      toAddress: destinationAddress,
+      amount: quote.convertedAmount,
+      reference: transaction.reference ?? paymentIntent.id,
+    });
+
+    await this.app.prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        cryptoCurrency: asset as any,
+        cryptoAmount: new Prisma.Decimal(quote.convertedAmount.toString()),
+        metadata: {
+          ...(transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+            ? transaction.metadata
+            : {}),
+          cryptoSettlement: {
+            asset,
+            network,
+            destinationAddress,
+            status: settlementResult.status,
+            quote,
+            conversionId: conversion.id,
+          },
+        },
+      },
+    });
+
+    return {
+      paymentIntent,
+      transaction,
+      quote,
+      conversion,
+      settlement: { ...settlementResult },
+    };
   }
 
     async checkoutPaymentIntent(
@@ -89,6 +284,20 @@ export default class PaymentOrchestratorService {
       );
     }
 
+    const cryptoDestination = this.normalizeCryptoDestinationMetadata(
+      paymentIntent.metadata
+    ).cryptoDestination as Record<string, unknown> | undefined;
+
+    if (cryptoDestination && typeof cryptoDestination === "object") {
+      const destinationAddress = typeof cryptoDestination.address === "string"
+        ? cryptoDestination.address
+        : undefined;
+
+      if (destinationAddress && !destinationAddress.trim()) {
+        throw new Error("Crypto destination address is required.");
+      }
+    }
+
     const existingTransaction =
       paymentIntent.transactions.find(
         transaction =>
@@ -124,8 +333,9 @@ export default class PaymentOrchestratorService {
         paymentIntentId:
           paymentIntent.id,
 
-        metadata:
+        metadata: this.normalizeCryptoDestinationMetadata(
           paymentIntent.metadata
+        )
       });
 
     const existingAttempt =

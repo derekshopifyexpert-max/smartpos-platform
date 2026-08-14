@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import {
   Activity,
   CreditCard,
+  Plus,
   RefreshCw,
   Store,
   Terminal,
@@ -175,19 +177,29 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${
-              isFetching ? "animate-spin" : ""
-            }`}
-          />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/dashboard/payments/new"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            New Payment
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${
+                isFetching ? "animate-spin" : ""
+              }`}
+            />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

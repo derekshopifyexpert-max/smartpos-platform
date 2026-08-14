@@ -54,6 +54,37 @@ export default class PaymentService {
       .toString("hex");
   }
 
+  private normalizeMetadata(
+    metadata?: Prisma.JsonValue
+  ): Prisma.JsonValue {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return metadata ?? Prisma.JsonNull;
+    }
+
+    const normalized = { ...(metadata as Record<string, unknown>) };
+
+    const destinationCandidates = [
+      "cryptoDestination",
+      "crypto_destination",
+      "destination",
+    ];
+
+    for (const key of destinationCandidates) {
+      const candidate = normalized[key];
+
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+        normalized.cryptoDestination = {
+          ...(typeof normalized.cryptoDestination === "object" && !Array.isArray(normalized.cryptoDestination)
+            ? (normalized.cryptoDestination as Record<string, unknown>)
+            : {}),
+          ...(candidate as Record<string, unknown>),
+        };
+      }
+    }
+
+    return normalized as Prisma.JsonValue;
+  }
+
   /*
   |--------------------------------------------------------------------------
   | Payment Intent
@@ -73,6 +104,8 @@ export default class PaymentService {
     },
     tx?: PrismaTransactionClient
   ) {
+    const metadata = this.normalizeMetadata(data.metadata);
+
     return this.db(tx).paymentIntent.create({
       data: {
         merchantId: data.merchantId,
@@ -81,8 +114,7 @@ export default class PaymentService {
         amount: data.amount,
         currency: data.currency,
         description: data.description,
-        metadata:
-          data.metadata ?? Prisma.JsonNull,
+        metadata,
         clientSecret:
           this.generateClientSecret(),
         expiresAt: data.expiresAt,

@@ -201,6 +201,11 @@ export default async function paymentRoutes(
   |--------------------------------------------------------------------------
   */
 
+  app.post(
+    "/payment-intents/:id/crypto-settlement",
+    controller.processCryptoSettlement
+  );
+
   app.patch(
     "/payment-intents/:id/expire",
     {

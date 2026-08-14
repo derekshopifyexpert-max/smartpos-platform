@@ -294,6 +294,15 @@ data: payment
         firstName?: string;
         lastName?: string;
         phone?: string;
+        cryptoDestination?: {
+          asset?: string;
+          network?: string;
+          address?: string;
+          walletId?: string;
+          amount?: number;
+          currency?: string;
+          reference?: string;
+        };
       };
 
     const result =
@@ -306,6 +315,33 @@ data: payment
       success: true,
       data: result
     });
+  };
+
+  processCryptoSettlement = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    const { id } = request.params as { id: string };
+
+    const payload = request.body as {
+      transactionId?: string;
+      asset?: string;
+      network?: string;
+      destinationAddress?: string;
+      walletId?: string;
+    };
+
+    try {
+      const result = await this.paymentOrchestratorService.processFiatToCryptoSettlement(
+        id,
+        payload
+      );
+
+      return reply.send({ success: true, data: result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Crypto settlement failed.";
+      return reply.code(400).send({ success: false, message });
+    }
   };
 
   expirePaymentIntent = async (

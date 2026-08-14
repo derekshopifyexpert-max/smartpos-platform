@@ -15,6 +15,12 @@ export const ENDPOINTS = {
     dashboard: (id: string) => `/merchants/${id}/dashboard`,
   },
 
+  wallets: {
+    list: (merchantId: string) => `/merchants/${merchantId}/wallets`,
+    create: "/wallets",
+    detail: (id: string) => `/wallets/${id}`,
+  },
+
   transactions: {
     list: "/transactions",
     detail: (id: string) => `/transactions/${id}`,

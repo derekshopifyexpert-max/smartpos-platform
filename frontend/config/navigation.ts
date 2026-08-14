@@ -1,10 +1,9 @@
 import {
-  BarChart3,
   CreditCard,
   LayoutDashboard,
-  Store,
-  Receipt,
+  ReceiptText,
   Settings,
+  Wallet,
 } from "lucide-react";
 
 export interface NavigationItem {
@@ -21,24 +20,19 @@ export const navigation: NavigationItem[] = [
     icon: LayoutDashboard,
   },
   {
-    title: "Merchants",
-    href: "/dashboard/merchants",
-    icon: Store,
+    title: "Payments",
+    href: "/dashboard/payments",
+    icon: CreditCard,
+  },
+  {
+    title: "Wallets",
+    href: "/dashboard/wallets",
+    icon: Wallet,
   },
   {
     title: "Transactions",
     href: "/dashboard/transactions",
-    icon: Receipt,
-  },
-  {
-    title: "Payment Intents",
-    href: "/dashboard/payment-intents",
-    icon: CreditCard,
-  },
-  {
-    title: "Analytics",
-    href: "/dashboard/analytics",
-    icon: BarChart3,
+    icon: ReceiptText,
   },
   {
     title: "Settings",

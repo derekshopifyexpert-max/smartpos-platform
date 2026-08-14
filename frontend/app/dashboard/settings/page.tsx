@@ -1,263 +1,183 @@
 "use client";
 
-import {
-  Bell,
-  Lock,
-  Settings,
-  User,
-} from "lucide-react";
-
-import { useState } from "react";
+import { Bell, Lock, Settings, ShieldCheck, User } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { useAuthStore } from "@/store/auth.store";
 
 const settingsSections = [
-  {
-    id: "general",
-    title: "General",
-    description:
-      "Manage general platform preferences and configuration.",
-    icon: Settings,
-  },
-  {
-    id: "profile",
-    title: "Profile",
-    description:
-      "Manage your administrator profile and account information.",
-    icon: User,
-  },
-  {
-    id: "security",
-    title: "Security",
-    description:
-      "Manage password, authentication, and account security settings.",
-    icon: Lock,
-  },
-  {
-    id: "notifications",
-    title: "Notifications",
-    description:
-      "Configure how platform alerts and notifications are handled.",
-    icon: Bell,
-  },
+  { id: "profile", title: "Profile", icon: User },
+  { id: "payment", title: "Payment", icon: Settings },
+  { id: "security", title: "Security", icon: Lock },
+  { id: "notifications", title: "Notifications", icon: Bell },
 ];
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] =
-    useState("general");
+  const [activeSection, setActiveSection] = useState("profile");
+  const user = useAuthStore((state) => state.user);
 
-  const user = useAuthStore(
-    (state) => state.user
+  const profileValues = useMemo(
+    () => ({
+      name: user?.name ?? "",
+      email: user?.email ?? "",
+      role: user?.role ?? "viewer",
+      merchantId: user?.merchantId ?? "",
+    }),
+    [user]
   );
 
   return (
-    <div>
-
-      {/* Page Header */}
-
-      <div className="mb-8">
-
-        <p className="mb-2 text-sm font-medium text-blue-600">
-          SmartPOS Platform
-        </p>
-
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-          Settings
-        </h1>
-
+    <div className="space-y-6">
+      <div>
+        <p className="mb-2 text-sm font-medium text-blue-600">SmartPOS</p>
+        <h1 className="text-3xl font-bold text-slate-900">Settings</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Manage your platform preferences, account, security, and notifications.
+          Manage the supported account and payment preferences for this merchant workspace.
         </p>
-
       </div>
 
-      {/* Settings Layout */}
-
-      <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-
-        {/* Settings Navigation */}
-
+      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
         <div className="h-fit rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-
           <nav className="space-y-1">
-
             {settingsSections.map((section) => {
-
               const Icon = section.icon;
-
-              const active =
-                activeSection === section.id;
+              const active = activeSection === section.id;
 
               return (
-
                 <button
                   key={section.id}
                   type="button"
-                  onClick={() =>
-                    setActiveSection(section.id)
-                  }
+                  onClick={() => setActiveSection(section.id)}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium transition ${
                     active
-                      ? "bg-blue-50 text-blue-600"
+                      ? "bg-blue-50 text-blue-700"
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
-
                   <Icon size={18} />
-
-                  <span>
-                    {section.title}
-                  </span>
-
+                  <span>{section.title}</span>
                 </button>
-
               );
-
             })}
-
           </nav>
-
         </div>
 
-        {/* Settings Content */}
-
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-
-          {/* General */}
-
-          {activeSection === "general" && (
-
-            <div className="p-6">
-
-              <div className="border-b border-slate-200 pb-5">
-
-                <h2 className="text-xl font-semibold text-slate-900">
-                  General Settings
-                </h2>
-
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          {activeSection === "profile" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Profile</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Manage general SmartPOS platform preferences.
+                  The authenticated merchant profile currently available to this session.
                 </p>
-
               </div>
 
-              <div className="py-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Full name</span>
+                  <input value={profileValues.name} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
+                </label>
 
-                <div>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Email</span>
+                  <input value={profileValues.email} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
+                </label>
 
-                  <h3 className="font-medium text-slate-900">
-                    Platform Name
-                  </h3>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Role</span>
+                  <input value={profileValues.role} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
+                </label>
 
-                  <p className="mt-1 text-sm text-slate-500">
-                    The name displayed throughout the admin platform.
-                  </p>
-
-                </div>
-
-                <div className="mt-4 max-w-xl">
-
-                  <input
-                    type="text"
-                    defaultValue="SmartPOS Platform"
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-
-                </div>
-
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Merchant ID</span>
+                  <input value={profileValues.merchantId} readOnly className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900" />
+                </label>
               </div>
-
             </div>
-
           )}
 
-          {/* Profile */}
-
-          {activeSection === "profile" && (
-
-            <div className="p-6">
-
-              <div className="border-b border-slate-200 pb-5">
-
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Admin Profile
-                </h2>
-
+          {activeSection === "payment" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Payment preferences</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  View and manage your administrator account information.
+                  Supported payment defaults for this merchant session.
                 </p>
-
               </div>
 
-              <div className="py-6">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                Payment preferences are not yet backed by a persisted merchant settings API in this repository. The supported values are shown here for the current session only.
+              </div>
 
-                <div className="grid gap-6 md:grid-cols-2">
+              <div className="grid gap-6 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Default fiat currency</span>
+                  <select defaultValue="USD" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900">
+                    <option value="USD">USD</option>
+                    <option value="NGN">NGN</option>
+                    <option value="GBP">GBP</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </label>
 
-                  <div>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Default crypto asset</span>
+                  <select defaultValue="USDT" className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900">
+                    <option value="USDT">USDT</option>
+                    <option value="USDC">USDC</option>
+                    <option value="ETH">ETH</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
 
-                    <label className="text-sm font-medium text-slate-700">
-                      Full Name
-                    </label>
+          {activeSection === "security" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Security</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Security state is controlled by the authenticated session and backend auth system.
+                </p>
+              </div>
 
-                    <input
-                      type="text"
-                      value={user?.name ?? ""}
-                      readOnly
-                      className="mt-2 h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-900 outline-none"
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <label className="text-sm font-medium text-slate-700">
-                      Email Address
-                    </label>
-
-                    <input
-                      type="email"
-                      value={user?.email ?? ""}
-                      readOnly
-                      className="mt-2 h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-900 outline-none"
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <label className="text-sm font-medium text-slate-700">
-                      Role
-                    </label>
-
-                    <input
-                      type="text"
-                      value={user?.role ?? ""}
-                      readOnly
-                      className="mt-2 h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-900 outline-none"
-                    />
-
-                  </div>
-
-                  <div>
-
-                    <label className="text-sm font-medium text-slate-700">
-                      Account Status
-                    </label>
-
-                    <input
-                      type="text"
-                      value="Active"
-                      readOnly
-                      className="mt-2 h-10 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-900 outline-none"
-                    />
-
-                  </div>
-
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                  <span className="font-medium text-slate-900">Session is authenticated and active.</span>
                 </div>
+              </div>
+            </div>
+          )}
 
-                <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          {activeSection === "notifications" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">Notifications</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Notification settings are not yet persisted to the backend in this repo.
+                </p>
+              </div>
 
-                  <p className="text-sm font-medium text-slate-900">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <span className="text-sm font-medium text-slate-900">Payment alerts</span>
+                  <input type="checkbox" defaultChecked className="h-4 w-4 accent-blue-600" />
+                </label>
+
+                <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <span className="text-sm font-medium text-slate-900">Transaction alerts</span>
+                  <input type="checkbox" defaultChecked className="h-4 w-4 accent-blue-600" />
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
                     Profile information
                   </p>
 

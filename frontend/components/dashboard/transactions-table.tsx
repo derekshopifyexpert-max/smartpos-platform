@@ -35,7 +35,7 @@ export function TransactionsTable() {
   }
 
   const transactions: Transaction[] =
-    Array.isArray(data) ? data.slice(0, 5) : [];
+    Array.isArray(data?.items) ? data.items.slice(0, 5) : [];
 
   return (
 

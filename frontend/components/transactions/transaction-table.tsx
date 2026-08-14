@@ -127,6 +127,9 @@ export function TransactionTable() {
         <p className="text-sm font-medium text-red-700">
           Unable to load transactions.
         </p>
+        <p className="mt-2 text-sm text-red-600">
+          The transaction API is unavailable or the merchant session is not authorized.
+        </p>
 
         <button
           type="button"
@@ -267,11 +270,11 @@ export function TransactionTable() {
                     className="px-6 py-12 text-center"
                   >
                     <p className="text-sm font-medium text-slate-700">
-                      No transactions found.
+                      No transactions yet.
                     </p>
 
                     <p className="mt-1 text-sm text-slate-500">
-                      Try changing your search or filters.
+                      Transactions will appear here after a payment is created.
                     </p>
                   </td>
                 </tr>
