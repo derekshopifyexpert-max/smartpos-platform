@@ -18,13 +18,19 @@ api.interceptors.request.use((config) => {
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
-          const token = parsed?.state?.token ?? parsed?.token ?? null;
+          // Support both shape: { state: { token } } and { token }
+          const token = parsed?.state?.token ?? parsed?.token ?? parsed?.state?.accessToken ?? parsed?.accessToken ?? null;
           if (token) {
             config.headers = config.headers ?? {};
             (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
           }
         } catch (e) {
-          // ignore parse errors
+          // clear invalid persisted auth to avoid continual parse errors
+          try {
+            localStorage.removeItem("smartpos-auth");
+          } catch (e) {
+            // ignore
+          }
         }
       }
     }

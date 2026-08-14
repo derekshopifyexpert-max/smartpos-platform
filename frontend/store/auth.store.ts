@@ -32,22 +32,16 @@ export const useAuthStore = create<AuthState>()(
       getStorage: () => {
         const isClient = typeof window !== "undefined";
 
-        const storage = {
-          getItem: (name: string) => {
-            if (!isClient) return null;
-            return window.localStorage.getItem(name);
-          },
-          setItem: (name: string, value: string) => {
-            if (!isClient) return;
-            window.localStorage.setItem(name, value);
-          },
-          removeItem: (name: string) => {
-            if (!isClient) return;
-            window.localStorage.removeItem(name);
-          },
-        } as Storage;
+        // Provide a safe storage shim for SSR and a normal wrapper for client
+        if (!isClient) {
+          return {
+            getItem: (_name: string) => null,
+            setItem: (_name: string, _value: string) => undefined,
+            removeItem: (_name: string) => undefined,
+          } as Storage;
+        }
 
-        return storage;
+        return window.localStorage;
       },
     }
   )

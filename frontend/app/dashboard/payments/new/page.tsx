@@ -239,7 +239,7 @@ export default function NewPaymentPage() {
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
                 >
                   <option value="ETHEREUM">Ethereum</option>
-                  <option value="TRON">TRON</option>
+                  <option value="TRON" disabled>TRON (unsupported)</option>
                   <option value="BSC">BSC</option>
                 </select>
               </div>

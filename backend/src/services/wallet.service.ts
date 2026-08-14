@@ -76,48 +76,58 @@ export default class WalletService {
 
     const networkName = (data.blockchain ?? data.network ?? "ETHEREUM").toUpperCase();
     const assetSymbol = (data.asset ?? "USDT").toUpperCase();
+    // Do not create TRON wallets using Ethers (EVM) key generation
+    if (networkName === "TRON") {
+      throw new Error("TRON network is not supported for automatic wallet generation. Use an EVM-compatible network such as ETHEREUM or BSC.");
+    }
+
     const generated = EthersWallet.createRandom();
     const blockchain = await this.ensureBlockchainNetwork(networkName);
     const walletAddress = data.address ?? data.walletAddress ?? generated.address;
 
-    const wallet = await db.wallet.create({
-      data: {
-        merchantId: data.merchantId,
-        name: data.name ?? `${assetSymbol} Wallet`,
-        type: (data.type ?? "CRYPTO") as any,
-        currency: (data.currency ?? "USD") as any,
-        balance: data.balance ?? new Prisma.Decimal(0),
-        availableBalance: data.availableBalance ?? new Prisma.Decimal(0),
-        reservedBalance: data.reservedBalance ?? new Prisma.Decimal(0),
-        address: walletAddress,
-        blockchainId: blockchain.id,
-        encryptedPrivateKey: this.encryptPrivateKey(generated.privateKey),
-        publicKey: generated.publicKey,
-        metadata: {
-          ...(data.metadata ?? {}),
-          asset: assetSymbol,
-          network: networkName,
-          walletGenerated: true,
+    // Create wallet and walletAddress atomically so partial failures do not leave broken state
+    const results = await db.$transaction(async (tx) => {
+      const wallet = await tx.wallet.create({
+        data: {
+          merchantId: data.merchantId,
+          name: data.name ?? `${assetSymbol} Wallet`,
+          type: (data.type ?? "CRYPTO") as any,
+          currency: (data.currency ?? "USD") as any,
+          balance: data.balance ?? new Prisma.Decimal(0),
+          availableBalance: data.availableBalance ?? new Prisma.Decimal(0),
+          reservedBalance: data.reservedBalance ?? new Prisma.Decimal(0),
+          address: walletAddress,
+          blockchainId: blockchain.id,
+          encryptedPrivateKey: this.encryptPrivateKey(generated.privateKey),
+          publicKey: generated.publicKey,
+          metadata: {
+            ...(data.metadata ?? {}),
+            asset: assetSymbol,
+            network: networkName,
+            walletGenerated: true,
+          },
         },
-      },
-    });
+      });
 
-    await db.walletAddress.create({
-      data: {
-        walletId: wallet.id,
-        address: walletAddress,
-        blockchainId: blockchain.id,
-        label: "Primary",
-        metadata: {
-          asset: assetSymbol,
-          network: networkName,
+      const walletAddr = await tx.walletAddress.create({
+        data: {
+          walletId: wallet.id,
+          address: walletAddress,
+          blockchainId: blockchain.id,
+          label: "Primary",
+          metadata: {
+            asset: assetSymbol,
+            network: networkName,
+          },
         },
-      },
+      });
+
+      return { walletId: wallet.id };
     });
 
     // Return the wallet including related blockchain and addresses
     return db.wallet.findUnique({
-      where: { id: wallet.id },
+      where: { id: results.walletId },
       include: {
         blockchain: true,
         walletAddresses: true,

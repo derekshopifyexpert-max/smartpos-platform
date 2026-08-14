@@ -18,6 +18,7 @@ export default function WalletsPage() {
   const [network, setNetwork] = useState("ETHEREUM");
   const [asset, setAsset] = useState("USDT");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!merchantId) return;
@@ -50,6 +51,7 @@ export default function WalletsPage() {
 
     setSaving(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const created = await createWallet({
@@ -71,6 +73,7 @@ export default function WalletsPage() {
       setName("USDT Wallet");
       setNetwork("ETHEREUM");
       setAsset("USDT");
+      setSuccess("Wallet created successfully");
     } catch (caught) {
       const err = caught as any;
       const backendMessage =
@@ -132,13 +135,16 @@ export default function WalletsPage() {
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
               >
                 <option value="ETHEREUM">Ethereum</option>
-                <option value="TRON">TRON</option>
+                <option value="TRON" disabled>
+                  TRON (unsupported)
+                </option>
                 <option value="BSC">BSC</option>
               </select>
             </div>
           </div>
 
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
 
           <Button onClick={handleCreateWallet} disabled={saving || !merchantId} className="gap-2">
             <Plus className="h-4 w-4" />

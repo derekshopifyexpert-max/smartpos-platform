@@ -15,11 +15,7 @@ export default class WalletController {
     const wallet =
       await this.walletService.createWallet(request.body as CreateWalletBody);
 
-    const safeWallet = {
-      ...wallet,
-      encryptedPrivateKey: undefined,
-      // never include walletKeys or other sensitive fields
-    } as any;
+    const safeWallet = (({ encryptedPrivateKey, ...rest }: any) => rest)(wallet ?? {});
 
     return reply.send({
       success: true,
