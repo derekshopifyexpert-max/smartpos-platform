@@ -115,7 +115,14 @@ export default class WalletService {
       },
     });
 
-    return wallet;
+    // Return the wallet including related blockchain and addresses
+    return db.wallet.findUnique({
+      where: { id: wallet.id },
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
+    });
   }
 
   async getWallet(id: string) {

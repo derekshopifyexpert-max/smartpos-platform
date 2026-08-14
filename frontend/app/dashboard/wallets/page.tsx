@@ -72,7 +72,13 @@ export default function WalletsPage() {
       setNetwork("ETHEREUM");
       setAsset("USDT");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Wallet creation failed.");
+      const err = caught as any;
+      const backendMessage =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (err instanceof Error ? err.message : null);
+
+      setError(backendMessage ?? "Wallet creation failed.");
     } finally {
       setSaving(false);
     }

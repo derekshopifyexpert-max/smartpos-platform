@@ -264,7 +264,13 @@ export default function NewPaymentPage() {
               {loadingWallets ? (
                 <p className="text-sm text-slate-500">Loading wallets...</p>
               ) : wallets.length === 0 ? (
-                <p className="text-sm text-slate-600">No saved wallets yet. Create one to continue.</p>
+                <p className="text-sm text-slate-600">
+                  No saved wallets yet.{' '}
+                  <Link href="/dashboard/wallets" className="font-medium text-blue-600 hover:underline">
+                    Create one
+                  </Link>{' '}
+                  to continue.
+                </p>
               ) : (
                 <div className="space-y-3">
                   {wallets.map((wallet) => (

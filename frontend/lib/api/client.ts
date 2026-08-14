@@ -1,10 +1,6 @@
 import axios from "axios";
 
-import { useAuthStore } from "@/store/auth.store";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:3000/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -14,12 +10,47 @@ export const api = axios.create({
   },
 });
 
+// Add auth header on client only by reading the persisted zustand key.
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
-
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  try {
+    if (typeof window !== "undefined") {
+      const raw = localStorage.getItem("smartpos-auth");
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          const token = parsed?.state?.token ?? parsed?.token ?? null;
+          if (token) {
+            config.headers = config.headers ?? {};
+            (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+    }
+  } catch (e) {
+    // defensive noop
   }
 
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    try {
+      if (typeof window !== "undefined" && error.response?.status === 401) {
+        // Clear persisted auth to force re-login
+        try {
+          localStorage.removeItem("smartpos-auth");
+        } catch (e) {
+          // ignore
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return Promise.reject(error);
+  }
+);

@@ -29,6 +29,26 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "smartpos-auth",
+      getStorage: () => {
+        const isClient = typeof window !== "undefined";
+
+        const storage = {
+          getItem: (name: string) => {
+            if (!isClient) return null;
+            return window.localStorage.getItem(name);
+          },
+          setItem: (name: string, value: string) => {
+            if (!isClient) return;
+            window.localStorage.setItem(name, value);
+          },
+          removeItem: (name: string) => {
+            if (!isClient) return;
+            window.localStorage.removeItem(name);
+          },
+        } as Storage;
+
+        return storage;
+      },
     }
   )
 );

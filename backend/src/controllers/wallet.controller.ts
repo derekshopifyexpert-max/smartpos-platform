@@ -15,9 +15,15 @@ export default class WalletController {
     const wallet =
       await this.walletService.createWallet(request.body as CreateWalletBody);
 
+    const safeWallet = {
+      ...wallet,
+      encryptedPrivateKey: undefined,
+      // never include walletKeys or other sensitive fields
+    } as any;
+
     return reply.send({
       success: true,
-      data: wallet
+      data: safeWallet
     });
   };
 
@@ -100,9 +106,14 @@ export default class WalletController {
     const wallet =
       await this.walletService.getWallet(id);
 
+    const safeWallet = {
+      ...wallet,
+      encryptedPrivateKey: undefined,
+    } as any;
+
     return reply.send({
       success: true,
-      data: wallet
+      data: safeWallet
     });
   };
 
@@ -118,9 +129,14 @@ export default class WalletController {
         merchantId
       );
 
+    const safe = (wallets ?? []).map((w: any) => ({
+      ...w,
+      encryptedPrivateKey: undefined,
+    }));
+
     return reply.send({
       success: true,
-      data: wallets
+      data: safe
     });
   };
 }
