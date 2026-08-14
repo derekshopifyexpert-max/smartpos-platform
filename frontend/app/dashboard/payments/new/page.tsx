@@ -327,7 +327,7 @@ export default function NewPaymentPage() {
             <CardTitle>Review</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-xl bg-slate-50 p-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-sm text-slate-500">Amount</p>
               <p className="mt-2 text-2xl font-bold text-slate-900">{new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(amount || 0))}</p>
             </div>

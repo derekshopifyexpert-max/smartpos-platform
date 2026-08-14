@@ -180,7 +180,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/dashboard/payments/new"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80"
           >
             <Plus className="h-4 w-4" />
             New Payment
@@ -285,7 +285,7 @@ export default function DashboardPage() {
 
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
                         <div
-                          className="h-full rounded-full bg-slate-900 transition-all"
+                          className="h-full rounded-full bg-primary transition-all"
                           style={{
                             width: `${width}%`,
                           }}
@@ -348,7 +348,7 @@ export default function DashboardPage() {
 
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full bg-slate-900 transition-all"
+                  className="h-full rounded-full bg-primary transition-all"
                   style={{
                     width: `${Math.min(
                       Math.max(
@@ -443,7 +443,7 @@ export default function DashboardPage() {
 
                     <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className="h-full rounded-full bg-slate-900 transition-all"
+                        className="h-full rounded-full bg-primary transition-all"
                         style={{
                           width: `${percentage}%`,
                         }}

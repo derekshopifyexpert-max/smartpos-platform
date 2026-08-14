@@ -12,6 +12,7 @@ import { useAuthStore } from "@/store/auth.store";
 export default function WalletsPage() {
   const merchantId = useAuthStore((state) => state.user?.merchantId ?? "");
   const [wallets, setWallets] = useState<WalletRecord[]>([]);
+  const [latestCreated, setLatestCreated] = useState<WalletRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("USDT Wallet");
@@ -37,6 +38,10 @@ export default function WalletsPage() {
 
     void run();
   }, [merchantId]);
+
+  const missingMerchantMessage = !merchantId
+    ? "You must be signed in to create wallets. Please sign in to your merchant account."
+    : null;
 
   const walletSummary = useMemo(() => {
     if (wallets.length === 0) return "No wallet records yet.";
@@ -70,6 +75,7 @@ export default function WalletsPage() {
       });
 
       setWallets((current) => [created, ...current]);
+      setLatestCreated(created);
       setName("USDT Wallet");
       setNetwork("ETHEREUM");
       setAsset("USDT");
@@ -143,8 +149,38 @@ export default function WalletsPage() {
             </div>
           </div>
 
+          {missingMerchantMessage ? (
+            <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+              {missingMerchantMessage}
+            </div>
+          ) : null}
+
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
+
+          {success && latestCreated ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="font-semibold text-emerald-700">{success}</p>
+              <p className="text-sm text-slate-700 mt-1">Your {String(latestCreated.metadata?.asset ?? latestCreated.name)} wallet on {String(latestCreated.blockchain?.name ?? latestCreated.metadata?.network ?? "Ethereum")} is ready to receive settlements.</p>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">Wallet address</p>
+                  <p className="mt-1 font-mono text-sm text-slate-900">{latestCreated.address ?? latestCreated.walletAddresses?.[0]?.address}</p>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(String(latestCreated.address ?? latestCreated.walletAddresses?.[0]?.address ?? ""))}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Copy address
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : success ? (
+            <p className="text-sm text-emerald-600">{success}</p>
+          ) : null}
 
           <Button onClick={handleCreateWallet} disabled={saving || !merchantId} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -170,7 +206,7 @@ export default function WalletsPage() {
           ) : (
             <div className="space-y-3">
               {wallets.map((wallet) => (
-                <div key={wallet.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 md:flex-row md:items-center md:justify-between">
+                <div key={wallet.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
                     <div className="rounded-lg bg-white p-2 text-slate-700">
                       <WalletIcon className="h-4 w-4" />
