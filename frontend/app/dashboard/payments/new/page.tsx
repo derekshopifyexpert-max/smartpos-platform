@@ -278,7 +278,9 @@ export default function NewPaymentPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-slate-900">{wallet.name}</p>
-                        <p className="text-xs text-slate-500">{wallet.blockchain?.name ?? network} · {wallet.metadata?.asset ?? asset}</p>
+                        <p className="text-xs text-slate-500">
+  {String(wallet.blockchain?.name ?? network)} · {String(wallet.metadata?.asset ?? asset)}
+</p>
                         <p className="mt-1 truncate font-mono text-xs text-slate-700">{wallet.address ?? wallet.walletAddresses?.[0]?.address ?? "Address missing"}</p>
                       </div>
                     </label>

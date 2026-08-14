@@ -165,7 +165,9 @@ export default function WalletsPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-slate-900">{wallet.name}</p>
-                      <p className="text-sm text-slate-500">{wallet.metadata?.asset ?? wallet.name} · {wallet.blockchain?.name ?? wallet.metadata?.network ?? "Ethereum"}</p>
+                      <p className="text-sm text-slate-500">
+  {String(wallet.metadata?.asset ?? wallet.name)} · {String(wallet.blockchain?.name ?? wallet.metadata?.network ?? "Ethereum")}
+</p>
                       <p className="mt-1 font-mono text-xs text-slate-700">{wallet.address ?? wallet.walletAddresses?.[0]?.address ?? "No public address"}</p>
                     </div>
                   </div>
