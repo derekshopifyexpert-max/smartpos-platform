@@ -12,7 +12,6 @@ import settlementRoutes from "./settlement.routes.js";
 import authRoutes from "./auth.routes.js";
 import terminalRoutes from "./terminal.routes.js";
 import healthRoutes from "./health.routes.js";
-import webhookRoutes from "./webhook.routes.js";
 
 export default async function registerRoutes(
   app: FastifyInstance
@@ -21,10 +20,6 @@ export default async function registerRoutes(
   app.register(healthRoutes);
 
   app.register(paymentRoutes, {
-    prefix: "/api/v1"
-  });
-
-  app.register(webhookRoutes, {
     prefix: "/api/v1"
   });
 

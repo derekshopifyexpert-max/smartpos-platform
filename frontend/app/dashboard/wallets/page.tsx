@@ -20,6 +20,7 @@ export default function WalletsPage() {
   const [asset, setAsset] = useState("USDT");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [copiedWalletId, setCopiedWalletId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!merchantId) return;
@@ -95,7 +96,20 @@ export default function WalletsPage() {
 
   async function copyAddress(address?: string | null) {
     if (!address) return;
-    await navigator.clipboard.writeText(address);
+    try {
+      await navigator.clipboard.writeText(address);
+      // find wallet id by address if available
+      const found = wallets.find((w) => (w.address ?? w.walletAddresses?.[0]?.address) === address);
+      if (found) {
+        setCopiedWalletId(found.id);
+        setTimeout(() => setCopiedWalletId(null), 2000);
+      } else {
+        setCopiedWalletId("inline");
+        setTimeout(() => setCopiedWalletId(null), 2000);
+      }
+    } catch {
+      // ignore clipboard errors silently
+    }
   }
 
   return (
@@ -165,15 +179,15 @@ export default function WalletsPage() {
               <div className="mt-3 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs text-slate-500">Wallet address</p>
-                  <p className="mt-1 font-mono text-sm text-slate-900">{latestCreated.address ?? latestCreated.walletAddresses?.[0]?.address}</p>
+                    <p className="mt-1 font-mono text-sm text-slate-900">{latestCreated.address ?? latestCreated.walletAddresses?.[0]?.address}</p>
                 </div>
                 <div>
                   <button
                     type="button"
-                    onClick={() => void navigator.clipboard.writeText(String(latestCreated.address ?? latestCreated.walletAddresses?.[0]?.address ?? ""))}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      onClick={() => void copyAddress(String(latestCreated.address ?? latestCreated.walletAddresses?.[0]?.address ?? ""))}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    Copy address
+                      {copiedWalletId === latestCreated.id || copiedWalletId === "inline" ? "Copied" : "Copy address"}
                   </button>
                 </div>
               </div>
@@ -220,9 +234,9 @@ export default function WalletsPage() {
                     </div>
                   </div>
 
-                  <Button variant="outline" size="sm" onClick={() => copyAddress(wallet.address ?? wallet.walletAddresses?.[0]?.address)} className="gap-2">
+                  <Button variant="outline" size="sm" onClick={() => void copyAddress(wallet.address ?? wallet.walletAddresses?.[0]?.address)} className="gap-2">
                     <Copy className="h-3.5 w-3.5" />
-                    Copy address
+                    {copiedWalletId === wallet.id ? "Copied" : "Copy address"}
                   </Button>
                 </div>
               ))}

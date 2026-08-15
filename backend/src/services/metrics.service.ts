@@ -1,7 +1,4 @@
-import {
-  PrismaClient,
-  TransactionStatus,
-} from "@prisma/client";
+import { PrismaClient, TransactionStatus } from "@prisma/client";
 
 export default class MetricsService {
   constructor(
