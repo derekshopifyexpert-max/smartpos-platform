@@ -1,7 +1,6 @@
 import { FastifyInstance } from "fastify";
 
 import WalletService from "../services/wallet.service.js";
-import { authMiddleware } from "../middleware/auth.middleware.js";
 import WalletController from "../controllers/wallet.controller.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
