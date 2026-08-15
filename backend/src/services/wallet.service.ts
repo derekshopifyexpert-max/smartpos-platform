@@ -1,10 +1,21 @@
-import {
-  FastifyInstance,
-} from "fastify";
+import { FastifyInstance } from "fastify";
+import { Prisma } from "@prisma/client";
 
-import {
-  Prisma,
-} from "@prisma/client";
+type WalletDatabaseClient =
+  | Prisma.TransactionClient
+  | typeof this.app.prisma;
+
+interface CreateWalletData {
+  merchantId: string;
+  name: string;
+  currency: string;
+  blockchain: string;
+  network: string;
+  asset: string;
+  address: string;
+  type?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export default class WalletService {
   constructor(
@@ -13,20 +24,16 @@ export default class WalletService {
 
   private async ensureBlockchainNetwork(
     networkName: string,
-    db:
-      | Prisma.TransactionClient
-      | typeof this.app.prisma
+    db: Prisma.TransactionClient | typeof this.app.prisma
   ) {
-    const normalized =
-      networkName
-        .trim()
-        .toUpperCase();
+    const normalized = networkName
+      .trim()
+      .toUpperCase();
 
     const existing =
       await db.blockchainNetwork.findUnique({
         where: {
-          name:
-            normalized as any,
+          name: normalized as any,
         },
       });
 
@@ -34,25 +41,20 @@ export default class WalletService {
       return existing;
     }
 
+    /*
+     * Only create the blockchain-network metadata record.
+     *
+     * This does NOT create a blockchain wallet.
+     */
     return db.blockchainNetwork.create({
       data: {
-        name:
-          normalized as any,
-
-        nativeCurrency:
-          "USD",
-
-        blockTime:
-          12,
-
-        isActive:
-          true,
-
+        name: normalized as any,
+        nativeCurrency: "USD",
+        blockTime: 12,
+        isActive: true,
         metadata: {
-          source:
-            "smartpos-wallet-creation",
-          autoCreated:
-            true,
+          source: "smartpos-wallet-creation",
+          autoCreated: true,
         },
       },
     });
@@ -62,13 +64,11 @@ export default class WalletService {
     networkName: string,
     address: string
   ) {
-    const network =
-      networkName
-        .trim()
-        .toUpperCase();
+    const network = networkName
+      .trim()
+      .toUpperCase();
 
-    const normalizedAddress =
-      address.trim();
+    const normalizedAddress = address.trim();
 
     if (!normalizedAddress) {
       throw new Error(
@@ -77,8 +77,11 @@ export default class WalletService {
     }
 
     /*
-     * SmartPOS currently knows how to validate
+     * SmartPOS currently supports storing existing
      * EVM public addresses for Ethereum and BSC.
+     *
+     * The address is supplied by the merchant.
+     * SmartPOS does not generate it.
      */
     if (
       network === "ETHEREUM" ||
@@ -96,12 +99,9 @@ export default class WalletService {
     }
 
     /*
-     * We explicitly refuse TRON rather than
-     * pretending an EVM address is a TRON address.
+     * Never pretend an EVM address is a TRON address.
      */
-    if (
-      network === "TRON"
-    ) {
+    if (network === "TRON") {
       throw new Error(
         "TRON wallet addresses are not currently supported by SmartPOS."
       );
@@ -120,23 +120,8 @@ export default class WalletService {
   }
 
   private async createWalletRecord(
-    data: {
-      merchantId: string;
-      name: string;
-      currency: string;
-      blockchain: string;
-      network: string;
-      asset: string;
-      address: string;
-      type?: string;
-      metadata?: Record<
-        string,
-        unknown
-      >;
-    },
-    db:
-      | Prisma.TransactionClient
-      | typeof this.app.prisma
+    data: CreateWalletData,
+    db: Prisma.TransactionClient | typeof this.app.prisma
   ) {
     const merchant =
       await db.merchant.findUnique({
@@ -147,33 +132,35 @@ export default class WalletService {
 
     if (!merchant) {
       throw new Error(
-        "Merchant not found."
+        "Merchant account not found."
       );
     }
 
-    const networkName =
-      data.network
-        .trim()
-        .toUpperCase();
+    const networkName = data.network
+      .trim()
+      .toUpperCase();
 
-    const blockchainName =
-      data.blockchain
-        .trim()
-        .toUpperCase();
+    const blockchainName = data.blockchain
+      .trim()
+      .toUpperCase();
 
     if (
-      networkName !==
-      blockchainName
+      networkName !== blockchainName
     ) {
       throw new Error(
         "Blockchain and network must refer to the same network."
       );
     }
 
-    const assetSymbol =
-      data.asset
-        .trim()
-        .toUpperCase();
+    const assetSymbol = data.asset
+      .trim()
+      .toUpperCase();
+
+    if (!assetSymbol) {
+      throw new Error(
+        "Wallet asset is required."
+      );
+    }
 
     const walletAddress =
       this.validateAddress(
@@ -188,16 +175,14 @@ export default class WalletService {
       );
 
     /*
-     * One public address must not be registered
+     * The same public address must not be registered
      * against multiple SmartPOS wallet records.
      */
     const existingAddress =
       await db.walletAddress.findUnique({
         where: {
-          address:
-            walletAddress,
+          address: walletAddress,
         },
-
         include: {
           wallet: true,
         },
@@ -205,8 +190,7 @@ export default class WalletService {
 
     if (existingAddress) {
       if (
-        existingAddress.wallet
-          .merchantId ===
+        existingAddress.wallet.merchantId ===
         data.merchantId
       ) {
         throw new Error(
@@ -220,14 +204,19 @@ export default class WalletService {
     }
 
     /*
-     * SmartPOS is storing an external merchant-owned
-     * settlement wallet.
+     * IMPORTANT:
      *
-     * It does NOT generate:
-     * - private keys
-     * - seed phrases
-     * - public keys
-     * - wallet addresses
+     * SmartPOS does not create a wallet.
+     *
+     * The merchant already owns the blockchain wallet.
+     * SmartPOS only stores its public settlement address.
+     *
+     * Therefore:
+     *
+     * encryptedPrivateKey = null
+     * publicKey = null
+     *
+     * No private credential is generated or stored.
      */
     const wallet =
       await db.wallet.create({
@@ -239,8 +228,7 @@ export default class WalletService {
             data.name.trim(),
 
           type:
-            (data.type ??
-              "CRYPTO") as any,
+            (data.type ?? "CRYPTO") as any,
 
           currency:
             data.currency
@@ -269,8 +257,7 @@ export default class WalletService {
             null,
 
           metadata: {
-            ...(data.metadata ??
-              {}),
+            ...(data.metadata ?? {}),
 
             asset:
               assetSymbol,
@@ -294,12 +281,11 @@ export default class WalletService {
       });
 
     /*
-     * Create the primary public address using
-     * the SAME Prisma client.
+     * The wallet and its primary address are created
+     * inside the same transaction.
      *
-     * When createWallet() wraps this operation
-     * in $transaction(), a failure here rolls back
-     * the wallet record as well.
+     * If this address creation fails, the wallet itself
+     * is rolled back.
      */
     await db.walletAddress.create({
       data: {
@@ -331,40 +317,34 @@ export default class WalletService {
       },
     });
 
-    return db.wallet.findUnique({
-      where: {
-        id: wallet.id,
-      },
+    /*
+     * Return the persisted wallet and its persisted
+     * primary public address.
+     */
+    const createdWallet =
+      await db.wallet.findUnique({
+        where: {
+          id: wallet.id,
+        },
 
-      include: {
-        blockchain: true,
-        walletAddresses: true,
-      },
-    });
+        include: {
+          blockchain: true,
+          walletAddresses: true,
+        },
+      });
+
+    if (!createdWallet) {
+      throw new Error(
+        "Wallet was created but could not be retrieved."
+      );
+    }
+
+    return createdWallet;
   }
 
   async createWallet(
-    data: {
-      merchantId: string;
-      name: string;
-      currency: string;
-      blockchain: string;
-      network: string;
-      asset: string;
-      address: string;
-      type?: string;
-      metadata?: Record<
-        string,
-        unknown
-      >;
-    }
+    data: CreateWalletData
   ) {
-    /*
-     * Merchant creation and wallet creation are
-     * separate operations in the current architecture,
-     * so this transaction guarantees wallet +
-     * primary address atomicity.
-     */
     return this.app.prisma.$transaction(
       async (tx) => {
         return this.createWalletRecord(
@@ -390,10 +370,73 @@ export default class WalletService {
     });
   }
 
+  /*
+   * Merchant-scoped wallet lookup.
+   *
+   * This is intentionally separate from getWallet()
+   * so an authenticated merchant cannot retrieve
+   * another merchant's wallet by guessing an ID.
+   */
+  async getWalletForMerchant(
+    id: string,
+    merchantId?: string
+  ) {
+    if (!merchantId) {
+      throw new Error(
+        "Your account is not associated with a merchant account."
+      );
+    }
+
+    return this.app.prisma.wallet.findFirst({
+      where: {
+        id,
+        merchantId,
+      },
+
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
+    });
+  }
+
+  async merchantWallets(
+    merchantId: string
+  ) {
+    if (!merchantId) {
+      throw new Error(
+        "Merchant account is required."
+      );
+    }
+
+    return this.app.prisma.wallet.findMany({
+      where: {
+        merchantId,
+      },
+
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
+
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
+
   async creditWallet(
     walletId: string,
     amount: Prisma.Decimal
   ) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
+      throw new Error(
+        "Credit amount must be greater than zero."
+      );
+    }
+
     const wallet =
       await this.getWallet(
         walletId
@@ -425,6 +468,11 @@ export default class WalletService {
         availableBalance:
           newBalance,
       },
+
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
     });
   }
 
@@ -432,6 +480,14 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
+      throw new Error(
+        "Debit amount must be greater than zero."
+      );
+    }
+
     const wallet =
       await this.getWallet(
         walletId
@@ -471,6 +527,11 @@ export default class WalletService {
         availableBalance:
           newBalance,
       },
+
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
     });
   }
 
@@ -480,12 +541,18 @@ export default class WalletService {
     amount: Prisma.Decimal
   ) {
     if (
-      amount.lessThanOrEqualTo(
-        0
-      )
+      amount.lessThanOrEqualTo(0)
     ) {
       throw new Error(
         "Transfer amount must be greater than zero."
+      );
+    }
+
+    if (
+      fromWalletId === toWalletId
+    ) {
+      throw new Error(
+        "Source and destination wallets must be different."
       );
     }
 
@@ -517,15 +584,26 @@ export default class WalletService {
           );
         }
 
+        /*
+         * Do not allow transfers between different
+         * merchant accounts.
+         */
+        if (
+          fromWallet.merchantId !==
+          toWallet.merchantId
+        ) {
+          throw new Error(
+            "Wallets must belong to the same merchant account."
+          );
+        }
+
         const fromBalance =
           new Prisma.Decimal(
             fromWallet.balance
           );
 
         if (
-          fromBalance.lessThan(
-            amount
-          )
+          fromBalance.lessThan(amount)
         ) {
           throw new Error(
             "Insufficient wallet balance."
@@ -590,6 +668,14 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
+      throw new Error(
+        "Reserve amount must be greater than zero."
+      );
+    }
+
     const wallet =
       await this.getWallet(
         walletId
@@ -598,16 +684,6 @@ export default class WalletService {
     if (!wallet) {
       throw new Error(
         "Wallet not found."
-      );
-    }
-
-    if (
-      amount.lessThanOrEqualTo(
-        0
-      )
-    ) {
-      throw new Error(
-        "Reserve amount must be greater than zero."
       );
     }
 
@@ -647,6 +723,11 @@ export default class WalletService {
             amount
           ),
       },
+
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
     });
   }
 
@@ -654,6 +735,14 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
+      throw new Error(
+        "Release amount must be greater than zero."
+      );
+    }
+
     const wallet =
       await this.getWallet(
         walletId
@@ -662,16 +751,6 @@ export default class WalletService {
     if (!wallet) {
       throw new Error(
         "Wallet not found."
-      );
-    }
-
-    if (
-      amount.lessThanOrEqualTo(
-        0
-      )
-    ) {
-      throw new Error(
-        "Release amount must be greater than zero."
       );
     }
 
@@ -711,6 +790,11 @@ export default class WalletService {
             amount
           ),
       },
+
+      include: {
+        blockchain: true,
+        walletAddresses: true,
+      },
     });
   }
 
@@ -718,6 +802,14 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
+      throw new Error(
+        "Capture amount must be greater than zero."
+      );
+    }
+
     const wallet =
       await this.getWallet(
         walletId
@@ -726,16 +818,6 @@ export default class WalletService {
     if (!wallet) {
       throw new Error(
         "Wallet not found."
-      );
-    }
-
-    if (
-      amount.lessThanOrEqualTo(
-        0
-      )
-    ) {
-      throw new Error(
-        "Capture amount must be greater than zero."
       );
     }
 
@@ -764,6 +846,14 @@ export default class WalletService {
       );
     }
 
+    if (
+      balance.lessThan(amount)
+    ) {
+      throw new Error(
+        "Insufficient wallet balance."
+      );
+    }
+
     return this.app.prisma.wallet.update({
       where: {
         id: walletId,
@@ -771,54 +861,18 @@ export default class WalletService {
 
       data: {
         balance:
-          balance.minus(
-            amount
-          ),
+          balance.minus(amount),
 
         reservedBalance:
-          reservedBalance.minus(
-            amount
-          ),
+          reservedBalance.minus(amount),
 
         availableBalance:
           availableBalance,
-      },
-    });
-  }
-
-  async merchantWallets(
-    merchantId: string
-  ) {
-    const merchant =
-      await this.app.prisma.merchant.findUnique({
-        where: {
-          id: merchantId,
-        },
-
-        select: {
-          id: true,
-        },
-      });
-
-    if (!merchant) {
-      throw new Error(
-        "Merchant not found."
-      );
-    }
-
-    return this.app.prisma.wallet.findMany({
-      where: {
-        merchantId,
       },
 
       include: {
         blockchain: true,
         walletAddresses: true,
-      },
-
-      orderBy: {
-        createdAt:
-          "desc",
       },
     });
   }

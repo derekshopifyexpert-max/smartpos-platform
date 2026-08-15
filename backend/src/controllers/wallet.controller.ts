@@ -1,18 +1,46 @@
-import {
-  Prisma,
-} from "@prisma/client";
-
+import { Prisma } from "@prisma/client";
 import {
   FastifyReply,
   FastifyRequest,
 } from "fastify";
 
 import WalletService from "../services/wallet.service.js";
+
 import type {
   CreateWalletBody,
+  CreateWalletRequestData,
 } from "../types/wallet.js";
 
-function sanitizeWallet(
+function getAuthenticatedUser(
+  request: FastifyRequest
+): {
+  id: string;
+  merchantId?: string;
+} {
+  const user = request.user as
+    | {
+        id?: string;
+        merchantId?: string;
+      }
+    | undefined;
+
+  if (!user?.id) {
+    const error = new Error(
+      "Authentication is required."
+    );
+
+    (error as any).statusCode = 401;
+
+    throw error;
+  }
+
+  return {
+    id: user.id,
+    merchantId: user.merchantId,
+  };
+}
+
+function removeSensitiveWalletFields(
   wallet: any
 ) {
   if (!wallet) {
@@ -21,18 +49,13 @@ function sanitizeWallet(
 
   const {
     encryptedPrivateKey: _encryptedPrivateKey,
+    privateKey: _privateKey,
+    seedPhrase: _seedPhrase,
+    mnemonic: _mnemonic,
     ...safeWallet
   } = wallet;
 
   return safeWallet;
-}
-
-function getErrorMessage(
-  error: unknown
-) {
-  return error instanceof Error
-    ? error.message
-    : "Wallet request failed.";
 }
 
 export default class WalletController {
@@ -44,67 +67,35 @@ export default class WalletController {
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
-    try {
-      const wallet =
-        await this.walletService.createWallet(
-          request.body as CreateWalletBody
-        );
+    const user =
+      getAuthenticatedUser(request);
 
-      if (!wallet) {
-        return reply.code(500).send({
-          success: false,
-          message:
-            "Wallet was not returned after creation.",
-        });
-      }
-
-      return reply.code(201).send({
-        success: true,
-        data: sanitizeWallet(
-          wallet
-        ),
-      });
-    } catch (error) {
-      const message =
-        getErrorMessage(error);
-
-      request.log.error(
-        {
-          error,
-        },
-        "Wallet creation failed"
+    if (!user.merchantId) {
+      const error = new Error(
+        "Your account is not associated with a merchant account."
       );
 
-      const statusCode =
-        message ===
-        "Merchant not found."
-          ? 404
-          : message.includes(
-                "already saved"
-              ) ||
-            message.includes(
-                "already associated"
-              )
-          ? 409
-          : message.includes(
-                "required"
-              ) ||
-            message.includes(
-                "Invalid"
-              ) ||
-            message.includes(
-                "Unsupported"
-              )
-          ? 400
-          : 500;
+      (error as any).statusCode = 403;
 
-      return reply
-        .code(statusCode)
-        .send({
-          success: false,
-          message,
-        });
+      throw error;
     }
+
+    const body =
+      request.body as CreateWalletBody;
+
+    const wallet =
+      await this.walletService.createWallet({
+        ...body,
+        merchantId: user.merchantId,
+      } as CreateWalletRequestData);
+
+    const safeWallet =
+      removeSensitiveWalletFields(wallet);
+
+    return reply.send({
+      success: true,
+      data: safeWallet,
+    });
   };
 
   transferFunds = async (
@@ -115,22 +106,17 @@ export default class WalletController {
       fromWalletId,
       toWalletId,
       amount,
-    } =
-      request.body as {
-        fromWalletId: string;
-        toWalletId: string;
-        amount:
-          | number
-          | string;
-      };
+    } = request.body as {
+      fromWalletId: string;
+      toWalletId: string;
+      amount: number | string;
+    };
 
     const result =
       await this.walletService.transferFunds(
         fromWalletId,
         toWalletId,
-        new Prisma.Decimal(
-          amount
-        )
+        new Prisma.Decimal(amount)
       );
 
     return reply.send({
@@ -150,24 +136,18 @@ export default class WalletController {
 
     const { amount } =
       request.body as {
-        amount:
-          | number
-          | string;
+        amount: number | string;
       };
 
     const wallet =
       await this.walletService.creditWallet(
         id,
-        new Prisma.Decimal(
-          amount
-        )
+        new Prisma.Decimal(amount)
       );
 
     return reply.send({
       success: true,
-      data: sanitizeWallet(
-        wallet
-      ),
+      data: wallet,
     });
   };
 
@@ -182,24 +162,18 @@ export default class WalletController {
 
     const { amount } =
       request.body as {
-        amount:
-          | number
-          | string;
+        amount: number | string;
       };
 
     const wallet =
       await this.walletService.debitWallet(
         id,
-        new Prisma.Decimal(
-          amount
-        )
+        new Prisma.Decimal(amount)
       );
 
     return reply.send({
       success: true,
-      data: sanitizeWallet(
-        wallet
-      ),
+      data: wallet,
     });
   };
 
@@ -207,29 +181,26 @@ export default class WalletController {
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
+    const user =
+      getAuthenticatedUser(request);
+
     const { id } =
       request.params as {
         id: string;
       };
 
     const wallet =
-      await this.walletService.getWallet(
-        id
+      await this.walletService.getWalletForMerchant(
+        id,
+        user.merchantId
       );
 
-    if (!wallet) {
-      return reply.code(404).send({
-        success: false,
-        message:
-          "Wallet not found.",
-      });
-    }
+    const safeWallet =
+      removeSensitiveWalletFields(wallet);
 
     return reply.send({
       success: true,
-      data: sanitizeWallet(
-        wallet
-      ),
+      data: safeWallet,
     });
   };
 
@@ -237,52 +208,33 @@ export default class WalletController {
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
-    const {
-      merchantId,
-    } =
-      request.params as {
-        merchantId: string;
-      };
+    const user =
+      getAuthenticatedUser(request);
 
-    try {
-      const wallets =
-        await this.walletService.merchantWallets(
-          merchantId
-        );
-
-      return reply.send({
-        success: true,
-
-        data: wallets.map(
-          (wallet) =>
-            sanitizeWallet(
-              wallet
-            )
-        ),
-      });
-    } catch (error) {
-      const message =
-        getErrorMessage(error);
-
-      request.log.error(
-        {
-          error,
-          merchantId,
-        },
-        "Failed to load merchant wallets"
+    if (!user.merchantId) {
+      const error = new Error(
+        "Your account is not associated with a merchant account."
       );
 
-      return reply
-        .code(
-          message ===
-            "Merchant not found."
-            ? 404
-            : 500
-        )
-        .send({
-          success: false,
-          message,
-        });
+      (error as any).statusCode = 403;
+
+      throw error;
     }
+
+    const wallets =
+      await this.walletService.merchantWallets(
+        user.merchantId
+      );
+
+    const safe =
+      (wallets ?? []).map(
+        (wallet: any) =>
+          removeSensitiveWalletFields(wallet)
+      );
+
+    return reply.send({
+      success: true,
+      data: safe,
+    });
   };
 }

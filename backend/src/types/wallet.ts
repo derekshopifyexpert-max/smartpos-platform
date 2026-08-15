@@ -1,34 +1,25 @@
-import { Prisma } from "@prisma/client";
-
 export interface CreateWalletBody {
-  merchantId: string;
-
   name: string;
-
   currency: string;
-
   blockchain: string;
-
   network: string;
-
   asset: string;
-
-  /*
-   * Required because SmartPOS stores an
-   * existing merchant-owned public address.
-   */
-  address: string;
-
   type?: string;
+  address: string;
+  metadata?: Record<string, unknown>;
+}
 
-  metadata?: Record<
-    string,
-    unknown
-  >;
+export interface WalletTransferBody {
+  fromWalletId: string;
+  toWalletId: string;
+  amount: number | string;
+}
 
-  balance?: Prisma.Decimal;
+export interface WalletAmountBody {
+  amount: number | string;
+}
 
-  availableBalance?: Prisma.Decimal;
-
-  reservedBalance?: Prisma.Decimal;
+export interface CreateWalletRequestData
+  extends CreateWalletBody {
+  merchantId: string;
 }

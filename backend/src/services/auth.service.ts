@@ -4,29 +4,33 @@ import bcrypt from "bcrypt";
 import {
   generateRefreshToken,
   hashRefreshToken,
-  verifyRefreshToken
+  verifyRefreshToken,
 } from "../utils/token.js";
 
 const REFRESH_TOKEN_DAYS = 30;
 
-export default class AuthService {
+function createStatusError(
+  message: string,
+  statusCode: number
+) {
+  const error = new Error(message);
+  (error as any).statusCode = statusCode;
+  return error;
+}
 
+export default class AuthService {
   constructor(
     private readonly app: FastifyInstance
   ) {}
 
-  private async createTokens(user: any) {const accessToken =
-      this.app.jwt.sign({
-
-        id: user.id,
-
-        email: user.email,
-
-        role: user.role,
-
-        merchantId: user.merchantId ?? undefined
-
-      });
+  private async createTokens(user: any) {
+    const accessToken = this.app.jwt.sign({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      merchantId:
+        user.merchantId ?? undefined,
+    });
 
     const refreshToken =
       generateRefreshToken();
@@ -39,31 +43,41 @@ export default class AuthService {
     const expiresAt = new Date();
 
     expiresAt.setDate(
-      expiresAt.getDate() + REFRESH_TOKEN_DAYS
+      expiresAt.getDate() +
+        REFRESH_TOKEN_DAYS
     );
 
     await this.app.prisma.refreshToken.create({
-
       data: {
-
         token: hashedToken,
-
         userId: user.id,
-
-        expiresAt
-
-      }
-
+        expiresAt,
+      },
     });
 
     return {
-
       accessToken,
-
-      refreshToken
-
+      refreshToken,
     };
+  }
 
+  private removeSensitiveUserFields(
+    user: any
+  ) {
+    if (!user) {
+      return null;
+    }
+
+    const {
+      passwordHash: _passwordHash,
+      passwordResetToken: _passwordResetToken,
+      passwordResetExpires: _passwordResetExpires,
+      emailVerifyToken: _emailVerifyToken,
+      emailVerifyExpires: _emailVerifyExpires,
+      ...safeUser
+    } = user;
+
+    return safeUser;
   }
 
   async register(data: {
@@ -71,81 +85,159 @@ export default class AuthService {
     lastName: string;
     email: string;
     password: string;
+    merchantId?: string;
   }) {
+    const email =
+      data.email.trim().toLowerCase();
+
+    const firstName =
+      data.firstName.trim();
+
+    const lastName =
+      data.lastName.trim();
+
+    if (!firstName) {
+      throw createStatusError(
+        "First name is required.",
+        400
+      );
+    }
+
+    if (!lastName) {
+      throw createStatusError(
+        "Last name is required.",
+        400
+      );
+    }
+
+    if (!email) {
+      throw createStatusError(
+        "Email is required.",
+        400
+      );
+    }
+
+    if (!data.password) {
+      throw createStatusError(
+        "Password is required.",
+        400
+      );
+    }
 
     const existing =
       await this.app.prisma.user.findUnique({
         where: {
-          email: data.email
-        }
+          email,
+        },
       });
 
     if (existing) {
+      throw createStatusError(
+        "Email already exists.",
+        409
+      );
+    }
 
-      const error = new Error("Email already exists.");
-      (error as any).statusCode = 409;
-      throw error;
+    /*
+     * If a merchantId is supplied, verify that
+     * the merchant actually exists before creating
+     * the user.
+     *
+     * We never accept a fake merchant ID.
+     */
+    let merchantId:
+      | string
+      | undefined;
 
+    if (data.merchantId?.trim()) {
+      merchantId =
+        data.merchantId.trim();
+
+      const merchant =
+        await this.app.prisma.merchant.findUnique(
+          {
+            where: {
+              id: merchantId,
+            },
+          }
+        );
+
+      if (!merchant) {
+        throw createStatusError(
+          "Merchant account not found.",
+          404
+        );
+      }
     }
 
     const passwordHash =
-      await bcrypt.hash(data.password, 12);
+      await bcrypt.hash(
+        data.password,
+        12
+      );
 
     const user =
       await this.app.prisma.user.create({
-
         data: {
-
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
+          firstName,
+          lastName,
+          email,
           passwordHash,
-          role: "VIEWER"
+          role: "VIEWER",
 
-        }
-
+          ...(merchantId
+            ? {
+                merchantId,
+              }
+            : {}),
+        },
       });
 
     const tokens =
       await this.createTokens(user);
 
-    const {
-      passwordHash: _,
-      passwordResetToken,
-      passwordResetExpires,
-      emailVerifyToken,
-      emailVerifyExpires,
-      ...safeUser
-    } = user;
-
     return {
-
       ...tokens,
-
-      user: safeUser
-
+      user:
+        this.removeSensitiveUserFields(
+          user
+        ),
     };
-
   }
 
   async login(
     email: string,
     password: string
   ) {
+    const normalizedEmail =
+      email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      throw createStatusError(
+        "Email is required.",
+        400
+      );
+    }
+
+    if (!password) {
+      throw createStatusError(
+        "Password is required.",
+        400
+      );
+    }
 
     const user =
       await this.app.prisma.user.findUnique({
         where: {
-          email
-        }
+          email: normalizedEmail,
+        },
       });
 
     if (!user?.passwordHash) {
-
-      const error = new Error("Invalid credentials.");
-      (error as any).statusCode = 401;
-      throw error;
-
+      throw createStatusError(
+        "Invalid credentials.",
+        401
+      );
     }
 
     const valid =
@@ -155,56 +247,56 @@ export default class AuthService {
       );
 
     if (!valid) {
-
-      const error = new Error("Invalid credentials.");
-      (error as any).statusCode = 401;
-      throw error;
-
+      throw createStatusError(
+        "Invalid credentials.",
+        401
+      );
     }
 
+    /*
+     * merchantId is deliberately taken from
+     * the persisted user record.
+     *
+     * The client cannot choose a different
+     * merchant during login.
+     */
     const tokens =
       await this.createTokens(user);
 
-    const {
-      passwordHash: _,
-      passwordResetToken,
-      passwordResetExpires,
-      emailVerifyToken,
-      emailVerifyExpires,
-      ...safeUser
-    } = user;
-
     return {
-
       ...tokens,
-
-      user: safeUser
-
+      user:
+        this.removeSensitiveUserFields(
+          user
+        ),
     };
-
   }
 
   async refresh(
     refreshToken: string
   ) {
+    if (!refreshToken?.trim()) {
+      throw createStatusError(
+        "Refresh token is required.",
+        400
+      );
+    }
 
     const records =
-      await this.app.prisma.refreshToken.findMany({
-
-        where: {
-          revoked: false
-        },
-
-        include: {
-          user: true
+      await this.app.prisma.refreshToken.findMany(
+        {
+          where: {
+            revoked: false,
+          },
+          include: {
+            user: true,
+          },
         }
-
-      });
+      );
 
     let record: any = null;
 
     for (const item of records) {
-
       const ok =
         await verifyRefreshToken(
           refreshToken,
@@ -212,62 +304,55 @@ export default class AuthService {
         );
 
       if (ok) {
-
         record = item;
         break;
-
       }
-
     }
 
     if (
       !record ||
       record.expiresAt < new Date()
     ) {
-
-      const error = new Error(
-        "Invalid refresh token."
+      throw createStatusError(
+        "Invalid refresh token.",
+        401
       );
-
-      (error as any).statusCode = 401;
-
-      throw error;
-
     }
 
     await this.app.prisma.refreshToken.update({
-
       where: {
-        id: record.id
+        id: record.id,
       },
-
       data: {
-        revoked: true
-      }
-
+        revoked: true,
+      },
     });
 
     return this.createTokens(
       record.user
     );
-
   }
 
   async logout(
     refreshToken: string
   ) {
+    if (!refreshToken?.trim()) {
+      throw createStatusError(
+        "Refresh token is required.",
+        400
+      );
+    }
 
     const records =
-      await this.app.prisma.refreshToken.findMany({
-
-        where: {
-          revoked: false
+      await this.app.prisma.refreshToken.findMany(
+        {
+          where: {
+            revoked: false,
+          },
         }
-
-      });
+      );
 
     for (const item of records) {
-
       const ok =
         await verifyRefreshToken(
           refreshToken,
@@ -275,71 +360,51 @@ export default class AuthService {
         );
 
       if (ok) {
-
         await this.app.prisma.refreshToken.update({
-
           where: {
-            id: item.id
+            id: item.id,
           },
-
           data: {
-            revoked: true
-          }
-
+            revoked: true,
+          },
         });
 
         return;
-
       }
-
     }
 
-    const error = new Error(
-      "Invalid refresh token."
+    throw createStatusError(
+      "Invalid refresh token.",
+      401
     );
-
-    (error as any).statusCode = 401;
-
-    throw error;
-
   }
 
   async me(
     userId: string
   ) {
+    if (!userId?.trim()) {
+      throw createStatusError(
+        "User ID is required.",
+        400
+      );
+    }
 
     const user =
       await this.app.prisma.user.findUnique({
-
         where: {
-          id: userId
-        }
-
+          id: userId,
+        },
       });
 
     if (!user) {
-
-      const error = new Error(
-        "User not found."
+      throw createStatusError(
+        "User not found.",
+        404
       );
-
-      (error as any).statusCode = 404;
-
-      throw error;
-
     }
 
-    const {
-      passwordHash: _,
-      passwordResetToken,
-      passwordResetExpires,
-      emailVerifyToken,
-      emailVerifyExpires,
-      ...safeUser
-    } = user;
-
-    return safeUser;
-
+    return this.removeSensitiveUserFields(
+      user
+    );
   }
-
 }

@@ -1,12 +1,16 @@
 import {
   FastifyReply,
-  FastifyRequest
+  FastifyRequest,
 } from "fastify";
 
 import AuthService from "../services/auth.service.js";
 
-export default class AuthController {
+import type {
+  LoginRequest,
+  RegisterRequest,
+} from "../types/auth.types.js";
 
+export default class AuthController {
   constructor(
     private readonly authService: AuthService
   ) {}
@@ -15,58 +19,58 @@ export default class AuthController {
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
+    const body =
+      request.body as RegisterRequest;
 
     const result =
-      await this.authService.register(
-        request.body as any
-      );
+      await this.authService.register({
+        firstName:
+          body.firstName,
+        lastName:
+          body.lastName,
+        email:
+          body.email,
+        password:
+          body.password,
+        merchantId:
+          body.merchantId,
+      });
 
     return reply
       .status(201)
       .send({
-
         success: true,
-
-        data: result
-
+        data: result,
       });
-
   };
 
   login = async (
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
-
     const body =
-      request.body as any;
+      request.body as LoginRequest;
 
     const result =
       await this.authService.login(
-
         body.email,
-
         body.password
-
       );
 
     return reply.send({
-
       success: true,
-
-      data: result
-
+      data: result,
     });
-
   };
 
   refresh = async (
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
-
     const body =
-      request.body as any;
+      request.body as {
+        refreshToken: string;
+      };
 
     const result =
       await this.authService.refresh(
@@ -74,59 +78,62 @@ export default class AuthController {
       );
 
     return reply.send({
-
       success: true,
-
-      data: result
-
+      data: result,
     });
-
   };
 
   logout = async (
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
-
     const body =
-      request.body as any;
+      request.body as {
+        refreshToken: string;
+      };
 
     await this.authService.logout(
       body.refreshToken
     );
 
     return reply.send({
-
       success: true,
-
       data: {
-        message: "Logged out successfully."
-      }
-
+        message:
+          "Logged out successfully.",
+      },
     });
-
   };
 
   me = async (
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
+    const user =
+      request.user as {
+        id?: string;
+      };
+
+    if (!user?.id) {
+      return reply
+        .status(401)
+        .send({
+          success: false,
+          statusCode: 401,
+          error: "Unauthorized",
+          message:
+            "Authentication required.",
+        });
+    }
 
     const profile =
       await this.authService.me(
-
-        (request.user as any).id
-
+        user.id
       );
 
     return reply.send({
-
       success: true,
-
-      data: profile
-
+      data: profile,
     });
-
   };
-
 }

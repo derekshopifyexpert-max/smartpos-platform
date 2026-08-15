@@ -1,96 +1,96 @@
 import { z } from "zod";
 
-export const createWalletSchema =
-  z.object({
-    merchantId:
-      z.string().min(1),
+export const createWalletSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Wallet name must be at least 2 characters.")
+    .max(100, "Wallet name must not exceed 100 characters."),
 
-    name:
-      z.string()
-        .trim()
-        .min(2)
-        .max(100),
+  currency: z
+    .string()
+    .trim()
+    .min(3, "Currency is required.")
+    .max(10, "Currency must not exceed 10 characters."),
 
-    currency:
-      z.string()
-        .trim()
-        .min(3)
-        .max(10),
+  blockchain: z
+    .string()
+    .trim()
+    .min(1, "Blockchain is required."),
 
-    blockchain:
-      z.string()
-        .trim()
-        .min(1),
+  network: z
+    .string()
+    .trim()
+    .min(1, "Network is required."),
 
-    network:
-      z.string()
-        .trim()
-        .min(1),
+  asset: z
+    .string()
+    .trim()
+    .min(1, "Asset is required."),
 
-    asset:
-      z.string()
-        .trim()
-        .min(1),
+  type: z
+    .string()
+    .trim()
+    .min(1)
+    .optional(),
 
-    /*
-     * SmartPOS never generates this value.
-     * The merchant supplies an existing
-     * public settlement address.
-     */
-    address:
-      z.string()
-        .trim()
-        .min(1),
+  address: z
+    .string()
+    .trim()
+    .min(
+      1,
+      "Wallet address is required."
+    ),
 
-    type:
-      z.string()
-        .trim()
-        .min(1)
-        .optional(),
+  metadata: z
+    .record(z.unknown())
+    .optional(),
+});
 
-    metadata:
-      z.record(
-        z.string(),
-        z.unknown()
-      ).optional(),
-  });
+export const walletIdSchema = z.object({
+  id: z
+    .string()
+    .min(1, "Wallet ID is required."),
+});
 
-export const walletIdSchema =
-  z.object({
-    id:
-      z.string().min(1),
-  });
+export const amountSchema = z.object({
+  amount: z.coerce
+    .number()
+    .positive(
+      "Amount must be greater than zero."
+    ),
+});
 
-export const amountSchema =
-  z.object({
-    amount:
-      z.coerce.number().positive(),
-  });
+export const transferSchema = z.object({
+  fromWalletId: z
+    .string()
+    .min(1, "Source wallet is required."),
 
-export const transferSchema =
-  z.object({
-    fromWalletId:
-      z.string().min(1),
+  toWalletId: z
+    .string()
+    .min(1, "Destination wallet is required."),
 
-    toWalletId:
-      z.string().min(1),
+  amount: z.coerce
+    .number()
+    .positive(
+      "Transfer amount must be greater than zero."
+    ),
+});
 
-    amount:
-      z.coerce.number().positive(),
-  });
-
-export const merchantWalletsSchema =
-  z.object({
-    merchantId:
-      z.string().min(1),
-  });
+export const merchantWalletsSchema = z.object({
+  merchantId: z
+    .string()
+    .min(1, "Merchant ID is required."),
+});
 
 export type CreateWalletDto =
-  z.infer<
-    typeof createWalletSchema
-  >;
+  z.infer<typeof createWalletSchema>;
 
 export type WalletTransferDto =
-  z.infer<
-    typeof transferSchema
-  >;
+  z.infer<typeof transferSchema>;
+
+export type WalletAmountDto =
+  z.infer<typeof amountSchema>;
+
+export type MerchantWalletsDto =
+  z.infer<typeof merchantWalletsSchema>;
