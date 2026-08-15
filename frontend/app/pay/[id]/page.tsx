@@ -128,7 +128,7 @@ export default function CustomerPaymentPage() {
           <div className="border-b border-slate-100 bg-gradient-to-br from-white via-white to-blue-50/70 px-6 py-8 sm:px-8">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-lg">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                   <Store size={21} />
                 </div>
 
@@ -242,7 +242,7 @@ export default function CustomerPaymentPage() {
                     href={`/checkout/${intent.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:bg-slate-800 sm:w-auto"
+                    className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 sm:w-auto"
                   >
                     <ExternalLink size={16} />
                     Open Customer Checkout

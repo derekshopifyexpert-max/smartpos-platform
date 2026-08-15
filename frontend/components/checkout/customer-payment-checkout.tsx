@@ -640,7 +640,7 @@ export default function CustomerPaymentCheckout() {
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 text-center">
-          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
             <ShieldCheck size={20} />
           </div>
 
@@ -688,7 +688,7 @@ export default function CustomerPaymentCheckout() {
                       disabled={!method.available}
                       className={`rounded-xl border px-3 py-3 text-left transition ${
                         isSelected
-                          ? "border-slate-900 bg-slate-950 text-white"
+                          ? "border-primary bg-primary text-primary-foreground"
                           : method.available
                             ? "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                             : "cursor-not-allowed border-dashed border-slate-200 bg-slate-50 text-slate-400"
@@ -801,7 +801,7 @@ export default function CustomerPaymentCheckout() {
                           <button
                             type="button"
                             onClick={() => setSelectedPaymentMethodId(method.id)}
-                            className={`rounded-lg px-3 py-2 text-xs font-semibold ${selectedPaymentMethodId === method.id ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-700"}`}
+                            className={`rounded-lg px-3 py-2 text-xs font-semibold ${selectedPaymentMethodId === method.id ? "bg-primary text-primary-foreground" : "bg-slate-100 text-slate-700"}`}
                           >
                             {selectedPaymentMethodId === method.id ? "Selected" : "Use"}
                           </button>
@@ -893,7 +893,7 @@ export default function CustomerPaymentCheckout() {
                 <button
                   type="submit"
                   disabled={isSubmitting || isProcessing}
-                  className="flex h-12 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex h-12 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting
                     ? "Preparing secure payment..."
@@ -1123,7 +1123,7 @@ function PaymentResult({
               <button
                 type="button"
                 onClick={onTryAgain}
-                className="flex h-12 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="flex h-12 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
               >
                 Try payment again
               </button>
