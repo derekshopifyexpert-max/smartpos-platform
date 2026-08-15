@@ -1,53 +1,61 @@
-import WalletService from "./wallet.service.js";
 import { FastifyInstance } from "fastify";
 
 export default class MerchantService {
 
-  private readonly walletService: WalletService;
-
   constructor(
     private readonly app: FastifyInstance
-  ) {
-    this.walletService = new WalletService(app);
-  }
+  ) {}
 
   async create(data: any) {
 
-    return this.app.prisma.$transaction(async (tx) => {
+    return this.app.prisma.$transaction(
+      async (tx) => {
 
-      const merchant =
-        await tx.merchant.create({
-          data: {
-            name: data.businessName,
-            businessType: data.businessType ?? "GENERAL",
-            email: data.email,
-            phone: data.phone,
-            website: data.website,
-            country: data.country,
-            state: data.state,
-            city: data.city,
-            addressLine1: data.address,
-            postalCode: data.postalCode,
-            currency: data.currency ?? "USD"
-          }
-        });
+        const merchant =
+          await tx.merchant.create({
+            data: {
+              name:
+                data.businessName,
 
-      const wallet =
-        await this.walletService.createWallet(
-          {
-            merchantId: merchant.id,
-            name: "Default Wallet",
-            currency: merchant.currency
-          },
-          tx as any
-        );
+              businessType:
+                data.businessType ??
+                "GENERAL",
 
-      return {
-        merchant,
-        wallet
-      };
+              email:
+                data.email,
 
-    });
+              phone:
+                data.phone,
+
+              website:
+                data.website,
+
+              country:
+                data.country,
+
+              state:
+                data.state,
+
+              city:
+                data.city,
+
+              addressLine1:
+                data.address,
+
+              postalCode:
+                data.postalCode,
+
+              currency:
+                data.currency ??
+                "USD"
+            }
+          });
+
+        return {
+          merchant
+        };
+      }
+    );
 
   }
 
@@ -56,7 +64,9 @@ export default class MerchantService {
     const merchant =
       await this.app.prisma.merchant.findUnique({
 
-        where: { id },
+        where: {
+          id
+        },
 
         include: {
           users: true,
@@ -82,27 +92,37 @@ export default class MerchantService {
     limit = 10
   ) {
 
-    const skip = (page - 1) * limit;
+    const skip =
+      (page - 1) * limit;
 
     const [items, total] =
       await this.app.prisma.$transaction([
         this.app.prisma.merchant.findMany({
+
           skip,
+
           take: limit,
+
           orderBy: {
             createdAt: "desc"
           }
+
         }),
+
         this.app.prisma.merchant.count()
       ]);
 
     return {
       items,
+
       pagination: {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit)
+        pages:
+          Math.ceil(
+            total / limit
+          )
       }
     };
 
@@ -117,25 +137,86 @@ export default class MerchantService {
 
     return this.app.prisma.merchant.update({
 
-      where: { id },
+      where: {
+        id
+      },
 
-      data
+      data: {
+        ...(data.businessName !== undefined && {
+          name:
+            data.businessName
+        }),
+
+        ...(data.businessType !== undefined && {
+          businessType:
+            data.businessType
+        }),
+
+        ...(data.email !== undefined && {
+          email:
+            data.email
+        }),
+
+        ...(data.phone !== undefined && {
+          phone:
+            data.phone
+        }),
+
+        ...(data.website !== undefined && {
+          website:
+            data.website
+        }),
+
+        ...(data.country !== undefined && {
+          country:
+            data.country
+        }),
+
+        ...(data.state !== undefined && {
+          state:
+            data.state
+        }),
+
+        ...(data.city !== undefined && {
+          city:
+            data.city
+        }),
+
+        ...(data.address !== undefined && {
+          addressLine1:
+            data.address
+        }),
+
+        ...(data.postalCode !== undefined && {
+          postalCode:
+            data.postalCode
+        }),
+
+        ...(data.currency !== undefined && {
+          currency:
+            data.currency
+        })
+      }
 
     });
 
   }
 
-  async delete(
-    id: string
-  ) {
+  async delete(id: string) {
 
     await this.findById(id);
 
-    return this.app.prisma.merchant.delete({
+    await this.app.prisma.merchant.delete({
 
-      where: { id }
+      where: {
+        id
+      }
 
     });
+
+    return {
+      success: true
+    };
 
   }
 
@@ -143,44 +224,46 @@ export default class MerchantService {
     merchantId: string
   ) {
 
-    await this.findById(merchantId);
+    const merchant =
+      await this.findById(
+        merchantId
+      );
 
     const [
-      terminals,
-      wallets,
-      customers,
-      transactions,
-      settlements
-    ] = await Promise.all([
+      walletCount,
+      transactionCount,
+      settlementCount
+    ] =
+      await this.app.prisma.$transaction([
 
-      this.app.prisma.terminal.count({
-        where: { merchantId }
-      }),
+        this.app.prisma.wallet.count({
+          where: {
+            merchantId
+          }
+        }),
 
-      this.app.prisma.wallet.count({
-        where: { merchantId }
-      }),
+        this.app.prisma.transaction.count({
+          where: {
+            merchantId
+          }
+        }),
 
-      this.app.prisma.customer.count({
-        where: { merchantId }
-      }),
+        this.app.prisma.settlement.count({
+          where: {
+            merchantId
+          }
+        })
 
-      this.app.prisma.transaction.count({
-        where: { merchantId }
-      }),
-
-      this.app.prisma.settlement.count({
-        where: { merchantId }
-      })
-
-    ]);
+      ]);
 
     return {
-      terminals,
-      wallets,
-      customers,
-      transactions,
-      settlements
+      merchant,
+
+      statistics: {
+        walletCount,
+        transactionCount,
+        settlementCount
+      }
     };
 
   }
