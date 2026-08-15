@@ -26,7 +26,6 @@ export default async function walletRoutes(
   "/wallets",
   {
     preHandler: [
-      authMiddleware,
       validateBody(createWalletSchema)
     ]
   },
