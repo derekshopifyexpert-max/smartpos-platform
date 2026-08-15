@@ -1,36 +1,96 @@
 import { z } from "zod";
 
-export const createWalletSchema = z.object({
-  merchantId: z.string().min(1).optional(),
-  name: z.string().min(2).max(100).optional(),
-  currency: z.string().min(3).max(10).optional(),
-  blockchain: z.string().min(1).optional(),
-  network: z.string().min(1).optional(),
-  asset: z.string().min(1).optional(),
-  type: z.string().min(1).optional(),
-  address: z.string().min(1).optional(),
-  walletAddress: z.string().min(1).optional(),
-  metadata: z.record(z.unknown()).optional(),
-});
+export const createWalletSchema =
+  z.object({
+    merchantId:
+      z.string().min(1),
 
-export const walletIdSchema = z.object({
-  id: z.string().min(1),
-});
+    name:
+      z.string()
+        .trim()
+        .min(2)
+        .max(100),
 
-export const amountSchema = z.object({
-  amount: z.coerce.number().positive(),
-});
+    currency:
+      z.string()
+        .trim()
+        .min(3)
+        .max(10),
 
-export const transferSchema = z.object({
-  fromWalletId: z.string().min(1),
-  toWalletId: z.string().min(1),
-  amount: z.coerce.number().positive(),
-});
+    blockchain:
+      z.string()
+        .trim()
+        .min(1),
 
-export const merchantWalletsSchema = z.object({
-  merchantId: z.string().min(1),
-});
+    network:
+      z.string()
+        .trim()
+        .min(1),
 
-export type CreateWalletDto = z.infer<typeof createWalletSchema>;
+    asset:
+      z.string()
+        .trim()
+        .min(1),
 
-export type WalletTransferDto = z.infer<typeof transferSchema>;
+    /*
+     * SmartPOS never generates this value.
+     * The merchant supplies an existing
+     * public settlement address.
+     */
+    address:
+      z.string()
+        .trim()
+        .min(1),
+
+    type:
+      z.string()
+        .trim()
+        .min(1)
+        .optional(),
+
+    metadata:
+      z.record(
+        z.string(),
+        z.unknown()
+      ).optional(),
+  });
+
+export const walletIdSchema =
+  z.object({
+    id:
+      z.string().min(1),
+  });
+
+export const amountSchema =
+  z.object({
+    amount:
+      z.coerce.number().positive(),
+  });
+
+export const transferSchema =
+  z.object({
+    fromWalletId:
+      z.string().min(1),
+
+    toWalletId:
+      z.string().min(1),
+
+    amount:
+      z.coerce.number().positive(),
+  });
+
+export const merchantWalletsSchema =
+  z.object({
+    merchantId:
+      z.string().min(1),
+  });
+
+export type CreateWalletDto =
+  z.infer<
+    typeof createWalletSchema
+  >;
+
+export type WalletTransferDto =
+  z.infer<
+    typeof transferSchema
+  >;

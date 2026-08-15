@@ -1,41 +1,52 @@
-import { FastifyInstance } from "fastify";
+import {
+  FastifyInstance,
+} from "fastify";
 
 import WalletService from "../services/wallet.service.js";
 import WalletController from "../controllers/wallet.controller.js";
-import { validateBody, validateParams } from "../middleware/validate.js";
+
+import {
+  validateBody,
+  validateParams,
+} from "../middleware/validate.js";
+
 import {
   createWalletSchema,
   walletIdSchema,
   amountSchema,
   transferSchema,
-  merchantWalletsSchema
+  merchantWalletsSchema,
 } from "../validators/wallet.validator.js";
-
 
 export default async function walletRoutes(
   app: FastifyInstance
 ) {
-
   const service =
     new WalletService(app);
 
   const controller =
-    new WalletController(service);
+    new WalletController(
+      service
+    );
 
   app.post(
-  "/wallets",
-  {
-    preHandler: [
-      validateBody(createWalletSchema)
-    ]
-  },
-  controller.create
-);
+    "/wallets",
+    {
+      preHandler:
+        validateBody(
+          createWalletSchema
+        ),
+    },
+    controller.create
+  );
 
   app.get(
     "/wallets/:id",
     {
-      preHandler: validateParams(walletIdSchema)
+      preHandler:
+        validateParams(
+          walletIdSchema
+        ),
     },
     controller.get
   );
@@ -44,9 +55,13 @@ export default async function walletRoutes(
     "/wallets/:id/credit",
     {
       preHandler: [
-        validateParams(walletIdSchema),
-        validateBody(amountSchema)
-      ]
+        validateParams(
+          walletIdSchema
+        ),
+        validateBody(
+          amountSchema
+        ),
+      ],
     },
     controller.credit
   );
@@ -55,9 +70,13 @@ export default async function walletRoutes(
     "/wallets/:id/debit",
     {
       preHandler: [
-        validateParams(walletIdSchema),
-        validateBody(amountSchema)
-      ]
+        validateParams(
+          walletIdSchema
+        ),
+        validateBody(
+          amountSchema
+        ),
+      ],
     },
     controller.debit
   );
@@ -65,17 +84,22 @@ export default async function walletRoutes(
   app.post(
     "/wallets/transfer",
     {
-      preHandler: validateBody(transferSchema)
+      preHandler:
+        validateBody(
+          transferSchema
+        ),
     },
     controller.transferFunds
   );
-  
+
   app.get(
     "/merchants/:merchantId/wallets",
     {
-      preHandler: validateParams(merchantWalletsSchema)
+      preHandler:
+        validateParams(
+          merchantWalletsSchema
+        ),
     },
     controller.merchantWallets
   );
-
 }
