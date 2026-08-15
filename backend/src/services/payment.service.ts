@@ -11,6 +11,10 @@ import crypto from "crypto";
 type PrismaTransactionClient =
   Prisma.TransactionClient;
 
+type PrismaMetadataInput =
+  Prisma.InputJsonValue |
+  Prisma.JsonNullValueInput;
+
 export default class PaymentService {
   constructor(
     private readonly app: FastifyInstance
@@ -19,13 +23,6 @@ export default class PaymentService {
   /*
   |--------------------------------------------------------------------------
   | Database Client
-  |--------------------------------------------------------------------------
-  |
-  | Normal calls use app.prisma.
-  |
-  | Calls that are part of a larger Prisma transaction pass tx.
-  | This keeps all related writes inside the same database transaction.
-  |
   |--------------------------------------------------------------------------
   */
 
@@ -54,14 +51,64 @@ export default class PaymentService {
       .toString("hex");
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | JSON / Metadata Helpers
+  |--------------------------------------------------------------------------
+  |
+  | Prisma has separate types for JSON values read from the database and
+  | JSON values being written to the database.
+  |
+  | JsonValue:
+  |   Used primarily for values returned from Prisma.
+  |
+  | InputJsonValue:
+  |   Used for values being sent into Prisma create/update operations.
+  |
+  | JsonNull:
+  |   Used when the JSON column itself should contain JSON null.
+  |
+  |--------------------------------------------------------------------------
+  */
+
   private normalizeMetadata(
     metadata?: Prisma.JsonValue
-  ): Prisma.JsonValue {
-    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-      return metadata ?? Prisma.JsonNull;
+  ): PrismaMetadataInput {
+    if (
+      metadata === undefined ||
+      metadata === null
+    ) {
+      return Prisma.JsonNull;
     }
 
-    const normalized = { ...(metadata as Record<string, unknown>) };
+    if (Array.isArray(metadata)) {
+      return metadata.map((value) =>
+        this.normalizeJsonValue(value)
+      ) as Prisma.InputJsonArray;
+    }
+
+    if (typeof metadata !== "object") {
+      return metadata as Prisma.InputJsonValue;
+    }
+
+    const source =
+      metadata as Prisma.JsonObject;
+
+    const normalized: Prisma.InputJsonObject =
+      {};
+
+    for (const [key, value] of Object.entries(
+      source
+    )) {
+      normalized[key] =
+        this.normalizeJsonValue(value);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Normalize crypto destination aliases
+    |--------------------------------------------------------------------------
+    */
 
     const destinationCandidates = [
       "cryptoDestination",
@@ -70,19 +117,64 @@ export default class PaymentService {
     ];
 
     for (const key of destinationCandidates) {
-      const candidate = normalized[key];
+      const candidate =
+        normalized[key];
 
-      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+      if (
+        candidate &&
+        typeof candidate === "object" &&
+        !Array.isArray(candidate)
+      ) {
+        const existing =
+          normalized.cryptoDestination;
+
         normalized.cryptoDestination = {
-          ...(typeof normalized.cryptoDestination === "object" && !Array.isArray(normalized.cryptoDestination)
-            ? (normalized.cryptoDestination as Record<string, unknown>)
-            : {}),
-          ...(candidate as Record<string, unknown>),
+          ...(
+            existing &&
+            typeof existing === "object" &&
+            !Array.isArray(existing)
+              ? (existing as Prisma.InputJsonObject)
+              : {}
+          ),
+
+          ...(candidate as Prisma.InputJsonObject),
         };
       }
     }
 
-    return normalized as Prisma.JsonValue;
+    return normalized;
+  }
+
+  private normalizeJsonValue(
+    value: Prisma.JsonValue
+  ): Prisma.InputJsonValue {
+    if (value === null) {
+      return Prisma.JsonNull;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) =>
+        this.normalizeJsonValue(item)
+      ) as Prisma.InputJsonArray;
+    }
+
+    if (typeof value === "object") {
+      const result: Prisma.InputJsonObject =
+        {};
+
+      for (const [key, nestedValue] of Object.entries(
+        value as Prisma.JsonObject
+      )) {
+        result[key] =
+          this.normalizeJsonValue(
+            nestedValue
+          );
+      }
+
+      return result;
+    }
+
+    return value;
   }
 
   /*
@@ -104,21 +196,41 @@ export default class PaymentService {
     },
     tx?: PrismaTransactionClient
   ) {
-    const metadata = this.normalizeMetadata(data.metadata);
+    const metadata =
+      this.normalizeMetadata(
+        data.metadata
+      );
 
     return this.db(tx).paymentIntent.create({
       data: {
-        merchantId: data.merchantId,
-        customerId: data.customerId,
-        paymentMethodId: data.paymentMethodId,
-        amount: data.amount,
-        currency: data.currency,
-        description: data.description,
+        merchantId:
+          data.merchantId,
+
+        customerId:
+          data.customerId,
+
+        paymentMethodId:
+          data.paymentMethodId,
+
+        amount:
+          data.amount,
+
+        currency:
+          data.currency,
+
+        description:
+          data.description,
+
         metadata,
+
         clientSecret:
           this.generateClientSecret(),
-        expiresAt: data.expiresAt,
-        status: PaymentStatus.PENDING,
+
+        expiresAt:
+          data.expiresAt,
+
+        status:
+          PaymentStatus.PENDING,
       },
     });
   }
@@ -130,6 +242,7 @@ export default class PaymentService {
       where: {
         id: paymentIntentId,
       },
+
       include: {
         merchant: true,
         customer: true,
@@ -151,10 +264,12 @@ export default class PaymentService {
         this.app.prisma.paymentIntent.findMany({
           skip,
           take: limit,
+
           include: {
             merchant: true,
             customer: true,
           },
+
           orderBy: {
             createdAt: "desc",
           },
@@ -165,11 +280,14 @@ export default class PaymentService {
 
     return {
       items,
+
       pagination: {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(
+          total / limit
+        ),
       },
     };
   }
@@ -186,9 +304,11 @@ export default class PaymentService {
         this.app.prisma.transaction.findMany({
           skip,
           take: limit,
+
           orderBy: {
             createdAt: "desc",
           },
+
           include: {
             merchant: true,
             terminal: true,
@@ -200,11 +320,14 @@ export default class PaymentService {
 
     return {
       items,
+
       pagination: {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(
+          total / limit
+        ),
       },
     };
   }
@@ -217,9 +340,13 @@ export default class PaymentService {
       where: {
         id: paymentIntentId,
       },
+
       data: {
-        status: PaymentStatus.EXPIRED,
-        expiresAt: new Date(),
+        status:
+          PaymentStatus.EXPIRED,
+
+        expiresAt:
+          new Date(),
       },
     });
   }
@@ -279,6 +406,11 @@ export default class PaymentService {
     const reference =
       this.generateReference();
 
+    const metadata =
+      this.normalizeMetadata(
+        data.metadata
+      );
+
     const transaction =
       await db.transaction.create({
         data: {
@@ -309,9 +441,7 @@ export default class PaymentService {
           description:
             data.description,
 
-          metadata:
-            data.metadata ??
-            Prisma.JsonNull,
+          metadata,
 
           settlementStatus:
             SettlementStatus.PENDING,
@@ -376,13 +506,15 @@ export default class PaymentService {
       where: {
         id: paymentAttemptId,
       },
+
       data: {
         status:
           PaymentStatus.CAPTURED,
 
         gatewayResponse:
-          gatewayResponse ??
-          Prisma.JsonNull,
+          this.normalizeMetadata(
+            gatewayResponse
+          ),
       },
     });
   }
@@ -397,6 +529,7 @@ export default class PaymentService {
       where: {
         id: paymentAttemptId,
       },
+
       data: {
         status:
           PaymentStatus.FAILED,
@@ -404,8 +537,9 @@ export default class PaymentService {
         errorMessage,
 
         gatewayResponse:
-          gatewayResponse ??
-          Prisma.JsonNull,
+          this.normalizeMetadata(
+            gatewayResponse
+          ),
       },
     });
   }
@@ -436,22 +570,30 @@ export default class PaymentService {
           transactionId:
             data.transactionId,
         },
+
         update: {
           authorizationCode:
             data.authorizationCode ??
             undefined,
+
           amount:
             data.amount,
+
           currency:
             data.currency,
+
           status:
             "approved",
+
           message:
             data.message,
+
           gatewayResponse:
-            data.gatewayResponse ??
-            Prisma.JsonNull,
+            this.normalizeMetadata(
+              data.gatewayResponse
+            ),
         },
+
         create: {
           transactionId:
             data.transactionId,
@@ -472,8 +614,9 @@ export default class PaymentService {
             data.message,
 
           gatewayResponse:
-            data.gatewayResponse ??
-            Prisma.JsonNull,
+            this.normalizeMetadata(
+              data.gatewayResponse
+            ),
         },
       });
 
@@ -502,8 +645,9 @@ export default class PaymentService {
         message,
 
         gatewayResponse:
-          gatewayResponse ??
-          Prisma.JsonNull,
+          this.normalizeMetadata(
+            gatewayResponse
+          ),
       },
     });
   }
@@ -513,26 +657,36 @@ export default class PaymentService {
     customerId?: string,
     tx?: PrismaTransactionClient
   ) {
-    const db = this.db(tx);
+    const db =
+      this.db(tx);
 
     return db.authorization.findMany({
       where: {
         status: {
-          in: ["approved", "authorized"]
+          in: [
+            "approved",
+            "authorized",
+          ],
         },
+
         transaction: {
           paymentIntentId,
+
           ...(customerId
-            ? { customerId }
-            : {})
-        }
+            ? {
+                customerId,
+              }
+            : {}),
+        },
       },
+
       include: {
-        transaction: true
+        transaction: true,
       },
+
       orderBy: {
-        authorizedAt: "desc"
-      }
+        authorizedAt: "desc",
+      },
     });
   }
 
@@ -543,26 +697,37 @@ export default class PaymentService {
     authorizationCode?: string,
     tx?: PrismaTransactionClient
   ) {
-    const db = this.db(tx);
+    const db =
+      this.db(tx);
 
     return db.authorization.findFirst({
       where: {
         ...(authorizationId
-          ? { id: authorizationId }
+          ? {
+              id: authorizationId,
+            }
           : {}),
+
         ...(authorizationCode
-          ? { authorizationCode }
+          ? {
+              authorizationCode,
+            }
           : {}),
+
         transaction: {
           paymentIntentId,
+
           ...(customerId
-            ? { customerId }
-            : {})
-        }
+            ? {
+                customerId,
+              }
+            : {}),
+        },
       },
+
       include: {
-        transaction: true
-      }
+        transaction: true,
+      },
     });
   }
 
@@ -600,10 +765,12 @@ export default class PaymentService {
             "completed",
 
           gatewayResponse:
-            data.gatewayResponse ??
-            Prisma.JsonNull,
+            this.normalizeMetadata(
+              data.gatewayResponse
+            ),
         },
       });
+
     return capture;
   }
 
@@ -645,11 +812,11 @@ export default class PaymentService {
             "completed",
 
           gatewayResponse:
-            data.gatewayResponse ??
-            Prisma.JsonNull,
+            this.normalizeMetadata(
+              data.gatewayResponse
+            ),
         },
       });
-
 
     return reversal;
   }
@@ -663,33 +830,20 @@ export default class PaymentService {
   async findTransactionById(
     transactionId: string
   ) {
-
     return this.app.prisma.transaction.findUnique({
-
       where: {
-
-        id: transactionId
-
+        id: transactionId,
       },
 
       include: {
-
         merchant: true,
-
         terminal: true,
-
         customer: true,
-
         paymentIntent: true,
-
         paymentAttempts: true,
-
-      }
-
+      },
     });
-
   }
-
 
   /*
   |--------------------------------------------------------------------------
@@ -697,87 +851,72 @@ export default class PaymentService {
   |--------------------------------------------------------------------------
   */
 
-  async voidTransaction(data: {
-
-    transactionId: string;
-
-    reason?: string;
-
-  }) {
-
+  async voidTransaction(
+    data: {
+      transactionId: string;
+      reason?: string;
+    }
+  ) {
     const transaction =
       await this.app.prisma.transaction.findUnique({
-
         where: {
-
-          id: data.transactionId
-
-        }
-
+          id: data.transactionId,
+        },
       });
 
     if (!transaction) {
-
       throw new Error(
         "Transaction not found."
       );
-
     }
 
     if (
       transaction.status ===
       TransactionStatus.SETTLED
     ) {
-
       throw new Error(
         "A settled transaction cannot be voided."
       );
-
     }
 
     if (
       transaction.status ===
       TransactionStatus.VOIDED
     ) {
-
       return transaction;
-
     }
 
     const existingMetadata =
       transaction.metadata &&
-      typeof transaction.metadata === "object" &&
-      !Array.isArray(transaction.metadata)
+      typeof transaction.metadata ===
+        "object" &&
+      !Array.isArray(
+        transaction.metadata
+      )
         ? transaction.metadata
         : {};
 
+    const updatedMetadata: Prisma.InputJsonObject =
+      {
+        ...(existingMetadata as Prisma.InputJsonObject),
+
+        voidReason:
+          data.reason ??
+          "Transaction voided",
+
+        voidedAt:
+          new Date().toISOString(),
+      };
+
     return this.app.prisma.transaction.update({
-
       where: {
-
-        id: data.transactionId
-
+        id: data.transactionId,
       },
 
       data: {
-
-        metadata: {
-
-          ...existingMetadata,
-
-          voidReason:
-            data.reason ??
-            "Transaction voided",
-
-          voidedAt:
-            new Date().toISOString(),
-
-        }
-
-      }
-
+        metadata:
+          updatedMetadata,
+      },
     });
-
   }
-
 }
