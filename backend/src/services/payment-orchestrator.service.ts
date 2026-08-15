@@ -16,16 +16,18 @@ import {
 } from "../providers/crypto-transfer.provider.js";
 
 export default class PaymentOrchestratorService {
-
   private readonly paymentService: PaymentService;
 
   private readonly gatewayService: GatewayService;
 
-  private readonly providerManager = new ProviderManager();
+  private readonly providerManager =
+    new ProviderManager();
 
-  private readonly selector = new SmartGatewaySelector();
+  private readonly selector =
+    new SmartGatewaySelector();
 
-  private readonly failover = new ProviderFailover();
+  private readonly failover =
+    new ProviderFailover();
 
   private readonly metrics =
     new ProviderMetricsService();
@@ -39,30 +41,58 @@ export default class PaymentOrchestratorService {
   constructor(
     private readonly app: FastifyInstance
   ) {
-
     this.paymentService =
       new PaymentService(app);
 
     this.gatewayService =
       new GatewayService(app);
+
     this.exchangeService =
       new ExchangeService(app);
+
     this.blockchainService =
       new BlockchainService(app);
+
     this.cryptoTransferProvider =
       new NotConfiguredCryptoTransferProvider();
-
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | JSON Helpers
+  |--------------------------------------------------------------------------
+  */
+
+  private normalizeJsonValue(
+    value: Prisma.JsonValue | Record<string, unknown>
+  ): Prisma.JsonValue {
+    return JSON.parse(
+      JSON.stringify(value)
+    ) as Prisma.JsonValue;
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Crypto Destination Metadata
+  |--------------------------------------------------------------------------
+  */
+
   normalizeCryptoDestinationMetadata(
-    metadata?: Prisma.JsonValue | Record<string, unknown>
-  ): Record<string, unknown> {
+    metadata?:
+      | Prisma.JsonValue
+      | Record<string, unknown>
+  ): Prisma.JsonValue {
     const source =
-      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata)
         ? (metadata as Record<string, unknown>)
         : {};
 
-    const normalized: Record<string, unknown> = { ...source };
+    const normalized =
+      JSON.parse(
+        JSON.stringify(source)
+      ) as Record<string, unknown>;
 
     const destinationCandidates = [
       normalized.cryptoDestination,
@@ -70,10 +100,16 @@ export default class PaymentOrchestratorService {
       normalized.destination,
     ];
 
-    const resolvedDestination = destinationCandidates.find(
-      (candidate): candidate is Record<string, unknown> =>
-        candidate !== undefined && typeof candidate === "object" && !Array.isArray(candidate)
-    );
+    const resolvedDestination =
+      destinationCandidates.find(
+        (
+          candidate
+        ): candidate is Record<string, unknown> =>
+          candidate !== undefined &&
+          candidate !== null &&
+          typeof candidate === "object" &&
+          !Array.isArray(candidate)
+      );
 
     if (resolvedDestination) {
       normalized.cryptoDestination = {
@@ -81,8 +117,16 @@ export default class PaymentOrchestratorService {
       };
     }
 
-    return normalized;
+    return this.normalizeJsonValue(
+      normalized
+    );
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Fiat → Crypto Settlement
+  |--------------------------------------------------------------------------
+  */
 
   async processFiatToCryptoSettlement(
     paymentIntentId: string,
@@ -100,7 +144,9 @@ export default class PaymentOrchestratorService {
       );
 
     if (!paymentIntent) {
-      throw new Error("Payment Intent not found.");
+      throw new Error(
+        "Payment Intent not found."
+      );
     }
 
     const metadata =
@@ -109,8 +155,22 @@ export default class PaymentOrchestratorService {
       );
 
     const destination =
-      (metadata.cryptoDestination as Record<string, unknown> | undefined) ??
-      { };
+      metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata) &&
+      metadata.cryptoDestination &&
+      typeof metadata.cryptoDestination ===
+        "object" &&
+      !Array.isArray(
+        metadata.cryptoDestination
+      )
+        ? (
+            metadata.cryptoDestination as Record<
+              string,
+              unknown
+            >
+          )
+        : {};
 
     const asset =
       String(
@@ -128,12 +188,15 @@ export default class PaymentOrchestratorService {
 
     const destinationAddress =
       payload.destinationAddress ??
-      (typeof destination.address === "string"
+      (typeof destination.address ===
+      "string"
         ? destination.address
         : "");
 
     if (!destinationAddress.trim()) {
-      throw new Error("Crypto destination address is required.");
+      throw new Error(
+        "Crypto destination address is required."
+      );
     }
 
     const transaction =
@@ -143,42 +206,109 @@ export default class PaymentOrchestratorService {
           )
         : paymentIntent.transactions.find(
             (item) =>
-              item.status === "CAPTURED" ||
-              item.status === "AUTHORIZED" ||
-              item.status === "SETTLED"
+              item.status ===
+                "CAPTURED" ||
+              item.status ===
+                "AUTHORIZED" ||
+              item.status ===
+                "SETTLED"
           );
 
     if (!transaction) {
-      throw new Error("Verified payment transaction is required before crypto settlement.");
+      throw new Error(
+        "Verified payment transaction is required before crypto settlement."
+      );
     }
 
-    const quote = await this.exchangeService.calculateQuote(
-      paymentIntent.currency as any,
-      asset as any,
-      new Prisma.Decimal(Number(paymentIntent.amount))
-    );
+    const quote =
+      await this.exchangeService.calculateQuote(
+        paymentIntent.currency as any,
+        asset as any,
+        new Prisma.Decimal(
+          paymentIntent.amount
+        )
+      );
 
-    const conversion = await this.exchangeService.createConversion({
-      merchantId: paymentIntent.merchantId,
-      transactionId: transaction.id,
-      fromCurrency: paymentIntent.currency as any,
-      toCurrency: asset as any,
-      fromAmount: new Prisma.Decimal(Number(paymentIntent.amount)),
-      exchangeProvider: "smartpos",
-      metadata: {
-        paymentIntentId: paymentIntent.id,
-        destinationAddress,
-        network,
-        asset,
-        quote,
-      },
-    });
+    /*
+    |--------------------------------------------------------------------------
+    | Convert Decimal values before putting the quote into JSON metadata.
+    |--------------------------------------------------------------------------
+    |
+    | Prisma.Decimal is not valid JSON. The quote itself remains untouched
+    | for business logic, while quoteMetadata is the JSON-safe representation
+    | stored in metadata.
+    |
+    */
 
-    const addressValid = await this.cryptoTransferProvider.validateAddress({
-      asset,
-      network,
-      address: destinationAddress,
-    });
+    const quoteMetadata =
+      this.normalizeJsonValue({
+        fromCurrency:
+          quote.fromCurrency,
+
+        toCurrency:
+          quote.toCurrency,
+
+        rate:
+          quote.rate.toString(),
+
+        amount:
+          quote.amount.toString(),
+
+        convertedAmount:
+          quote.convertedAmount.toString(),
+
+        expiresAt:
+          quote.expiresAt
+            ? quote.expiresAt.toISOString()
+            : null,
+      });
+
+    const conversion =
+      await this.exchangeService.createConversion({
+        merchantId:
+          paymentIntent.merchantId,
+
+        transactionId:
+          transaction.id,
+
+        fromCurrency:
+          paymentIntent.currency as any,
+
+        toCurrency:
+          asset as any,
+
+        fromAmount:
+          new Prisma.Decimal(
+            paymentIntent.amount
+          ),
+
+        exchangeProvider:
+          "smartpos",
+
+        metadata:
+          this.normalizeJsonValue({
+            paymentIntentId:
+              paymentIntent.id,
+
+            destinationAddress,
+
+            network,
+
+            asset,
+
+            quote: quoteMetadata,
+          }),
+      });
+
+    const addressValid =
+      await this.cryptoTransferProvider.validateAddress(
+        {
+          asset,
+          network,
+          address:
+            destinationAddress,
+        }
+      );
 
     if (!addressValid) {
       return {
@@ -186,52 +316,118 @@ export default class PaymentOrchestratorService {
         transaction,
         quote,
         conversion,
+
         settlement: {
-          status: "FAILED",
-          message: `The destination wallet for ${asset} on ${network} is invalid or unavailable.`,
+          status:
+            "FAILED",
+
+          message:
+            `The destination wallet for ${asset} on ${network} is invalid or unavailable.`,
         },
       };
     }
 
-    const settlementResult = await this.cryptoTransferProvider.sendTransaction({
-      asset,
-      network,
-      toAddress: destinationAddress,
-      amount: quote.convertedAmount,
-      reference: transaction.reference ?? paymentIntent.id,
-    });
+    const settlementResult =
+      await this.cryptoTransferProvider.sendTransaction(
+        {
+          asset,
+
+          network,
+
+          toAddress:
+            destinationAddress,
+
+          amount:
+            quote.convertedAmount,
+
+          reference:
+            transaction.reference ??
+            paymentIntent.id,
+        }
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transaction Metadata
+    |--------------------------------------------------------------------------
+    */
+
+    const existingTransactionMetadata =
+      transaction.metadata &&
+      typeof transaction.metadata ===
+        "object" &&
+      !Array.isArray(
+        transaction.metadata
+      )
+        ? transaction.metadata
+        : {};
+
+    const cryptoSettlementMetadata =
+      this.normalizeJsonValue({
+        asset,
+
+        network,
+
+        destinationAddress,
+
+        status:
+          settlementResult.status,
+
+        quote: quoteMetadata,
+
+        conversionId:
+          conversion.id,
+      });
+
+    const updatedTransactionMetadata: Prisma.InputJsonValue =
+      JSON.parse(JSON.stringify({
+        ...(existingTransactionMetadata as Record<string, unknown>),
+
+        cryptoSettlement:
+          cryptoSettlementMetadata,
+      }));
 
     await this.app.prisma.transaction.update({
-      where: { id: transaction.id },
+      where: {
+        id: transaction.id,
+      },
+
       data: {
-        cryptoCurrency: asset as any,
-        cryptoAmount: new Prisma.Decimal(quote.convertedAmount.toString()),
-        metadata: {
-          ...(transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
-            ? transaction.metadata
-            : {}),
-          cryptoSettlement: {
-            asset,
-            network,
-            destinationAddress,
-            status: settlementResult.status,
-            quote,
-            conversionId: conversion.id,
-          },
-        },
+        cryptoCurrency:
+          asset as any,
+
+        cryptoAmount:
+          new Prisma.Decimal(
+            quote.convertedAmount.toString()
+          ),
+
+        metadata:
+          updatedTransactionMetadata,
       },
     });
 
     return {
       paymentIntent,
+
       transaction,
+
       quote,
+
       conversion,
-      settlement: { ...settlementResult },
+
+      settlement: {
+        ...settlementResult,
+      },
     };
   }
 
-    async checkoutPaymentIntent(
+  /*
+  |--------------------------------------------------------------------------
+  | Checkout
+  |--------------------------------------------------------------------------
+  */
+
+  async checkoutPaymentIntent(
     paymentIntentId: string,
     customer: {
       email?: string;
@@ -262,7 +458,8 @@ export default class PaymentOrchestratorService {
 
     if (
       paymentIntent.expiresAt &&
-      paymentIntent.expiresAt <= new Date()
+      paymentIntent.expiresAt <=
+        new Date()
     ) {
       await this.paymentService.expirePaymentIntent(
         paymentIntent.id
@@ -284,59 +481,112 @@ export default class PaymentOrchestratorService {
       );
     }
 
-    const cryptoDestination = this.normalizeCryptoDestinationMetadata(
-      paymentIntent.metadata
-    ).cryptoDestination as Record<string, unknown> | undefined;
+    /*
+    |--------------------------------------------------------------------------
+    | Crypto Destination Validation
+    |--------------------------------------------------------------------------
+    */
 
-    if (cryptoDestination && typeof cryptoDestination === "object") {
-      const destinationAddress = typeof cryptoDestination.address === "string"
-        ? cryptoDestination.address
+    const checkoutMetadata =
+      this.normalizeCryptoDestinationMetadata(
+        paymentIntent.metadata
+      );
+
+    const cryptoDestination =
+      checkoutMetadata &&
+      typeof checkoutMetadata ===
+        "object" &&
+      !Array.isArray(
+        checkoutMetadata
+      ) &&
+      checkoutMetadata.cryptoDestination &&
+      typeof checkoutMetadata.cryptoDestination ===
+        "object" &&
+      !Array.isArray(
+        checkoutMetadata.cryptoDestination
+      )
+        ? (
+            checkoutMetadata.cryptoDestination as Record<
+              string,
+              unknown
+            >
+          )
         : undefined;
 
-      if (destinationAddress && !destinationAddress.trim()) {
-        throw new Error("Crypto destination address is required.");
+    if (
+      cryptoDestination &&
+      typeof cryptoDestination ===
+        "object"
+    ) {
+      const destinationAddress =
+        typeof cryptoDestination.address ===
+        "string"
+          ? cryptoDestination.address
+          : undefined;
+
+      if (
+        destinationAddress &&
+        !destinationAddress.trim()
+      ) {
+        throw new Error(
+          "Crypto destination address is required."
+        );
       }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Existing Transaction
+    |--------------------------------------------------------------------------
+    */
+
     const existingTransaction =
       paymentIntent.transactions.find(
-        transaction =>
-          transaction.status === "INITIATED"
+        (transaction) =>
+          transaction.status ===
+          "INITIATED"
       );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Create Transaction
+    |--------------------------------------------------------------------------
+    */
 
     const transaction =
       existingTransaction ??
-      await this.paymentService.createTransaction({
-        merchantId:
-          paymentIntent.merchantId,
+      (await this.paymentService.createTransaction(
+        {
+          merchantId:
+            paymentIntent.merchantId,
 
-        customerId:
-          paymentIntent.customerId ??
-          undefined,
+          customerId:
+            paymentIntent.customerId ??
+            undefined,
 
-        amount:
-          paymentIntent.amount,
+          amount:
+            paymentIntent.amount,
 
-        currency:
-          paymentIntent.currency,
+          currency:
+            paymentIntent.currency,
 
-        paymentMethod:
-          "card",
+          paymentMethod:
+            "card",
 
-        type:
-          "payment",
+          type:
+            "payment",
 
-        description:
-          paymentIntent.description ??
-          undefined,
+          description:
+            paymentIntent.description ??
+            undefined,
 
-        paymentIntentId:
-          paymentIntent.id,
+          paymentIntentId:
+            paymentIntent.id,
 
-        metadata: this.normalizeCryptoDestinationMetadata(
-          paymentIntent.metadata
-        )
-      });
+          metadata:
+            checkoutMetadata,
+        }
+      ));
 
     const existingAttempt =
       paymentIntent.paymentAttempts.find(

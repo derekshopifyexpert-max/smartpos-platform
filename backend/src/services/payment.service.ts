@@ -11,10 +11,6 @@ import crypto from "crypto";
 type PrismaTransactionClient =
   Prisma.TransactionClient;
 
-type PrismaMetadataInput =
-  Prisma.InputJsonValue |
-  Prisma.JsonNullValueInput;
-
 export default class PaymentService {
   constructor(
     private readonly app: FastifyInstance
@@ -51,64 +47,52 @@ export default class PaymentService {
       .toString("hex");
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | JSON / Metadata Helpers
-  |--------------------------------------------------------------------------
-  |
-  | Prisma has separate types for JSON values read from the database and
-  | JSON values being written to the database.
-  |
-  | JsonValue:
-  |   Used primarily for values returned from Prisma.
-  |
-  | InputJsonValue:
-  |   Used for values being sent into Prisma create/update operations.
-  |
-  | JsonNull:
-  |   Used when the JSON column itself should contain JSON null.
-  |
-  |--------------------------------------------------------------------------
-  */
+  /**
+   * Converts a Prisma JsonValue into a value accepted by Prisma
+   * JSON write operations.
+   *
+   * Decimal objects and other non-JSON values are intentionally
+   * converted through JSON serialization before being written.
+   */
+  private normalizeJson(
+    value: Prisma.JsonValue
+  ): Prisma.InputJsonValue {
+    return JSON.parse(
+      JSON.stringify(value)
+    ) as Prisma.InputJsonValue;
+  }
 
+  /**
+   * Normalizes metadata and preserves crypto destination aliases.
+   *
+   * Null/undefined is handled by the callers using Prisma.JsonNull,
+   * because Prisma.JsonNull is not itself an InputJsonValue.
+   */
   private normalizeMetadata(
     metadata?: Prisma.JsonValue
-  ): PrismaMetadataInput {
+  ): Prisma.InputJsonValue {
     if (
       metadata === undefined ||
       metadata === null
     ) {
-      return Prisma.JsonNull;
+      return {};
     }
 
-    if (Array.isArray(metadata)) {
-      return metadata.map((value) =>
-        this.normalizeJsonValue(value)
-      ) as Prisma.InputJsonArray;
+    const normalized =
+      this.normalizeJson(metadata);
+
+    if (
+      typeof normalized !== "object" ||
+      Array.isArray(normalized)
+    ) {
+      return normalized;
     }
 
-    if (typeof metadata !== "object") {
-      return metadata as Prisma.InputJsonValue;
-    }
-
-    const source =
-      metadata as Prisma.JsonObject;
-
-    const normalized: Prisma.InputJsonObject =
-      {};
-
-    for (const [key, value] of Object.entries(
-      source
-    )) {
-      normalized[key] =
-        this.normalizeJsonValue(value);
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Normalize crypto destination aliases
-    |--------------------------------------------------------------------------
-    */
+    const result =
+      normalized as Record<
+        string,
+        Prisma.InputJsonValue
+      >;
 
     const destinationCandidates = [
       "cryptoDestination",
@@ -117,8 +101,7 @@ export default class PaymentService {
     ];
 
     for (const key of destinationCandidates) {
-      const candidate =
-        normalized[key];
+      const candidate = result[key];
 
       if (
         candidate &&
@@ -126,55 +109,27 @@ export default class PaymentService {
         !Array.isArray(candidate)
       ) {
         const existing =
-          normalized.cryptoDestination;
+          result.cryptoDestination;
 
-        normalized.cryptoDestination = {
-          ...(
-            existing &&
-            typeof existing === "object" &&
-            !Array.isArray(existing)
-              ? (existing as Prisma.InputJsonObject)
-              : {}
-          ),
+        result.cryptoDestination = {
+          ...(existing &&
+          typeof existing === "object" &&
+          !Array.isArray(existing)
+            ? (existing as Record<
+                string,
+                Prisma.InputJsonValue
+              >)
+            : {}),
 
-          ...(candidate as Prisma.InputJsonObject),
+          ...(candidate as Record<
+            string,
+            Prisma.InputJsonValue
+          >),
         };
       }
     }
 
-    return normalized;
-  }
-
-  private normalizeJsonValue(
-    value: Prisma.JsonValue
-  ): Prisma.InputJsonValue {
-    if (value === null) {
-      return Prisma.JsonNull;
-    }
-
-    if (Array.isArray(value)) {
-      return value.map((item) =>
-        this.normalizeJsonValue(item)
-      ) as Prisma.InputJsonArray;
-    }
-
-    if (typeof value === "object") {
-      const result: Prisma.InputJsonObject =
-        {};
-
-      for (const [key, nestedValue] of Object.entries(
-        value as Prisma.JsonObject
-      )) {
-        result[key] =
-          this.normalizeJsonValue(
-            nestedValue
-          );
-      }
-
-      return result;
-    }
-
-    return value;
+    return result;
   }
 
   /*
@@ -197,9 +152,12 @@ export default class PaymentService {
     tx?: PrismaTransactionClient
   ) {
     const metadata =
-      this.normalizeMetadata(
-        data.metadata
-      );
+      data.metadata !== undefined &&
+      data.metadata !== null
+        ? this.normalizeMetadata(
+            data.metadata
+          )
+        : Prisma.JsonNull;
 
     return this.db(tx).paymentIntent.create({
       data: {
@@ -399,6 +357,20 @@ export default class PaymentService {
 
     /*
     |--------------------------------------------------------------------------
+    | Metadata
+    |--------------------------------------------------------------------------
+    */
+
+    const metadata =
+      data.metadata !== undefined &&
+      data.metadata !== null
+        ? this.normalizeMetadata(
+            data.metadata
+          )
+        : Prisma.JsonNull;
+
+    /*
+    |--------------------------------------------------------------------------
     | Create Transaction
     |--------------------------------------------------------------------------
     */
@@ -406,60 +378,52 @@ export default class PaymentService {
     const reference =
       this.generateReference();
 
-    const metadata =
-      this.normalizeMetadata(
-        data.metadata
-      );
+    return db.transaction.create({
+      data: {
+        merchantId:
+          data.merchantId,
 
-    const transaction =
-      await db.transaction.create({
-        data: {
-          merchantId:
-            data.merchantId,
+        terminalId:
+          data.terminalId,
 
-          terminalId:
-            data.terminalId,
+        customerId:
+          data.customerId,
 
-          customerId:
-            data.customerId,
+        walletId:
+          data.walletId,
 
-          walletId:
-            data.walletId,
+        amount:
+          data.amount,
 
-          amount:
-            data.amount,
+        currency:
+          data.currency,
 
-          currency:
-            data.currency,
+        paymentMethod:
+          data.paymentMethod,
 
-          paymentMethod:
-            data.paymentMethod,
+        type:
+          data.type,
 
-          type:
-            data.type,
+        description:
+          data.description,
 
-          description:
-            data.description,
+        metadata,
 
-          metadata,
+        settlementStatus:
+          SettlementStatus.PENDING,
 
-          settlementStatus:
-            SettlementStatus.PENDING,
+        reference,
 
-          reference,
+        idempotencyKey:
+          data.idempotencyKey,
 
-          idempotencyKey:
-            data.idempotencyKey,
+        status:
+          TransactionStatus.INITIATED,
 
-          status:
-            TransactionStatus.INITIATED,
-
-          paymentIntentId:
-            data.paymentIntentId,
-        },
-      });
-
-    return transaction;
+        paymentIntentId:
+          data.paymentIntentId,
+      },
+    });
   }
 
   /*
@@ -502,6 +466,13 @@ export default class PaymentService {
     gatewayResponse: Prisma.JsonValue,
     tx?: PrismaTransactionClient
   ) {
+    const normalizedGatewayResponse =
+      gatewayResponse !== null
+        ? this.normalizeJson(
+            gatewayResponse
+          )
+        : Prisma.JsonNull;
+
     return this.db(tx).paymentAttempt.update({
       where: {
         id: paymentAttemptId,
@@ -512,9 +483,7 @@ export default class PaymentService {
           PaymentStatus.CAPTURED,
 
         gatewayResponse:
-          this.normalizeMetadata(
-            gatewayResponse
-          ),
+          normalizedGatewayResponse,
       },
     });
   }
@@ -525,6 +494,14 @@ export default class PaymentService {
     gatewayResponse?: Prisma.JsonValue,
     tx?: PrismaTransactionClient
   ) {
+    const normalizedGatewayResponse =
+      gatewayResponse !== undefined &&
+      gatewayResponse !== null
+        ? this.normalizeJson(
+            gatewayResponse
+          )
+        : Prisma.JsonNull;
+
     return this.db(tx).paymentAttempt.update({
       where: {
         id: paymentAttemptId,
@@ -537,9 +514,7 @@ export default class PaymentService {
         errorMessage,
 
         gatewayResponse:
-          this.normalizeMetadata(
-            gatewayResponse
-          ),
+          normalizedGatewayResponse,
       },
     });
   }
@@ -564,63 +539,63 @@ export default class PaymentService {
     const db =
       this.db(tx);
 
-    const authorization =
-      await db.authorization.upsert({
-        where: {
-          transactionId:
-            data.transactionId,
-        },
+    const gatewayResponse =
+      data.gatewayResponse !==
+        undefined &&
+      data.gatewayResponse !== null
+        ? this.normalizeJson(
+            data.gatewayResponse
+          )
+        : Prisma.JsonNull;
 
-        update: {
-          authorizationCode:
-            data.authorizationCode ??
-            undefined,
+    return db.authorization.upsert({
+      where: {
+        transactionId:
+          data.transactionId,
+      },
 
-          amount:
-            data.amount,
+      update: {
+        authorizationCode:
+          data.authorizationCode ??
+          undefined,
 
-          currency:
-            data.currency,
+        amount:
+          data.amount,
 
-          status:
-            "approved",
+        currency:
+          data.currency,
 
-          message:
-            data.message,
+        status:
+          "approved",
 
-          gatewayResponse:
-            this.normalizeMetadata(
-              data.gatewayResponse
-            ),
-        },
+        message:
+          data.message,
 
-        create: {
-          transactionId:
-            data.transactionId,
+        gatewayResponse,
+      },
 
-          authorizationCode:
-            data.authorizationCode,
+      create: {
+        transactionId:
+          data.transactionId,
 
-          amount:
-            data.amount,
+        authorizationCode:
+          data.authorizationCode,
 
-          currency:
-            data.currency,
+        amount:
+          data.amount,
 
-          status:
-            "approved",
+        currency:
+          data.currency,
 
-          message:
-            data.message,
+        status:
+          "approved",
 
-          gatewayResponse:
-            this.normalizeMetadata(
-              data.gatewayResponse
-            ),
-        },
-      });
+        message:
+          data.message,
 
-    return authorization;
+        gatewayResponse,
+      },
+    });
   }
 
   async declineAuthorization(
@@ -629,6 +604,14 @@ export default class PaymentService {
     gatewayResponse?: Prisma.JsonValue,
     tx?: PrismaTransactionClient
   ) {
+    const normalizedGatewayResponse =
+      gatewayResponse !== undefined &&
+      gatewayResponse !== null
+        ? this.normalizeJson(
+            gatewayResponse
+          )
+        : Prisma.JsonNull;
+
     return this.db(tx).authorization.create({
       data: {
         transactionId,
@@ -645,9 +628,7 @@ export default class PaymentService {
         message,
 
         gatewayResponse:
-          this.normalizeMetadata(
-            gatewayResponse
-          ),
+          normalizedGatewayResponse,
       },
     });
   }
@@ -749,29 +730,32 @@ export default class PaymentService {
     const db =
       this.db(tx);
 
-    const capture =
-      await db.capture.create({
-        data: {
-          transactionId:
-            data.transactionId,
+    const gatewayResponse =
+      data.gatewayResponse !==
+        undefined &&
+      data.gatewayResponse !== null
+        ? this.normalizeJson(
+            data.gatewayResponse
+          )
+        : Prisma.JsonNull;
 
-          amount:
-            data.amount,
+    return db.capture.create({
+      data: {
+        transactionId:
+          data.transactionId,
 
-          currency:
-            data.currency,
+        amount:
+          data.amount,
 
-          status:
-            "completed",
+        currency:
+          data.currency,
 
-          gatewayResponse:
-            this.normalizeMetadata(
-              data.gatewayResponse
-            ),
-        },
-      });
+        status:
+          "completed",
 
-    return capture;
+        gatewayResponse,
+      },
+    });
   }
 
   /*
@@ -793,32 +777,35 @@ export default class PaymentService {
     const db =
       this.db(tx);
 
-    const reversal =
-      await db.reversal.create({
-        data: {
-          transactionId:
-            data.transactionId,
+    const gatewayResponse =
+      data.gatewayResponse !==
+        undefined &&
+      data.gatewayResponse !== null
+        ? this.normalizeJson(
+            data.gatewayResponse
+          )
+        : Prisma.JsonNull;
 
-          amount:
-            data.amount,
+    return db.reversal.create({
+      data: {
+        transactionId:
+          data.transactionId,
 
-          currency:
-            data.currency,
+        amount:
+          data.amount,
 
-          reason:
-            data.reason,
+        currency:
+          data.currency,
 
-          status:
-            "completed",
+        reason:
+          data.reason,
 
-          gatewayResponse:
-            this.normalizeMetadata(
-              data.gatewayResponse
-            ),
-        },
-      });
+        status:
+          "completed",
 
-    return reversal;
+        gatewayResponse,
+      },
+    });
   }
 
   /*
@@ -896,9 +883,9 @@ export default class PaymentService {
         ? transaction.metadata
         : {};
 
-    const updatedMetadata: Prisma.InputJsonObject =
-      {
-        ...(existingMetadata as Prisma.InputJsonObject),
+    const updatedMetadata =
+      this.normalizeJson({
+        ...(existingMetadata as Prisma.JsonObject),
 
         voidReason:
           data.reason ??
@@ -906,7 +893,7 @@ export default class PaymentService {
 
         voidedAt:
           new Date().toISOString(),
-      };
+      });
 
     return this.app.prisma.transaction.update({
       where: {
@@ -914,6 +901,9 @@ export default class PaymentService {
       },
 
       data: {
+        status:
+          TransactionStatus.VOIDED,
+
         metadata:
           updatedMetadata,
       },
