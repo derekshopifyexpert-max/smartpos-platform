@@ -1,11 +1,12 @@
-
-import { Prisma } from "@prisma/client";
-
 export interface CreateWalletBody {
   merchantId: string;
-  name: string;
-  currency: any;
-  balance?: Prisma.Decimal;
-  availableBalance?: Prisma.Decimal;
-  reservedBalance?: Prisma.Decimal;
+  name?: string;
+  currency?: string;
+  blockchain?: string;
+  network?: string;
+  asset?: string;
+  type?: string;
+  address?: string;
+  walletAddress?: string;
+  metadata?: Record<string, unknown>;
 }

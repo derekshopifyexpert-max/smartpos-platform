@@ -8,7 +8,7 @@ export interface WalletAddressRecord {
 
 export interface WalletRecord {
   id: string;
-  merchantId: string;
+  merchantId?: string | null;
   name: string;
   type?: string | null;
   currency?: string | null;
@@ -31,7 +31,7 @@ export interface WalletRecord {
 }
 
 export interface CreateWalletPayload {
-  merchantId: string;
+  merchantId?: string;
   name?: string;
   currency?: string;
   blockchain?: string;

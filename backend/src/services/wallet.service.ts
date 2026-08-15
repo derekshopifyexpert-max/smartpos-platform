@@ -49,91 +49,142 @@ export default class WalletService {
   }
 
   async createWallet(
-    data: {
-      merchantId: string;
-      name?: string;
-      currency?: any;
-      balance?: Prisma.Decimal;
-      availableBalance?: Prisma.Decimal;
-      reservedBalance?: Prisma.Decimal;
-      blockchain?: string;
-      network?: string;
-      asset?: string;
-      type?: string;
-      address?: string;
-      walletAddress?: string;
-      metadata?: Record<string, unknown>;
-    },
-    db = this.app.prisma
-  ) {
-    const merchant = await db.merchant.findUnique({
-      where: { id: data.merchantId },
-    });
+  data: {
+    merchantId: string;
+    name?: string;
+    currency?: any;
+    balance?: Prisma.Decimal;
+    availableBalance?: Prisma.Decimal;
+    reservedBalance?: Prisma.Decimal;
+    blockchain?: string;
+    network?: string;
+    asset?: string;
+    type?: string;
+    address?: string;
+    walletAddress?: string;
+    metadata?: Record<string, unknown>;
+  },
+  db = this.app.prisma
+) {
+  const merchant = await db.merchant.findUnique({
+    where: { id: data.merchantId },
+  });
 
-    if (!merchant) {
-      throw new Error("Merchant not found.");
-    }
-
-    const networkName = (data.blockchain ?? data.network ?? "ETHEREUM").toUpperCase();
-    const assetSymbol = (data.asset ?? "USDT").toUpperCase();
-    // Do not create TRON wallets using Ethers (EVM) key generation
-    if (networkName === "TRON") {
-      throw new Error("TRON network is not supported for automatic wallet generation. Use an EVM-compatible network such as ETHEREUM or BSC.");
-    }
-
-    const generated = EthersWallet.createRandom();
-    const blockchain = await this.ensureBlockchainNetwork(networkName);
-    const walletAddress = data.address ?? data.walletAddress ?? generated.address;
-
-    // Create wallet and walletAddress atomically so partial failures do not leave broken state
-    const results = await db.$transaction(async (tx) => {
-      const wallet = await tx.wallet.create({
-        data: {
-          merchantId: data.merchantId,
-          name: data.name ?? `${assetSymbol} Wallet`,
-          type: (data.type ?? "CRYPTO") as any,
-          currency: (data.currency ?? "USD") as any,
-          balance: data.balance ?? new Prisma.Decimal(0),
-          availableBalance: data.availableBalance ?? new Prisma.Decimal(0),
-          reservedBalance: data.reservedBalance ?? new Prisma.Decimal(0),
-          address: walletAddress,
-          blockchainId: blockchain.id,
-          encryptedPrivateKey: this.encryptPrivateKey(generated.privateKey),
-          publicKey: generated.publicKey,
-          metadata: {
-            ...(data.metadata ?? {}),
-            asset: assetSymbol,
-            network: networkName,
-            walletGenerated: true,
-          },
-        },
-      });
-
-      const walletAddr = await tx.walletAddress.create({
-        data: {
-          walletId: wallet.id,
-          address: walletAddress,
-          blockchainId: blockchain.id,
-          label: "Primary",
-          metadata: {
-            asset: assetSymbol,
-            network: networkName,
-          },
-        },
-      });
-
-      return { walletId: wallet.id };
-    });
-
-    // Return the wallet including related blockchain and addresses
-    return db.wallet.findUnique({
-      where: { id: results.walletId },
-      include: {
-        blockchain: true,
-        walletAddresses: true,
-      },
-    });
+  if (!merchant) {
+    throw new Error("Merchant not found.");
   }
+
+  const networkName = (
+    data.blockchain ??
+    data.network ??
+    "ETHEREUM"
+  ).toUpperCase();
+
+  const assetSymbol = (
+    data.asset ??
+    "USDT"
+  ).toUpperCase();
+
+  const walletAddress = (
+    data.address ??
+    data.walletAddress ??
+    ""
+  ).trim();
+
+  if (!walletAddress) {
+    throw new Error("Wallet address is required.");
+  }
+
+  // Only accept EVM addresses for Ethereum/BSC.
+  if (
+    networkName === "ETHEREUM" ||
+    networkName === "BSC"
+  ) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      throw new Error(
+        "Invalid wallet address. Enter a valid EVM address beginning with 0x."
+      );
+    }
+  }
+
+  const blockchain = await this.ensureBlockchainNetwork(networkName);
+
+  // Prevent the same external address from being saved twice.
+  const existingAddress = await db.walletAddress.findUnique({
+    where: {
+      address: walletAddress,
+    },
+    include: {
+      wallet: true,
+    },
+  });
+
+  if (existingAddress) {
+    if (existingAddress.wallet.merchantId === data.merchantId) {
+      throw new Error("This wallet address is already saved.");
+    }
+
+    throw new Error("This wallet address is already associated with another merchant.");
+  }
+
+  const wallet = await db.wallet.create({
+    data: {
+      merchantId: data.merchantId,
+      name: data.name?.trim() || `${assetSymbol} Settlement Wallet`,
+      type: (data.type ?? "CRYPTO") as any,
+      currency: (data.currency ?? "USD") as any,
+
+      balance: data.balance ?? new Prisma.Decimal(0),
+      availableBalance:
+        data.availableBalance ?? new Prisma.Decimal(0),
+      reservedBalance:
+        data.reservedBalance ?? new Prisma.Decimal(0),
+
+      address: walletAddress,
+      blockchainId: blockchain.id,
+
+      // IMPORTANT:
+      // This is an externally owned settlement wallet.
+      // SmartPOS does not own its private key.
+      encryptedPrivateKey: null,
+      publicKey: null,
+
+      metadata: {
+        ...(data.metadata ?? {}),
+        asset: assetSymbol,
+        network: networkName,
+        walletGenerated: false,
+        walletType: "EXTERNAL_SETTLEMENT",
+        purpose: "crypto-settlement",
+      },
+    },
+  });
+
+  await db.walletAddress.create({
+    data: {
+      walletId: wallet.id,
+      address: walletAddress,
+      blockchainId: blockchain.id,
+      label: "Primary",
+      isActive: true,
+      metadata: {
+        asset: assetSymbol,
+        network: networkName,
+        source: "merchant-settlement-wallet",
+      },
+    },
+  });
+
+  return db.wallet.findUnique({
+    where: {
+      id: wallet.id,
+    },
+    include: {
+      blockchain: true,
+      walletAddresses: true,
+    },
+  });
+}
 
   async getWallet(id: string) {
     return this.app.prisma.wallet.findUnique({

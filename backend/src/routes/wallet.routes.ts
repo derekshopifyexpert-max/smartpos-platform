@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 
 import WalletService from "../services/wallet.service.js";
-
+import { authMiddleware } from "../middleware/auth.middleware.js";
 import WalletController from "../controllers/wallet.controller.js";
 import { validateBody, validateParams } from "../middleware/validate.js";
 import {
@@ -24,12 +24,15 @@ export default async function walletRoutes(
     new WalletController(service);
 
   app.post(
-    "/wallets",
-    {
-      preHandler: validateBody(createWalletSchema)
-    },
-    controller.create
-  );
+  "/wallets",
+  {
+    preHandler: [
+      authMiddleware,
+      validateBody(createWalletSchema)
+    ]
+  },
+  controller.create
+);
 
   app.get(
     "/wallets/:id",

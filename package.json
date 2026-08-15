@@ -28,5 +28,8 @@
     "unrs-resolver@1.12.2": true,
     "@prisma/client@6.19.3": true,
     "@prisma/engines@6.19.3": true
+  },
+  "dependencies": {
+    "viem": "^2.55.16"
   }
 }

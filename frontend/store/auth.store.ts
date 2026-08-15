@@ -1,5 +1,8 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import {
+  createJSONStorage,
+  persist,
+} from "zustand/middleware";
 
 import type { User } from "@/types/auth";
 
@@ -29,20 +32,18 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "smartpos-auth",
-      getStorage: () => {
-        const isClient = typeof window !== "undefined";
 
-        // Provide a safe storage shim for SSR and a normal wrapper for client
-        if (!isClient) {
+      storage: createJSONStorage(() => {
+        if (typeof window === "undefined") {
           return {
-            getItem: (_name: string) => null,
-            setItem: (_name: string, _value: string) => undefined,
-            removeItem: (_name: string) => undefined,
-          } as Storage;
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {},
+          };
         }
 
         return window.localStorage;
-      },
+      }),
     }
   )
 );

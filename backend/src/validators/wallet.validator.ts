@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const createWalletSchema = z.object({
-  merchantId: z.string().min(1),
+  merchantId: z.string().min(1).optional(),
   name: z.string().min(2).max(100).optional(),
   currency: z.string().min(3).max(10).optional(),
   blockchain: z.string().min(1).optional(),
