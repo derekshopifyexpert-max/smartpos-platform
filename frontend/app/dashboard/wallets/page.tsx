@@ -5,7 +5,6 @@ import {
   useMemo,
   useState,
 } from "react";
-
 import {
   Check,
   Copy,
@@ -14,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-
 import {
   Card,
   CardContent,
@@ -35,6 +33,216 @@ import {
   useAuthStore,
 } from "@/store/auth.store";
 
+const ASSETS = [
+  {
+    value: "USDT",
+    label: "USDT",
+  },
+  {
+    value: "USDC",
+    label: "USDC",
+  },
+  {
+    value: "ETH",
+    label: "ETH",
+  },
+] as const;
+
+const NETWORKS = [
+  {
+    value: "ETHEREUM",
+    label: "Ethereum",
+  },
+  {
+    value: "BSC",
+    label: "BNB Smart Chain",
+  },
+] as const;
+
+function getWalletAddress(
+  wallet: WalletRecord
+): string {
+  return (
+    wallet.address?.trim() ??
+    wallet.walletAddresses?.find(
+      (item) =>
+        item.isActive !== false &&
+        Boolean(item.address?.trim())
+    )?.address?.trim() ??
+    wallet.walletAddresses?.[0]?.address?.trim() ??
+    ""
+  );
+}
+
+function getWalletAsset(
+  wallet: WalletRecord
+): string {
+  const metadataAsset =
+    wallet.metadata?.asset;
+
+  if (
+    typeof metadataAsset ===
+      "string" &&
+    metadataAsset.trim()
+  ) {
+    return metadataAsset
+      .trim()
+      .toUpperCase();
+  }
+
+  return (
+    wallet.currency
+      ?.toString()
+      .toUpperCase() ?? ""
+  );
+}
+
+function getWalletNetwork(
+  wallet: WalletRecord
+): string {
+  const metadataNetwork =
+    wallet.metadata?.network;
+
+  if (
+    typeof metadataNetwork ===
+      "string" &&
+    metadataNetwork.trim()
+  ) {
+    return metadataNetwork
+      .trim()
+      .toUpperCase();
+  }
+
+  return (
+    wallet.blockchain?.name
+      ?.toString()
+      .toUpperCase() ?? ""
+  );
+}
+
+function getErrorMessage(
+  error: unknown
+): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error
+  ) {
+    const response = (
+      error as {
+        response?: {
+          data?: {
+            message?: unknown;
+            error?: unknown;
+            details?: unknown;
+          };
+        };
+      }
+    ).response;
+
+    const data = response?.data;
+
+    if (
+      typeof data?.message ===
+      "string" &&
+      data.message.trim()
+    ) {
+      return data.message;
+    }
+
+    if (
+      typeof data?.error ===
+      "string" &&
+      data.error.trim()
+    ) {
+      return data.error;
+    }
+
+    if (
+      Array.isArray(data?.details)
+    ) {
+      const messages =
+        data.details
+          .map((item) => {
+            if (
+              typeof item ===
+                "object" &&
+              item !== null &&
+              "message" in item
+            ) {
+              const message =
+                (
+                  item as {
+                    message?: unknown;
+                  }
+                ).message;
+
+              return typeof message ===
+                "string"
+                ? message
+                : null;
+            }
+
+            return typeof item ===
+              "string"
+              ? item
+              : null;
+          })
+          .filter(
+            (
+              item
+            ): item is string =>
+              Boolean(item)
+          );
+
+      if (messages.length > 0) {
+        return messages.join(", ");
+      }
+    }
+  }
+
+  if (
+    error instanceof Error &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+  return "Wallet request failed.";
+}
+
+function validatePublicAddress(
+  network: string,
+  address: string
+): string | null {
+  const value =
+    address.trim();
+
+  if (!value) {
+    return "Enter the existing public wallet address.";
+  }
+
+  if (
+    network === "ETHEREUM" ||
+    network === "BSC"
+  ) {
+    if (
+      !/^0x[a-fA-F0-9]{40}$/.test(
+        value
+      )
+    ) {
+      return (
+        "Enter a valid EVM public address. " +
+        "It must start with 0x and contain exactly 40 hexadecimal characters after the prefix."
+      );
+    }
+
+    return null;
+  }
+
+  return `The ${network} network is not supported for wallet storage.`;
+}
+
 export default function WalletsPage() {
   const user =
     useAuthStore(
@@ -42,7 +250,7 @@ export default function WalletsPage() {
     );
 
   const merchantId =
-    user?.merchantId ?? "";
+    user?.merchantId?.trim() ?? "";
 
   const [
     wallets,
@@ -122,27 +330,24 @@ export default function WalletsPage() {
       setError(null);
 
       try {
-        const data =
+        const result =
           await getMerchantWallets(
             merchantId
           );
 
         if (!cancelled) {
           setWallets(
-            data ?? []
+            result ?? []
           );
         }
       } catch (caught) {
-        console.error(
-          "Failed to load wallets:",
-          caught
-        );
-
         if (!cancelled) {
+          setWallets([]);
+
           setError(
-            caught instanceof Error
-              ? caught.message
-              : "Unable to load saved wallets."
+            getErrorMessage(
+              caught
+            )
           );
         }
       } finally {
@@ -161,10 +366,7 @@ export default function WalletsPage() {
 
   const walletSummary =
     useMemo(() => {
-      if (
-        wallets.length ===
-        0
-      ) {
+      if (wallets.length === 0) {
         return "No wallet records yet.";
       }
 
@@ -175,98 +377,97 @@ export default function WalletsPage() {
       } saved for settlement.`;
     }, [wallets.length]);
 
-  function getWalletAddress(
-    wallet: WalletRecord
+  function handleNetworkChange(
+    value: string
   ) {
-    return (
-      wallet.address ??
-      wallet.walletAddresses?.find(
-        (item) =>
-          item.isActive !==
-          false
-      )?.address ??
-      wallet.walletAddresses?.[0]
-        ?.address ??
-      ""
-    );
+    setNetwork(value);
+    setError(null);
+    setSuccess(null);
+
+    /*
+     * SmartPOS currently supports public
+     * EVM addresses for Ethereum and BNB
+     * Smart Chain only.
+     *
+     * Do not allow an EVM address to be
+     * labelled as TRON, Solana, Bitcoin,
+     * Cardano, or another network.
+     */
+    if (
+      value !== "ETHEREUM" &&
+      value !== "BSC"
+    ) {
+      setAddress("");
+    }
   }
 
-  function validateForm() {
-    if (!merchantId) {
-      return "No merchant account is associated with the authenticated user.";
-    }
-
-    if (
-      name.trim().length <
-      2
-    ) {
-      return "Enter a wallet name.";
-    }
-
-    if (!asset) {
-      return "Select a crypto asset.";
-    }
-
-    if (!network) {
-      return "Select a blockchain network.";
-    }
-
-    const trimmedAddress =
-      address.trim();
-
-    if (!trimmedAddress) {
-      return "Enter the existing wallet address.";
-    }
-
-    if (
-      network ===
-        "ETHEREUM" ||
-      network === "BSC"
-    ) {
-      if (
-        !/^0x[a-fA-F0-9]{40}$/.test(
-          trimmedAddress
-        )
-      ) {
-        return "Enter a valid EVM public wallet address beginning with 0x.";
-      }
-    }
-
-    return null;
+  function handleAssetChange(
+    value: string
+  ) {
+    setAsset(value);
+    setError(null);
+    setSuccess(null);
   }
 
   async function handleSaveWallet() {
     setError(null);
     setSuccess(null);
 
-    const validationError =
-      validateForm();
-
-    if (validationError) {
+    if (!merchantId) {
       setError(
-        validationError
+        "Your authenticated account does not have a merchant account."
       );
 
+      return;
+    }
+
+    const walletName =
+      name.trim();
+
+    if (!walletName) {
+      setError(
+        "Enter a wallet name."
+      );
+
+      return;
+    }
+
+    if (!asset) {
+      setError(
+        "Select a crypto asset."
+      );
+
+      return;
+    }
+
+    if (!network) {
+      setError(
+        "Select a blockchain network."
+      );
+
+      return;
+    }
+
+    const addressError =
+      validatePublicAddress(
+        network,
+        address
+      );
+
+    if (addressError) {
+      setError(addressError);
       return;
     }
 
     setSaving(true);
 
     try {
-      const trimmedAddress =
-        address.trim();
-
-      const created =
+      const saved =
         await createWallet({
-          /*
-           * Keep this for compatibility.
-           * The backend validates it against the authenticated
-           * merchant context.
-           */
           merchantId,
 
           name:
-            name.trim(),
+            walletName,
 
           currency:
             "USD",
@@ -282,22 +483,31 @@ export default function WalletsPage() {
             "CRYPTO",
 
           /*
-           * This is the real wallet address supplied
-           * by the merchant.
+           * This is the ONLY wallet address
+           * involved in wallet creation.
+           *
+           * SmartPOS stores the address supplied
+           * by the merchant. It does not generate
+           * one.
            */
           address:
-            trimmedAddress,
-
-          walletAddress:
-            trimmedAddress,
+            address.trim(),
 
           metadata: {
-            asset,
+            asset:
+              asset.toUpperCase(),
 
-            network,
+            network:
+              network.toUpperCase(),
 
             source:
               "merchant-settlement-wallet",
+
+            walletGenerated:
+              false,
+
+            walletType:
+              "EXTERNAL_SETTLEMENT",
 
             purpose:
               "crypto-settlement",
@@ -306,11 +516,11 @@ export default function WalletsPage() {
 
       setWallets(
         (current) => [
-          created,
+          saved,
           ...current.filter(
             (wallet) =>
               wallet.id !==
-              created.id
+              saved.id
           ),
         ]
       );
@@ -320,26 +530,15 @@ export default function WalletsPage() {
       );
 
       setAsset("USDT");
-
-      setNetwork(
-        "ETHEREUM"
-      );
-
+      setNetwork("ETHEREUM");
       setAddress("");
 
       setSuccess(
-        "Settlement wallet saved successfully."
+        "Wallet saved successfully."
       );
     } catch (caught) {
-      console.error(
-        "Wallet save failed:",
-        caught
-      );
-
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to save the wallet."
+        getErrorMessage(caught)
       );
     } finally {
       setSaving(false);
@@ -350,13 +549,11 @@ export default function WalletsPage() {
     wallet: WalletRecord
   ) {
     const walletAddress =
-      getWalletAddress(
-        wallet
-      );
+      getWalletAddress(wallet);
 
     if (!walletAddress) {
       setError(
-        "This wallet does not have a public address."
+        "This wallet does not have a saved public address."
       );
 
       return;
@@ -387,49 +584,60 @@ export default function WalletsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm font-medium text-slate-500">
-          Wallet management
-        </p>
+    <div className="space-y-6 bg-slate-50">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-medium text-blue-700">
+            Settlement
+          </p>
 
-        <h1 className="mt-1 text-3xl font-bold text-slate-900">
-          Wallets
-        </h1>
+          <h1 className="mt-1 text-3xl font-bold text-slate-900">
+            Wallets
+          </h1>
 
-        <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          Save an existing cryptocurrency wallet
-          address that SmartPOS should use as the
-          settlement destination.
-        </p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Save the public cryptocurrency
+            addresses that SmartPOS should
+            use as settlement destinations.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Saved wallets
+          </p>
+
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {walletSummary}
+          </p>
+        </div>
       </div>
 
       {!merchantId ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-          This signed-in account does not have a
-          merchant account assigned to it. SmartPOS
-          cannot save a settlement wallet until a
-          merchant account is associated with the
-          user.
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          No merchant account is associated
+          with the current authenticated user.
+          Sign in with a merchant account before
+          saving a settlement wallet.
         </div>
       ) : null}
 
-      <Card className="border-slate-200 bg-white text-slate-900 shadow-sm">
+      <Card className="border border-slate-200 bg-white text-slate-900 shadow-sm">
         <CardHeader className="border-b border-slate-100">
           <CardTitle className="text-slate-900">
             Add settlement wallet
           </CardTitle>
 
-          <p className="text-sm text-slate-500">
-            SmartPOS does not create this wallet.
-            Enter the public address of a wallet
-            already owned or controlled by the
-            merchant.
+          <p className="text-sm leading-6 text-slate-500">
+            Enter an existing public wallet
+            address controlled by the merchant.
+            SmartPOS only validates and saves
+            the address.
           </p>
         </CardHeader>
 
-        <CardContent className="space-y-5 pt-5">
-          <div className="grid gap-4 md:grid-cols-2">
+        <CardContent className="space-y-5 pt-6">
+          <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label
                 htmlFor="wallet-name"
@@ -463,23 +671,26 @@ export default function WalletsPage() {
                 id="wallet-asset"
                 value={asset}
                 onChange={(event) =>
-                  setAsset(
+                  handleAssetChange(
                     event.target.value
                   )
                 }
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
-                <option value="USDT">
-                  USDT
-                </option>
-
-                <option value="USDC">
-                  USDC
-                </option>
-
-                <option value="ETH">
-                  ETH
-                </option>
+                {ASSETS.map(
+                  (item) => (
+                    <option
+                      key={
+                        item.value
+                      }
+                      value={
+                        item.value
+                      }
+                    >
+                      {item.label}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
@@ -495,19 +706,26 @@ export default function WalletsPage() {
                 id="wallet-network"
                 value={network}
                 onChange={(event) =>
-                  setNetwork(
+                  handleNetworkChange(
                     event.target.value
                   )
                 }
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
-                <option value="ETHEREUM">
-                  Ethereum
-                </option>
-
-                <option value="BSC">
-                  BNB Smart Chain
-                </option>
+                {NETWORKS.map(
+                  (item) => (
+                    <option
+                      key={
+                        item.value
+                      }
+                      value={
+                        item.value
+                      }
+                    >
+                      {item.label}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
@@ -516,7 +734,7 @@ export default function WalletsPage() {
                 htmlFor="wallet-address"
                 className="mb-2 block text-sm font-medium text-slate-700"
               >
-                Existing wallet address
+                Public wallet address
               </label>
 
               <input
@@ -533,16 +751,23 @@ export default function WalletsPage() {
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
 
-              <p className="mt-2 text-xs text-slate-500">
-                Enter only the public receiving
-                address. Never enter a seed phrase,
-                private key, or wallet password.
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Enter only the public address.
+                Never enter a private key,
+                seed phrase, mnemonic, or secret.
               </p>
             </div>
           </div>
 
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
+            SmartPOS does not generate or
+            custody wallet addresses. The
+            address you provide becomes the
+            saved settlement destination.
+          </div>
+
           {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
               {error}
             </div>
           ) : null}
@@ -550,7 +775,6 @@ export default function WalletsPage() {
           {success ? (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               <Check className="h-4 w-4 shrink-0" />
-
               {success}
             </div>
           ) : null}
@@ -577,40 +801,36 @@ export default function WalletsPage() {
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 bg-white text-slate-900 shadow-sm">
+      <Card className="border border-slate-200 bg-white text-slate-900 shadow-sm">
         <CardHeader className="border-b border-slate-100">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-slate-900">
-              Saved wallets
-            </CardTitle>
-
-            <span className="text-sm text-slate-500">
-              {walletSummary}
-            </span>
-          </div>
+          <CardTitle className="text-slate-900">
+            Saved wallets
+          </CardTitle>
         </CardHeader>
 
-        <CardContent className="pt-5">
+        <CardContent className="pt-6">
           {loading ? (
-            <p className="text-sm text-slate-500">
-              Loading wallets...
-            </p>
-          ) : wallets.length === 0 ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+              Loading saved wallets...
+            </div>
+          ) : wallets.length ===
+            0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
               <div className="flex items-start gap-3">
-                <div className="rounded-lg bg-white p-2 text-slate-600 ring-1 ring-slate-200">
+                <div className="rounded-lg bg-white p-2 text-blue-700 ring-1 ring-slate-200">
                   <WalletIcon className="h-5 w-5" />
                 </div>
 
                 <div>
-                  <p className="font-medium text-slate-900">
-                    No settlement wallets yet
+                  <p className="font-semibold text-slate-900">
+                    No wallets yet
                   </p>
 
-                  <p className="mt-1 text-sm text-slate-600">
-                    Save the existing public wallet
-                    address that should receive
-                    cryptocurrency settlements.
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Save an existing public
+                    wallet address to use it
+                    as a crypto settlement
+                    destination.
                   </p>
                 </div>
               </div>
@@ -624,20 +844,14 @@ export default function WalletsPage() {
                       wallet
                     );
 
-                  const assetName =
-                    String(
-                      wallet.metadata
-                        ?.asset ??
-                        wallet.name
+                  const walletAsset =
+                    getWalletAsset(
+                      wallet
                     );
 
-                  const networkName =
-                    String(
-                      wallet.blockchain
-                        ?.name ??
-                        wallet.metadata
-                          ?.network ??
-                        "Unknown network"
+                  const walletNetwork =
+                    getWalletNetwork(
+                      wallet
                     );
 
                   return (
@@ -645,41 +859,44 @@ export default function WalletsPage() {
                       key={
                         wallet.id
                       }
-                      className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between"
+                      className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between"
                     >
                       <div className="flex min-w-0 items-start gap-3">
-                        <div className="rounded-lg bg-slate-50 p-2 text-slate-700 ring-1 ring-slate-200">
-                          <WalletIcon className="h-4 w-4" />
+                        <div className="rounded-lg bg-blue-50 p-2 text-blue-700 ring-1 ring-blue-100">
+                          <WalletIcon className="h-5 w-5" />
                         </div>
 
                         <div className="min-w-0">
-                          <p className="font-semibold text-slate-900">
-                            {wallet.name}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-900">
+                              {
+                                wallet.name
+                              }
+                            </p>
 
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
-                            <span className="font-medium text-blue-700">
-                              {assetName}
-                            </span>
-
-                            <span className="text-slate-400">
-                              ·
-                            </span>
-
-                            <span className="text-slate-500">
-                              {networkName}
-                            </span>
-
-                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                              {wallet.status ??
-                                "ACTIVE"}
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                              Ready
                             </span>
                           </div>
 
-                          <p className="mt-2 break-all font-mono text-xs text-slate-700">
-                            {walletAddress ||
-                              "No public address"}
+                          <p className="mt-1 text-sm text-slate-500">
+                            {walletAsset ||
+                              "Crypto"}{" "}
+                            ·{" "}
+                            {walletNetwork ||
+                              "Network unavailable"}
                           </p>
+
+                          <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-xs font-medium text-slate-500">
+                              Public address
+                            </p>
+
+                            <p className="mt-1 break-all font-mono text-xs text-slate-800">
+                              {walletAddress ||
+                                "No public address returned by the server."}
+                            </p>
+                          </div>
                         </div>
                       </div>
 

@@ -1,13 +1,21 @@
 export interface WalletAddressRecord {
   id: string;
-  walletId?: string;
   address: string;
   blockchainId?: string | null;
   label?: string | null;
   isActive?: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   metadata?: Record<string, unknown> | null;
-  createdAt?: string;
-  updatedAt?: string;
+}
+
+export interface WalletBlockchainRecord {
+  id?: string | null;
+  name?: string | null;
+  nativeCurrency?: string | null;
+  blockTime?: number | null;
+  isActive?: boolean | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface WalletRecord {
@@ -17,49 +25,45 @@ export interface WalletRecord {
   name: string;
 
   type?: string | null;
+
   currency?: string | null;
 
   balance?: number | string | null;
+
   availableBalance?: number | string | null;
+
   reservedBalance?: number | string | null;
 
   status?: string | null;
 
   /**
-   * Existing public settlement address supplied by the merchant.
+   * Primary public settlement address.
    *
-   * SmartPOS does not generate this address.
+   * SmartPOS never generates this address.
+   * It is supplied by the merchant and persisted by the backend.
    */
   address?: string | null;
 
   blockchainId?: string | null;
 
-  /**
-   * Public metadata only.
-   *
-   * Private keys, encrypted private keys, seed phrases and
-   * mnemonics must never appear in this interface.
-   */
-  publicKey?: string | null;
+  blockchain?: WalletBlockchainRecord | null;
 
   metadata?: Record<string, unknown> | null;
 
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: string | null;
 
-  blockchain?: {
-    id?: string | null;
-    name?: string | null;
-    chainId?: number | null;
-    nativeCurrency?: string | null;
-    blockTime?: number | null;
-    explorerUrl?: string | null;
-    isActive?: boolean | null;
-  } | null;
+  updatedAt?: string | null;
 
   walletAddresses?: WalletAddressRecord[];
 }
 
+/**
+ * Data submitted when saving a merchant-controlled
+ * settlement wallet.
+ *
+ * The address is required because SmartPOS does not
+ * generate wallets or wallet addresses.
+ */
 export interface CreateWalletPayload {
   merchantId: string;
 
@@ -73,15 +77,21 @@ export interface CreateWalletPayload {
 
   asset: string;
 
-  /**
-   * Existing public wallet address supplied by the merchant.
-   *
-   * SmartPOS stores and validates this address.
-   * SmartPOS never generates it.
-   */
   address: string;
 
   type?: string;
 
   metadata?: Record<string, unknown>;
+}
+
+export interface WalletApiResponse {
+  success: boolean;
+  data: WalletRecord;
+  message?: string;
+}
+
+export interface WalletListApiResponse {
+  success: boolean;
+  data: WalletRecord[];
+  message?: string;
 }

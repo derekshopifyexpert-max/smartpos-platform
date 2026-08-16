@@ -1,4 +1,4 @@
-import { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 
 import WalletService from "../services/wallet.service.js";
 import WalletController from "../controllers/wallet.controller.js";
@@ -7,8 +7,6 @@ import {
   validateBody,
   validateParams,
 } from "../middleware/validate.js";
-
-import { authMiddleware } from "../middleware/auth.middleware.js";
 
 import {
   createWalletSchema,
@@ -20,88 +18,107 @@ import {
 
 export default async function walletRoutes(
   app: FastifyInstance
-) {
-  const service = new WalletService(app);
+): Promise<void> {
+  const walletService =
+    new WalletService(app);
 
-  const controller = new WalletController(service);
+  const walletController =
+    new WalletController(
+      walletService
+    );
 
   /*
-   * Wallets belong to an authenticated merchant account.
+   * Create a merchant settlement wallet.
    *
-   * The browser must never be trusted to supply an arbitrary
-   * merchantId. The controller derives the merchant from
-   * request.user.
+   * SmartPOS does not generate the wallet address.
+   * The merchant must provide an existing public
+   * settlement address.
    */
-  app.post(
-    "/wallets",
-    {
-      preHandler: [
-        authMiddleware,
-        validateBody(createWalletSchema),
-      ],
-    },
-    controller.create
-  );
+  app.post("/wallets", {
+    preHandler: validateBody(
+      createWalletSchema
+    ),
+    handler:
+      walletController.create,
+  });
 
-  app.get(
-    "/wallets/:id",
-    {
-      preHandler: [
-        authMiddleware,
-        validateParams(walletIdSchema),
-      ],
-    },
-    controller.get
-  );
+  /*
+   * Get a single wallet.
+   */
+  app.get("/wallets/:id", {
+    preHandler: validateParams(
+      walletIdSchema
+    ),
+    handler:
+      walletController.get,
+  });
 
+  /*
+   * Credit an internal SmartPOS wallet balance.
+   */
   app.post(
     "/wallets/:id/credit",
     {
       preHandler: [
-        authMiddleware,
-        validateParams(walletIdSchema),
-        validateBody(amountSchema),
+        validateParams(
+          walletIdSchema
+        ),
+        validateBody(
+          amountSchema
+        ),
       ],
-    },
-    controller.credit
+      handler:
+        walletController.credit,
+    }
   );
 
+  /*
+   * Debit an internal SmartPOS wallet balance.
+   */
   app.post(
     "/wallets/:id/debit",
     {
       preHandler: [
-        authMiddleware,
-        validateParams(walletIdSchema),
-        validateBody(amountSchema),
+        validateParams(
+          walletIdSchema
+        ),
+        validateBody(
+          amountSchema
+        ),
       ],
-    },
-    controller.debit
-  );
-
-  app.post(
-    "/wallets/transfer",
-    {
-      preHandler: [
-        authMiddleware,
-        validateBody(transferSchema),
-      ],
-    },
-    controller.transferFunds
+      handler:
+        walletController.debit,
+    }
   );
 
   /*
-   * The merchantId parameter is retained for route compatibility.
-   * The controller must NOT trust it. It uses the authenticated
-   * user's merchantId instead.
+   * Transfer funds between internal wallet
+   * balance records.
+   */
+  app.post(
+    "/wallets/transfer",
+    {
+      preHandler:
+        validateBody(
+          transferSchema
+        ),
+      handler:
+        walletController.transferFunds,
+    }
+  );
+
+  /*
+   * Get all saved wallets belonging to a merchant.
    */
   app.get(
     "/merchants/:merchantId/wallets",
     {
-      preHandler: [
-        authMiddleware,
-        validateParams(merchantWalletsSchema),
-      ],
-    },
-    controller.merchantWallets
+      preHandler:
+        validateParams(
+          merchantWalletsSchema
+        ),
+      handler:
+        walletController.merchantWallets,
+    }
   );
 }
