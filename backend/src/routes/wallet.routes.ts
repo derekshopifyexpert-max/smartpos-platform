@@ -27,96 +27,50 @@ export default async function walletRoutes(
       walletService
     );
 
-  /*
-   * Create a merchant settlement wallet.
-   *
-   * SmartPOS does not generate the wallet address.
-   * The merchant must provide an existing public
-   * settlement address.
-   */
   app.post("/wallets", {
     preHandler: validateBody(
       createWalletSchema
     ),
-    handler:
-      walletController.create,
+    handler: walletController.create,
   });
 
-  /*
-   * Get a single wallet.
-   */
   app.get("/wallets/:id", {
     preHandler: validateParams(
       walletIdSchema
     ),
-    handler:
-      walletController.get,
+    handler: walletController.get,
   });
 
-  /*
-   * Credit an internal SmartPOS wallet balance.
-   */
-  app.post(
-    "/wallets/:id/credit",
-    {
-      preHandler: [
-        validateParams(
-          walletIdSchema
-        ),
-        validateBody(
-          amountSchema
-        ),
-      ],
-      handler:
-        walletController.credit,
-    }
-  );
+  app.post("/wallets/:id/credit", {
+    preHandler: [
+      validateParams(walletIdSchema),
+      validateBody(amountSchema),
+    ],
+    handler: walletController.credit,
+  });
 
-  /*
-   * Debit an internal SmartPOS wallet balance.
-   */
-  app.post(
-    "/wallets/:id/debit",
-    {
-      preHandler: [
-        validateParams(
-          walletIdSchema
-        ),
-        validateBody(
-          amountSchema
-        ),
-      ],
-      handler:
-        walletController.debit,
-    }
-  );
+  app.post("/wallets/:id/debit", {
+    preHandler: [
+      validateParams(walletIdSchema),
+      validateBody(amountSchema),
+    ],
+    handler: walletController.debit,
+  });
 
-  /*
-   * Transfer funds between internal wallet
-   * balance records.
-   */
-  app.post(
-    "/wallets/transfer",
-    {
-      preHandler:
-        validateBody(
-          transferSchema
-        ),
-      handler:
-        walletController.transferFunds,
-    }
-  );
+  app.post("/wallets/transfer", {
+    preHandler: validateBody(
+      transferSchema
+    ),
+    handler:
+      walletController.transferFunds,
+  });
 
-  /*
-   * Get all saved wallets belonging to a merchant.
-   */
   app.get(
     "/merchants/:merchantId/wallets",
     {
-      preHandler:
-        validateParams(
-          merchantWalletsSchema
-        ),
+      preHandler: validateParams(
+        merchantWalletsSchema
+      ),
       handler:
         walletController.merchantWallets,
     }

@@ -19,11 +19,6 @@ type WalletCreateData = {
   metadata?: Record<string, unknown>;
 };
 
-type SupportedNetworkConfig = {
-  nativeCurrency: CurrencyType;
-  blockTime: number;
-};
-
 export default class WalletService {
   constructor(
     private readonly app: FastifyInstance
@@ -34,247 +29,177 @@ export default class WalletService {
   }
 
   private getNetworkType(
-    networkName: string
+    value?: string
   ): BlockchainNetworkType {
-    const normalized = this.normalize(networkName);
+    const network = this.normalize(value);
+
+    if (!network) {
+      throw new Error("Blockchain network is required.");
+    }
 
     if (
       !Object.prototype.hasOwnProperty.call(
         BlockchainNetworkType,
-        normalized
+        network
       )
     ) {
       throw new Error(
-        `Unsupported blockchain network: ${normalized || "unknown"}.`
+        `Unsupported blockchain network: ${network}.`
       );
     }
 
-    return normalized as BlockchainNetworkType;
+    return network as BlockchainNetworkType;
   }
 
   private getWalletType(
-    type?: string
+    value?: string
   ): WalletType {
-    const normalized = this.normalize(type);
+    const type = this.normalize(value);
 
-    if (!normalized) {
+    if (!type) {
       return WalletType.CRYPTO;
     }
 
     if (
       !Object.prototype.hasOwnProperty.call(
         WalletType,
-        normalized
+        type
       )
     ) {
       throw new Error(
-        `Unsupported wallet type: ${normalized}.`
+        `Unsupported wallet type: ${type}.`
       );
     }
 
-    return normalized as WalletType;
+    if (type === WalletType.FIAT) {
+      throw new Error(
+        "A settlement wallet must be a crypto wallet."
+      );
+    }
+
+    return type as WalletType;
   }
 
   private getCurrencyType(
-    currency: string
+    value?: string
   ): CurrencyType {
-    const normalized = this.normalize(currency);
+    const currency = this.normalize(value);
+
+    if (!currency) {
+      throw new Error("Wallet asset is required.");
+    }
 
     if (
       !Object.prototype.hasOwnProperty.call(
         CurrencyType,
-        normalized
+        currency
       )
     ) {
       throw new Error(
-        `Unsupported wallet currency: ${normalized || "unknown"}.`
+        `Unsupported wallet asset: ${currency}.`
       );
     }
 
-    return normalized as CurrencyType;
-  }
-
-  private getNetworkConfig(
-    network: BlockchainNetworkType
-  ): SupportedNetworkConfig | null {
-    switch (network) {
-      case BlockchainNetworkType.BITCOIN:
-        return {
-          nativeCurrency: CurrencyType.BTC,
-          blockTime: 600,
-        };
-
-      case BlockchainNetworkType.ETHEREUM:
-        return {
-          nativeCurrency: CurrencyType.ETH,
-          blockTime: 12,
-        };
-
-      case BlockchainNetworkType.SOLANA:
-        return {
-          nativeCurrency: CurrencyType.SOL,
-          blockTime: 1,
-        };
-
-      case BlockchainNetworkType.CARDANO:
-        return {
-          nativeCurrency: CurrencyType.ADA,
-          blockTime: 20,
-        };
-
-      case BlockchainNetworkType.RIPPLE:
-        return {
-          nativeCurrency: CurrencyType.XRP,
-          blockTime: 4,
-        };
-
-      /*
-       * BSC native currency is BNB.
-       * Polygon native currency is MATIC.
-       * Avalanche C-Chain native currency is AVAX.
-       *
-       * The current CurrencyType enum does not contain
-       * BNB, MATIC or AVAX.
-       *
-       * Therefore SmartPOS must NOT fabricate a native
-       * currency value simply to create these networks.
-       *
-       * These networks are accepted only when their
-       * BlockchainNetwork records have already been
-       * configured in the database.
-       */
-      case BlockchainNetworkType.BSC:
-      case BlockchainNetworkType.POLYGON:
-      case BlockchainNetworkType.AVALANCHE:
-      case BlockchainNetworkType.ARBITRUM:
-      case BlockchainNetworkType.OPTIMISM:
-      case BlockchainNetworkType.BASE:
-      case BlockchainNetworkType.TRON:
-      case BlockchainNetworkType.LITECOIN:
-      case BlockchainNetworkType.DASH:
-      case BlockchainNetworkType.MONERO:
-      case BlockchainNetworkType.ZCASH:
-      case BlockchainNetworkType.TEZOS:
-      case BlockchainNetworkType.ALGORAND:
-      case BlockchainNetworkType.NEAR:
-      case BlockchainNetworkType.COSMOS:
-        return null;
-
-      default:
-        return null;
-    }
+    return currency as CurrencyType;
   }
 
   private validateEvmAddress(
-    address: string,
-    network: BlockchainNetworkType
+    address: string
   ): string {
-    const normalized = address.trim();
+    const value = address.trim();
 
-    if (!/^0x[a-fA-F0-9]{40}$/.test(normalized)) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(value)) {
       throw new Error(
-        `Invalid ${network} wallet address. Enter a valid public EVM address beginning with 0x and containing exactly 40 hexadecimal characters after the prefix.`
+        "Enter a valid public EVM wallet address beginning with 0x and containing 40 hexadecimal characters."
       );
     }
 
-    return normalized;
+    return value;
   }
 
   private validateBitcoinAddress(
     address: string
   ): string {
-    const normalized = address.trim();
+    const value = address.trim();
 
-    const validBech32 =
+    const bech32 =
       /^(bc1q|bc1p)[ac-hj-np-z02-9]{38,58}$/.test(
-        normalized
+        value
       );
 
-    const validLegacy =
+    const legacy =
       /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(
-        normalized
+        value
       );
 
-    if (!validBech32 && !validLegacy) {
+    if (!bech32 && !legacy) {
       throw new Error(
-        "Invalid Bitcoin wallet address. Enter a valid Bitcoin mainnet address."
+        "Enter a valid Bitcoin public wallet address."
       );
     }
 
-    return normalized;
+    return value;
   }
 
   private validateSolanaAddress(
     address: string
   ): string {
-    const normalized = address.trim();
+    const value = address.trim();
 
-    /*
-     * Solana public keys are base58 encoded.
-     * Base58 excludes 0, O, I and l.
-     */
     if (
       !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(
-        normalized
+        value
       )
     ) {
       throw new Error(
-        "Invalid Solana wallet address. Enter a valid Base58 Solana public address."
+        "Enter a valid Solana public wallet address."
       );
     }
 
-    return normalized;
+    return value;
   }
 
   private validateCardanoAddress(
     address: string
   ): string {
-    const normalized = address.trim();
+    const value = address.trim();
 
-    if (
-      !/^addr1[a-z0-9]{90,}$/.test(
-        normalized
-      )
-    ) {
+    if (!/^addr1[a-z0-9]{90,}$/.test(value)) {
       throw new Error(
-        "Invalid Cardano wallet address. Enter a valid Shelley mainnet address beginning with addr1."
+        "Enter a valid Cardano public wallet address beginning with addr1."
       );
     }
 
-    return normalized;
+    return value;
   }
 
   private validateRippleAddress(
     address: string
   ): string {
-    const normalized = address.trim();
+    const value = address.trim();
 
     if (
       !/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(
-        normalized
+        value
       )
     ) {
       throw new Error(
-        "Invalid XRP wallet address. Enter a valid public XRP address beginning with r."
+        "Enter a valid XRP public wallet address beginning with r."
       );
     }
 
-    return normalized;
+    return value;
   }
 
   private validateAddress(
-    networkName: string,
+    network: BlockchainNetworkType,
     address?: string
   ): string {
-    const network =
-      this.getNetworkType(networkName);
+    const value = (address ?? "").trim();
 
-    const normalizedAddress =
-      (address ?? "").trim();
-
-    if (!normalizedAddress) {
+    if (!value) {
       throw new Error(
-        "Wallet address is required. SmartPOS does not generate wallet addresses; enter the public address you already own."
+        "Public wallet address is required."
       );
     }
 
@@ -286,101 +211,30 @@ export default class WalletService {
       case BlockchainNetworkType.ARBITRUM:
       case BlockchainNetworkType.OPTIMISM:
       case BlockchainNetworkType.BASE:
-        return this.validateEvmAddress(
-          normalizedAddress,
-          network
-        );
+        return this.validateEvmAddress(value);
 
       case BlockchainNetworkType.BITCOIN:
-        return this.validateBitcoinAddress(
-          normalizedAddress
-        );
+        return this.validateBitcoinAddress(value);
 
       case BlockchainNetworkType.SOLANA:
-        return this.validateSolanaAddress(
-          normalizedAddress
-        );
+        return this.validateSolanaAddress(value);
 
       case BlockchainNetworkType.CARDANO:
-        return this.validateCardanoAddress(
-          normalizedAddress
-        );
+        return this.validateCardanoAddress(value);
 
       case BlockchainNetworkType.RIPPLE:
-        return this.validateRippleAddress(
-          normalizedAddress
-        );
+        return this.validateRippleAddress(value);
 
       case BlockchainNetworkType.TRON:
         throw new Error(
-          "TRON wallet addresses are not currently supported by SmartPOS. Do not save a TRON address until TRON validation and settlement support are implemented."
+          "TRON settlement addresses are not currently supported."
         );
 
       default:
         throw new Error(
-          `Wallet address validation is not currently implemented for ${network}.`
+          `Public address validation is not currently supported for ${network}.`
         );
     }
-  }
-
-  private async ensureBlockchainNetwork(
-    networkName: string,
-    db: Prisma.TransactionClient
-  ) {
-    const network =
-      this.getNetworkType(networkName);
-
-    const existing =
-      await db.blockchainNetwork.findUnique({
-        where: {
-          name: network,
-        },
-      });
-
-    if (existing) {
-      if (!existing.isActive) {
-        throw new Error(
-          `${network} is currently inactive and cannot be used for wallet settlement.`
-        );
-      }
-
-      return existing;
-    }
-
-    const config =
-      this.getNetworkConfig(network);
-
-    /*
-     * Do not invent native currencies for networks whose
-     * native currency is not represented by the current
-     * CurrencyType enum.
-     *
-     * The correct behaviour is to require the network
-     * configuration to exist in the database.
-     */
-    if (!config) {
-      throw new Error(
-        `${network} is not configured in SmartPOS. The network must be configured with its correct native currency before a wallet can be saved.`
-      );
-    }
-
-    return db.blockchainNetwork.create({
-      data: {
-        name: network,
-        nativeCurrency:
-          config.nativeCurrency,
-        blockTime:
-          config.blockTime,
-        isActive: true,
-        metadata: {
-          source:
-            "smartpos-wallet-storage",
-          autoCreated: true,
-          walletGeneration:
-            false,
-        },
-      },
-    });
   }
 
   private async createWalletRecord(
@@ -404,9 +258,7 @@ export default class WalletService {
       });
 
     if (!merchant) {
-      throw new Error(
-        "Merchant not found."
-      );
+      throw new Error("Merchant not found.");
     }
 
     const name =
@@ -432,114 +284,91 @@ export default class WalletService {
 
     const blockchainName =
       this.normalize(
-        data.blockchain ??
-          data.network
+        data.blockchain ?? data.network
       );
 
     const networkName =
       this.normalize(
-        data.network ??
-          data.blockchain
+        data.network ?? data.blockchain
       );
 
-    if (!blockchainName) {
+    if (!blockchainName || !networkName) {
       throw new Error(
-        "Blockchain is required."
+        "Blockchain and network are required."
       );
     }
 
-    if (!networkName) {
-      throw new Error(
-        "Network is required."
-      );
-    }
-
-    if (
-      blockchainName !==
-      networkName
-    ) {
+    if (blockchainName !== networkName) {
       throw new Error(
         "Blockchain and network must refer to the same network."
       );
     }
 
     const network =
-      this.getNetworkType(
-        networkName
-      );
+      this.getNetworkType(networkName);
 
     const asset =
-      this.normalize(data.asset);
-
-    if (!asset) {
-      throw new Error(
-        "Wallet asset is required."
+      this.getCurrencyType(
+        data.asset ?? data.currency
       );
-    }
 
-    const assetCurrency =
-      this.getCurrencyType(asset);
-
-    const requestedCurrency =
-      this.normalize(
-        data.currency
-      );
+    const suppliedCurrency =
+      this.normalize(data.currency);
 
     /*
-     * For crypto settlement wallets the asset is the
-     * actual crypto currency represented by the wallet.
+     * If currency is supplied separately, it must
+     * represent the same crypto asset.
      *
-     * If currency is provided, it must be a valid
-     * CurrencyType. We do not silently replace invalid
-     * values with USD.
+     * Do not silently turn USDT into USD or another
+     * currency.
      */
-    if (requestedCurrency) {
-      this.getCurrencyType(
-        requestedCurrency
+    if (
+      suppliedCurrency &&
+      suppliedCurrency !== asset
+    ) {
+      throw new Error(
+        "Wallet currency and asset must refer to the same crypto asset."
       );
     }
 
     const walletType =
-      this.getWalletType(
-        data.type
-      );
-
-    if (
-      walletType === WalletType.FIAT
-    ) {
-      throw new Error(
-        "A crypto settlement wallet cannot use the FIAT wallet type."
-      );
-    }
-
-    const suppliedAddress =
-      data.address ??
-      data.walletAddress;
+      this.getWalletType(data.type);
 
     const walletAddress =
       this.validateAddress(
-        networkName,
-        suppliedAddress
-      );
-
-    const blockchain =
-      await this.ensureBlockchainNetwork(
-        networkName,
-        db
+        network,
+        data.address ??
+          data.walletAddress
       );
 
     /*
-     * Prevent an externally-owned public address from
-     * being attached to multiple SmartPOS wallets.
-     *
-     * WalletAddress.address is also UNIQUE at the
-     * database level.
+     * SmartPOS stores an existing merchant-controlled
+     * public address. It does not generate or authorize
+     * the wallet.
      */
+    const blockchain =
+      await db.blockchainNetwork.findUnique({
+        where: {
+          name: network,
+        },
+      });
+
+    if (!blockchain) {
+      throw new Error(
+        `${network} is not configured in SmartPOS.`
+      );
+    }
+
+    if (!blockchain.isActive) {
+      throw new Error(
+        `${network} is currently inactive.`
+      );
+    }
+
     const existingAddress =
       await db.walletAddress.findUnique({
         where: {
-          address:
-            walletAddress,
+          address: walletAddress,
         },
         include: {
           wallet: true,
@@ -548,8 +377,7 @@ export default class WalletService {
 
     if (existingAddress) {
       if (
-        existingAddress.wallet
-          .merchantId ===
+        existingAddress.wallet.merchantId ===
         merchantId
       ) {
         throw new Error(
@@ -562,38 +390,13 @@ export default class WalletService {
       );
     }
 
-    /*
-     * The wallet currency must represent the selected
-     * crypto asset. This prevents a wallet selected as
-     * USDT from silently becoming a USD wallet.
-     */
-    const walletCurrency =
-      assetCurrency;
-
-    /*
-     * IMPORTANT:
-     *
-     * SmartPOS does NOT generate:
-     * - wallet addresses
-     * - private keys
-     * - seed phrases
-     * - mnemonics
-     * - public keys
-     *
-     * The address below is supplied by the merchant.
-     */
     const wallet =
       await db.wallet.create({
         data: {
           merchantId,
-
           name,
-
-          type:
-            walletType,
-
-          currency:
-            walletCurrency,
+          type: walletType,
+          currency: asset,
 
           balance:
             new Prisma.Decimal(0),
@@ -604,8 +407,7 @@ export default class WalletService {
           reservedBalance:
             new Prisma.Decimal(0),
 
-          address:
-            walletAddress,
+          address: walletAddress,
 
           blockchainId:
             blockchain.id,
@@ -621,14 +423,11 @@ export default class WalletService {
 
             asset,
 
-            network:
-              networkName,
+            network,
 
-            blockchain:
-              networkName,
+            blockchain: network,
 
-            walletGenerated:
-              false,
+            walletGenerated: false,
 
             addressSource:
               "merchant-provided",
@@ -642,45 +441,29 @@ export default class WalletService {
             custody:
               "merchant-controlled",
 
-            smartposCustody:
-              false,
+            smartposCustody: false,
           },
         },
       });
 
-    /*
-     * Address creation occurs inside the same Prisma
-     * transaction as wallet creation.
-     *
-     * If this operation fails, the wallet record is
-     * rolled back automatically.
-     */
     await db.walletAddress.create({
       data: {
-        walletId:
-          wallet.id,
+        walletId: wallet.id,
 
-        address:
-          walletAddress,
+        address: walletAddress,
 
         blockchainId:
           blockchain.id,
 
-        label:
-          "Primary",
+        label: "Primary",
 
-        isActive:
-          true,
+        isActive: true,
 
         metadata: {
           asset,
-
-          network:
-            networkName,
-
+          network,
           source:
             "merchant-provided",
-
           addressType:
             "PUBLIC_SETTLEMENT_ADDRESS",
         },
@@ -701,25 +484,7 @@ export default class WalletService {
 
     if (!savedWallet) {
       throw new Error(
-        "Wallet was created but could not be retrieved."
-      );
-    }
-
-    /*
-     * Defensive check: never return a newly-created
-     * wallet without its persisted primary address.
-     */
-    const persistedAddress =
-      savedWallet.walletAddresses.find(
-        (item) =>
-          item.isActive &&
-          item.address ===
-            walletAddress
-      );
-
-    if (!persistedAddress) {
-      throw new Error(
-        "Wallet creation did not produce a persisted primary wallet address."
+        "Wallet could not be retrieved after saving."
       );
     }
 
@@ -730,20 +495,18 @@ export default class WalletService {
     data: WalletCreateData
   ) {
     return this.app.prisma.$transaction(
-      async (tx) => {
-        return this.createWalletRecord(
+      (tx) =>
+        this.createWalletRecord(
           data,
           tx
-        );
-      }
+        )
     );
   }
 
   async getWallet(
     id: string
   ) {
-    const walletId =
-      id.trim();
+    const walletId = id.trim();
 
     if (!walletId) {
       throw new Error(
@@ -755,7 +518,6 @@ export default class WalletService {
       where: {
         id: walletId,
       },
-
       include: {
         blockchain: true,
         walletAddresses: true,
@@ -767,21 +529,17 @@ export default class WalletService {
     walletId: string,
     merchantId?: string
   ) {
-    const normalizedWalletId =
-      walletId.trim();
+    const id = walletId.trim();
+    const merchant =
+      this.normalize(merchantId);
 
-    const normalizedMerchantId =
-      this.normalize(
-        merchantId
-      );
-
-    if (!normalizedMerchantId) {
+    if (!merchant) {
       throw new Error(
         "Merchant account is required."
       );
     }
 
-    if (!normalizedWalletId) {
+    if (!id) {
       throw new Error(
         "Wallet ID is required."
       );
@@ -790,13 +548,9 @@ export default class WalletService {
     const wallet =
       await this.app.prisma.wallet.findFirst({
         where: {
-          id:
-            normalizedWalletId,
-
-          merchantId:
-            normalizedMerchantId,
+          id,
+          merchantId: merchant,
         },
-
         include: {
           blockchain: true,
           walletAddresses: true,
@@ -815,12 +569,10 @@ export default class WalletService {
   async merchantWallets(
     merchantId: string
   ) {
-    const normalizedMerchantId =
-      this.normalize(
-        merchantId
-      );
+    const merchant =
+      this.normalize(merchantId);
 
-    if (!normalizedMerchantId) {
+    if (!merchant) {
       throw new Error(
         "Merchant account is required."
       );
@@ -828,18 +580,14 @@ export default class WalletService {
 
     return this.app.prisma.wallet.findMany({
       where: {
-        merchantId:
-          normalizedMerchantId,
+        merchantId: merchant,
       },
-
       include: {
         blockchain: true,
         walletAddresses: true,
       },
-
       orderBy: {
-        createdAt:
-          "desc",
+        createdAt: "desc",
       },
     });
   }
@@ -848,9 +596,7 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
-    if (
-      amount.lessThanOrEqualTo(0)
-    ) {
+    if (amount.lessThanOrEqualTo(0)) {
       throw new Error(
         "Credit amount must be greater than zero."
       );
@@ -877,23 +623,17 @@ export default class WalletService {
           );
 
         const newBalance =
-          balance.plus(
-            amount
-          );
+          balance.plus(amount);
 
         return tx.wallet.update({
           where: {
             id: walletId,
           },
-
           data: {
-            balance:
-              newBalance,
-
+            balance: newBalance,
             availableBalance:
               newBalance,
           },
-
           include: {
             blockchain: true,
             walletAddresses: true,
@@ -907,9 +647,7 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
-    if (
-      amount.lessThanOrEqualTo(0)
-    ) {
+    if (amount.lessThanOrEqualTo(0)) {
       throw new Error(
         "Debit amount must be greater than zero."
       );
@@ -935,34 +673,24 @@ export default class WalletService {
             wallet.balance
           );
 
-        if (
-          balance.lessThan(
-            amount
-          )
-        ) {
+        if (balance.lessThan(amount)) {
           throw new Error(
             "Insufficient wallet balance."
           );
         }
 
         const newBalance =
-          balance.minus(
-            amount
-          );
+          balance.minus(amount);
 
         return tx.wallet.update({
           where: {
             id: walletId,
           },
-
           data: {
-            balance:
-              newBalance,
-
+            balance: newBalance,
             availableBalance:
               newBalance,
           },
-
           include: {
             blockchain: true,
             walletAddresses: true,
@@ -977,18 +705,13 @@ export default class WalletService {
     toWalletId: string,
     amount: Prisma.Decimal
   ) {
-    if (
-      amount.lessThanOrEqualTo(0)
-    ) {
+    if (amount.lessThanOrEqualTo(0)) {
       throw new Error(
         "Transfer amount must be greater than zero."
       );
     }
 
-    if (
-      fromWalletId ===
-      toWalletId
-    ) {
+    if (fromWalletId === toWalletId) {
       throw new Error(
         "Source and destination wallets must be different."
       );
@@ -999,8 +722,7 @@ export default class WalletService {
         const fromWallet =
           await tx.wallet.findUnique({
             where: {
-              id:
-                fromWalletId,
+              id: fromWalletId,
             },
           });
 
@@ -1013,8 +735,7 @@ export default class WalletService {
         const toWallet =
           await tx.wallet.findUnique({
             where: {
-              id:
-                toWalletId,
+              id: toWalletId,
             },
           });
 
@@ -1047,70 +768,48 @@ export default class WalletService {
             fromWallet.balance
           );
 
-        if (
-          fromBalance.lessThan(
-            amount
-          )
-        ) {
+        if (fromBalance.lessThan(amount)) {
           throw new Error(
             "Insufficient wallet balance."
           );
         }
 
-        const newFromBalance =
-          fromBalance.minus(
-            amount
-          );
+        await tx.wallet.update({
+          where: {
+            id: fromWalletId,
+          },
+          data: {
+            balance:
+              fromBalance.minus(amount),
+
+            availableBalance:
+              fromBalance.minus(amount),
+          },
+        });
 
         const toBalance =
           new Prisma.Decimal(
             toWallet.balance
           );
 
-        const newToBalance =
-          toBalance.plus(
-            amount
-          );
-
         await tx.wallet.update({
           where: {
-            id:
-              fromWalletId,
+            id: toWalletId,
           },
-
           data: {
             balance:
-              newFromBalance,
+              toBalance.plus(amount),
 
             availableBalance:
-              newFromBalance,
-          },
-        });
-
-        await tx.wallet.update({
-          where: {
-            id:
-              toWalletId,
-          },
-
-          data: {
-            balance:
-              newToBalance,
-
-            availableBalance:
-              newToBalance,
+              toBalance.plus(amount),
           },
         });
 
         return {
           fromWalletId,
-
           toWalletId,
-
           amount,
-
-          status:
-            "SUCCESS",
+          status: "SUCCESS",
         };
       }
     );
@@ -1120,9 +819,7 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
-    if (
-      amount.lessThanOrEqualTo(0)
-    ) {
+    if (amount.lessThanOrEqualTo(0)) {
       throw new Error(
         "Reserve amount must be greater than zero."
       );
@@ -1143,21 +840,17 @@ export default class WalletService {
           );
         }
 
-        const availableBalance =
+        const available =
           new Prisma.Decimal(
             wallet.availableBalance
           );
 
-        const reservedBalance =
+        const reserved =
           new Prisma.Decimal(
             wallet.reservedBalance
           );
 
-        if (
-          availableBalance.lessThan(
-            amount
-          )
-        ) {
+        if (available.lessThan(amount)) {
           throw new Error(
             "Insufficient available balance."
           );
@@ -1167,19 +860,13 @@ export default class WalletService {
           where: {
             id: walletId,
           },
-
           data: {
             availableBalance:
-              availableBalance.minus(
-                amount
-              ),
+              available.minus(amount),
 
             reservedBalance:
-              reservedBalance.plus(
-                amount
-              ),
+              reserved.plus(amount),
           },
-
           include: {
             blockchain: true,
             walletAddresses: true,
@@ -1193,9 +880,7 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
-    if (
-      amount.lessThanOrEqualTo(0)
-    ) {
+    if (amount.lessThanOrEqualTo(0)) {
       throw new Error(
         "Release amount must be greater than zero."
       );
@@ -1216,21 +901,17 @@ export default class WalletService {
           );
         }
 
-        const availableBalance =
+        const available =
           new Prisma.Decimal(
             wallet.availableBalance
           );
 
-        const reservedBalance =
+        const reserved =
           new Prisma.Decimal(
             wallet.reservedBalance
           );
 
-        if (
-          reservedBalance.lessThan(
-            amount
-          )
-        ) {
+        if (reserved.lessThan(amount)) {
           throw new Error(
             "Insufficient reserved balance."
           );
@@ -1240,19 +921,13 @@ export default class WalletService {
           where: {
             id: walletId,
           },
-
           data: {
             availableBalance:
-              availableBalance.plus(
-                amount
-              ),
+              available.plus(amount),
 
             reservedBalance:
-              reservedBalance.minus(
-                amount
-              ),
+              reserved.minus(amount),
           },
-
           include: {
             blockchain: true,
             walletAddresses: true,
@@ -1266,9 +941,7 @@ export default class WalletService {
     walletId: string,
     amount: Prisma.Decimal
   ) {
-    if (
-      amount.lessThanOrEqualTo(0)
-    ) {
+    if (amount.lessThanOrEqualTo(0)) {
       throw new Error(
         "Capture amount must be greater than zero."
       );
@@ -1294,62 +967,34 @@ export default class WalletService {
             wallet.balance
           );
 
-        const reservedBalance =
+        const reserved =
           new Prisma.Decimal(
             wallet.reservedBalance
           );
 
-        const availableBalance =
-          new Prisma.Decimal(
-            wallet.availableBalance
-          );
-
-        if (
-          reservedBalance.lessThan(
-            amount
-          )
-        ) {
+        if (reserved.lessThan(amount)) {
           throw new Error(
             "Insufficient reserved balance."
           );
         }
 
-        if (
-          balance.lessThan(
-            amount
-          )
-        ) {
+        if (balance.lessThan(amount)) {
           throw new Error(
             "Insufficient wallet balance."
           );
         }
 
-        const newBalance =
-          balance.minus(
-            amount
-          );
-
-        const newReservedBalance =
-          reservedBalance.minus(
-            amount
-          );
-
         return tx.wallet.update({
           where: {
             id: walletId,
           },
-
           data: {
             balance:
-              newBalance,
+              balance.minus(amount),
 
             reservedBalance:
-              newReservedBalance,
-
-            availableBalance:
-              availableBalance,
+              reserved.minus(amount),
           },
-
           include: {
             blockchain: true,
             walletAddresses: true,

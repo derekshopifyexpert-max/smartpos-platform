@@ -110,22 +110,18 @@ function getErrorMessage(
   return "Wallet request failed.";
 }
 
-function getMerchantIdFromRequest(
+/**
+ * Get the merchant ID belonging to the
+ * authenticated user.
+ *
+ * The authenticated identity is authoritative.
+ * A route merchantId may only be used as a
+ * compatibility check and must never override
+ * the authenticated merchant.
+ */
+function getAuthenticatedMerchantId(
   request: FastifyRequest
 ): string | undefined {
-  const params =
-    request.params as
-      | Record<string, unknown>
-      | undefined;
-
-  if (
-    params &&
-    typeof params.merchantId === "string" &&
-    params.merchantId.trim()
-  ) {
-    return params.merchantId.trim();
-  }
-
   const user =
     request.user as
       | Record<string, unknown>
@@ -169,19 +165,81 @@ function getMerchantIdFromRequest(
   return undefined;
 }
 
+/**
+ * Verify that a route merchantId, when supplied,
+ * belongs to the authenticated merchant.
+ *
+ * This prevents a merchant from changing the URL
+ * to access another merchant's wallet collection.
+ */
+function validateMerchantRoute(
+  request: FastifyRequest,
+  merchantId: string
+): string | null {
+  const params =
+    request.params as
+      | Record<string, unknown>
+      | undefined;
+
+  const routeMerchantId =
+    params?.merchantId;
+
+  if (
+    routeMerchantId === undefined
+  ) {
+    return null;
+  }
+
+  if (
+    typeof routeMerchantId !== "string" ||
+    !routeMerchantId.trim()
+  ) {
+    return "Merchant ID is required.";
+  }
+
+  if (
+    routeMerchantId.trim() !==
+    merchantId
+  ) {
+    return "You are not authorized to access this merchant's wallets.";
+  }
+
+  return null;
+}
+
+function getWalletId(
+  request: FastifyRequest
+): string | undefined {
+  const params =
+    request.params as
+      | Record<string, unknown>
+      | undefined;
+
+  const id = params?.id;
+
+  if (
+    typeof id === "string" &&
+    id.trim()
+  ) {
+    return id.trim();
+  }
+
+  return undefined;
+}
+
 export default class WalletController {
   constructor(
     private readonly walletService: WalletService
   ) {}
 
   /**
-   * Create a merchant-owned settlement wallet record.
+   * Create a merchant settlement wallet.
    *
-   * SmartPOS never generates a wallet address.
-   *
+   * SmartPOS does not generate wallet addresses.
    * The merchant supplies an existing public address.
-   * WalletService validates the address for the
-   * selected network and persists it atomically.
+   *
+   * The merchantId is always taken from the
+   * authenticated user rather than the request body.
    */
   create = async (
     request: FastifyRequest,
@@ -189,7 +247,9 @@ export default class WalletController {
   ) => {
     try {
       const merchantId =
-        getMerchantIdFromRequest(request);
+        getAuthenticatedMerchantId(
+          request
+        );
 
       if (!merchantId) {
         return reply.code(401).send({
@@ -237,7 +297,7 @@ export default class WalletController {
 
   /**
    * Transfer funds between internal SmartPOS
-   * balance records.
+   * wallet balance records.
    */
   transferFunds = async (
     request: FastifyRequest,
@@ -269,15 +329,21 @@ export default class WalletController {
       ) {
         return reply.code(400).send({
           success: false,
-          error: "Transfer amount is required.",
+          error:
+            "Transfer amount is required.",
         });
       }
 
+      const amount =
+        new Prisma.Decimal(
+          body.amount
+        );
+
       const result =
         await this.walletService.transferFunds(
-          body.fromWalletId,
-          body.toWalletId,
-          new Prisma.Decimal(body.amount)
+          body.fromWalletId.trim(),
+          body.toWalletId.trim(),
+          amount
         );
 
       return reply.send({
@@ -307,10 +373,8 @@ export default class WalletController {
     reply: FastifyReply
   ) => {
     try {
-      const { id } =
-        (request.params ?? {}) as {
-          id?: string;
-        };
+      const id =
+        getWalletId(request);
 
       const body =
         (request.body ?? {}) as {
@@ -331,14 +395,17 @@ export default class WalletController {
       ) {
         return reply.code(400).send({
           success: false,
-          error: "Credit amount is required.",
+          error:
+            "Credit amount is required.",
         });
       }
 
       const wallet =
         await this.walletService.creditWallet(
           id,
-          new Prisma.Decimal(body.amount)
+          new Prisma.Decimal(
+            body.amount
+          )
         );
 
       return reply.send({
@@ -368,10 +435,8 @@ export default class WalletController {
     reply: FastifyReply
   ) => {
     try {
-      const { id } =
-        (request.params ?? {}) as {
-          id?: string;
-        };
+      const id =
+        getWalletId(request);
 
       const body =
         (request.body ?? {}) as {
@@ -392,14 +457,17 @@ export default class WalletController {
       ) {
         return reply.code(400).send({
           success: false,
-          error: "Debit amount is required.",
+          error:
+            "Debit amount is required.",
         });
       }
 
       const wallet =
         await this.walletService.debitWallet(
           id,
-          new Prisma.Decimal(body.amount)
+          new Prisma.Decimal(
+            body.amount
+          )
         );
 
       return reply.send({
@@ -429,10 +497,8 @@ export default class WalletController {
     reply: FastifyReply
   ) => {
     try {
-      const { id } =
-        (request.params ?? {}) as {
-          id?: string;
-        };
+      const id =
+        getWalletId(request);
 
       if (!id) {
         return reply.code(400).send({
@@ -442,7 +508,9 @@ export default class WalletController {
       }
 
       const wallet =
-        await this.walletService.getWallet(id);
+        await this.walletService.getWallet(
+          id
+        );
 
       if (!wallet) {
         return reply.code(404).send({
@@ -471,12 +539,11 @@ export default class WalletController {
   };
 
   /**
-   * Get all wallets belonging to a merchant.
+   * Get all wallets belonging to the
+   * authenticated merchant.
    *
-   * merchantId is preferably obtained from the
-   * authenticated user. A route merchantId parameter
-   * is supported for compatibility with the existing
-   * route structure.
+   * The merchantId in the URL is checked against
+   * the authenticated merchant and can never override it.
    */
   merchantWallets = async (
     request: FastifyRequest,
@@ -484,13 +551,28 @@ export default class WalletController {
   ) => {
     try {
       const merchantId =
-        getMerchantIdFromRequest(request);
+        getAuthenticatedMerchantId(
+          request
+        );
 
       if (!merchantId) {
         return reply.code(401).send({
           success: false,
           error:
             "Authenticated merchant account is required.",
+        });
+      }
+
+      const routeError =
+        validateMerchantRoute(
+          request,
+          merchantId
+        );
+
+      if (routeError) {
+        return reply.code(403).send({
+          success: false,
+          error: routeError,
         });
       }
 

@@ -1,12 +1,7 @@
 import { z } from "zod";
 
-const nonEmptyString = (
-  message: string
-) =>
-  z
-    .string()
-    .trim()
-    .min(1, message);
+const requiredString = (message: string) =>
+  z.string().trim().min(1, message);
 
 export const createWalletSchema = z
   .object({
@@ -22,27 +17,19 @@ export const createWalletSchema = z
         "Wallet name must not exceed 100 characters."
       ),
 
-    currency: z
-      .string()
-      .trim()
-      .min(
-        2,
-        "Wallet currency is required."
-      )
-      .max(
-        20,
-        "Wallet currency must not exceed 20 characters."
-      ),
+    currency: requiredString(
+      "Wallet asset is required."
+    ),
 
-    blockchain: nonEmptyString(
+    blockchain: requiredString(
       "Blockchain is required."
     ),
 
-    network: nonEmptyString(
+    network: requiredString(
       "Network is required."
     ),
 
-    asset: nonEmptyString(
+    asset: requiredString(
       "Asset is required."
     ),
 
@@ -52,18 +39,12 @@ export const createWalletSchema = z
       .min(1)
       .optional(),
 
-    /*
-     * This is an existing merchant-controlled
-     * public settlement address.
-     *
-     * SmartPOS never generates this value.
-     */
     address: z
       .string()
       .trim()
       .min(
         1,
-        "Existing public wallet address is required."
+        "Public wallet address is required."
       )
       .max(
         200,
@@ -71,7 +52,7 @@ export const createWalletSchema = z
       ),
 
     metadata: z
-      .record(z.unknown())
+      .record(z.string(), z.unknown())
       .optional(),
   })
   .strict();
@@ -80,10 +61,7 @@ export const walletIdSchema = z.object({
   id: z
     .string()
     .trim()
-    .min(
-      1,
-      "Wallet ID is required."
-    ),
+    .min(1, "Wallet ID is required."),
 });
 
 export const amountSchema = z.object({
@@ -140,21 +118,13 @@ export const merchantWalletsSchema =
   });
 
 export type CreateWalletDto =
-  z.infer<
-    typeof createWalletSchema
-  >;
+  z.infer<typeof createWalletSchema>;
 
 export type WalletTransferDto =
-  z.infer<
-    typeof transferSchema
-  >;
+  z.infer<typeof transferSchema>;
 
 export type WalletAmountDto =
-  z.infer<
-    typeof amountSchema
-  >;
+  z.infer<typeof amountSchema>;
 
 export type MerchantWalletsDto =
-  z.infer<
-    typeof merchantWalletsSchema
-  >;
+  z.infer<typeof merchantWalletsSchema>;
