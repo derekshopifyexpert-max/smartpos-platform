@@ -28,23 +28,18 @@ export default class AuthService {
       id: user.id,
       email: user.email,
       role: user.role,
-      merchantId:
-        user.merchantId ?? undefined,
+      merchantId: user.merchantId ?? undefined,
     });
 
-    const refreshToken =
-      generateRefreshToken();
+    const refreshToken = generateRefreshToken();
 
     const hashedToken =
-      await hashRefreshToken(
-        refreshToken
-      );
+      await hashRefreshToken(refreshToken);
 
     const expiresAt = new Date();
 
     expiresAt.setDate(
-      expiresAt.getDate() +
-        REFRESH_TOKEN_DAYS
+      expiresAt.getDate() + REFRESH_TOKEN_DAYS
     );
 
     await this.app.prisma.refreshToken.create({
@@ -61,9 +56,7 @@ export default class AuthService {
     };
   }
 
-  private removeSensitiveUserFields(
-    user: any
-  ) {
+  private removeSensitiveUserFields(user: any) {
     if (!user) {
       return null;
     }
@@ -74,6 +67,8 @@ export default class AuthService {
       passwordResetExpires: _passwordResetExpires,
       emailVerifyToken: _emailVerifyToken,
       emailVerifyExpires: _emailVerifyExpires,
+      mfaSecret: _mfaSecret,
+      backupCodes: _backupCodes,
       ...safeUser
     } = user;
 
@@ -138,13 +133,6 @@ export default class AuthService {
       );
     }
 
-    /*
-     * If a merchantId is supplied, verify that
-     * the merchant actually exists before creating
-     * the user.
-     *
-     * We never accept a fake merchant ID.
-     */
     let merchantId:
       | string
       | undefined;
@@ -154,13 +142,11 @@ export default class AuthService {
         data.merchantId.trim();
 
       const merchant =
-        await this.app.prisma.merchant.findUnique(
-          {
-            where: {
-              id: merchantId,
-            },
-          }
-        );
+        await this.app.prisma.merchant.findUnique({
+          where: {
+            id: merchantId,
+          },
+        });
 
       if (!merchant) {
         throw createStatusError(
@@ -184,7 +170,6 @@ export default class AuthService {
           email,
           passwordHash,
           role: "VIEWER",
-
           ...(merchantId
             ? {
                 merchantId,
@@ -253,13 +238,6 @@ export default class AuthService {
       );
     }
 
-    /*
-     * merchantId is deliberately taken from
-     * the persisted user record.
-     *
-     * The client cannot choose a different
-     * merchant during login.
-     */
     const tokens =
       await this.createTokens(user);
 
@@ -283,16 +261,17 @@ export default class AuthService {
     }
 
     const records =
-      await this.app.prisma.refreshToken.findMany(
-        {
-          where: {
-            revoked: false,
+      await this.app.prisma.refreshToken.findMany({
+        where: {
+          revoked: false,
+          expiresAt: {
+            gt: new Date(),
           },
-          include: {
-            user: true,
-          },
-        }
-      );
+        },
+        include: {
+          user: true,
+        },
+      });
 
     let record: any = null;
 
@@ -309,10 +288,7 @@ export default class AuthService {
       }
     }
 
-    if (
-      !record ||
-      record.expiresAt < new Date()
-    ) {
+    if (!record) {
       throw createStatusError(
         "Invalid refresh token.",
         401
@@ -344,13 +320,11 @@ export default class AuthService {
     }
 
     const records =
-      await this.app.prisma.refreshToken.findMany(
-        {
-          where: {
-            revoked: false,
-          },
-        }
-      );
+      await this.app.prisma.refreshToken.findMany({
+        where: {
+          revoked: false,
+        },
+      });
 
     for (const item of records) {
       const ok =

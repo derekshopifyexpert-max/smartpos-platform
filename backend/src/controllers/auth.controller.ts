@@ -24,16 +24,11 @@ export default class AuthController {
 
     const result =
       await this.authService.register({
-        firstName:
-          body.firstName,
-        lastName:
-          body.lastName,
-        email:
-          body.email,
-        password:
-          body.password,
-        merchantId:
-          body.merchantId,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        email: body.email,
+        password: body.password,
+        merchantId: body.merchantId,
       });
 
     return reply
@@ -99,8 +94,7 @@ export default class AuthController {
     return reply.send({
       success: true,
       data: {
-        message:
-          "Logged out successfully.",
+        message: "Logged out successfully.",
       },
     });
   };
