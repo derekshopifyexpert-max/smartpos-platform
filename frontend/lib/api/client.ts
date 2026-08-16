@@ -18,24 +18,58 @@ export const api = axios.create({
   },
 });
 
+/**
+ * Safely normalize Axios request headers.
+ *
+ * Axios 1.x allows AxiosHeaders, raw header objects, strings,
+ * and undefined here. Converting through a fresh AxiosHeaders
+ * instance avoids the TypeScript incompatibilities that occur
+ * when assigning config.headers directly.
+ */
+function normalizeHeaders(
+  headers: AxiosRequestConfig["headers"]
+): AxiosHeaders {
+  if (headers instanceof AxiosHeaders) {
+    return headers;
+  }
+
+  const normalized = new AxiosHeaders();
+
+  if (!headers) {
+    return normalized;
+  }
+
+  if (typeof headers === "string") {
+    return AxiosHeaders.from(headers);
+  }
+
+  Object.entries(headers).forEach(
+    ([key, value]) => {
+      if (value !== undefined) {
+        normalized.set(key, value);
+      }
+    }
+  );
+
+  return normalized;
+}
+
 api.interceptors.request.use(
   (config) => {
     const token =
       useAuthStore.getState().token;
 
-    if (token) {
-      const headers =
-        AxiosHeaders.from(
-          config.headers
-        );
+    const headers =
+      normalizeHeaders(config.headers);
 
+    if (token) {
       headers.set(
         "Authorization",
         `Bearer ${token}`
       );
-
-      config.headers = headers;
     }
+
+    config.headers = headers;
 
     return config;
   },
@@ -92,7 +126,8 @@ export function getApiErrorMessage(
           >;
 
         if (
-          typeof nested.message === "string" &&
+          typeof nested.message ===
+            "string" &&
           nested.message.trim()
         ) {
           return nested.message;
@@ -126,6 +161,14 @@ export function getApiErrorMessage(
                 ) {
                   return value.message;
                 }
+
+                if (
+                  typeof value.error ===
+                    "string" &&
+                  value.error.trim()
+                ) {
+                  return value.error;
+                }
               }
 
               return null;
@@ -141,9 +184,19 @@ export function getApiErrorMessage(
           return messages.join(", ");
         }
       }
+
+      if (
+        typeof data.detail === "string" &&
+        data.detail.trim()
+      ) {
+        return data.detail;
+      }
     }
 
-    if (error.code === "ECONNABORTED") {
+    if (
+      error.code === "ECONNABORTED" ||
+      error.code === "ETIMEDOUT"
+    ) {
       return "The request timed out. Please try again.";
     }
 
@@ -179,9 +232,7 @@ export function withAuth(
     useAuthStore.getState().token;
 
   const headers =
-    AxiosHeaders.from(
-      config.headers
-    );
+    normalizeHeaders(config.headers);
 
   if (token) {
     headers.set(

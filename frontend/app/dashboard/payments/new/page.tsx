@@ -31,49 +31,66 @@ import type {
   WalletRecord,
 } from "@/features/wallets/types/wallet";
 
-import { api } from "@/lib/api/client";
+import {
+  getApiErrorMessage,
+  api,
+} from "@/lib/api/client";
+
 import { ENDPOINTS } from "@/lib/api/endpoints";
+
 import {
   useAuthStore,
 } from "@/store/auth.store";
+
+interface PaymentQuote {
+  fee?: string | number | null;
+  feeAmount?: string | number | null;
+  total?: string | number | null;
+  cryptoAmount?: string | number | null;
+  [key: string]: unknown;
+}
+
+interface PaymentIntentData {
+  id: string;
+  amount: number | string;
+  currency: string;
+  status: string;
+  metadata?: unknown;
+}
 
 interface CreatePaymentIntentResponse {
   success: boolean;
   message?: string;
   error?: string;
-  data?: {
-    id: string;
-    amount: number | string;
-    currency: string;
-    status: string;
-    metadata?: unknown;
+  data?: PaymentIntentData;
+}
+
+interface CheckoutData {
+  paymentIntent?: {
+    id?: string;
+    status?: string;
   };
+
+  transaction?: {
+    id?: string;
+    status?: string;
+  };
+
+  gateway?: {
+    transactionId?: string | null;
+    paymentUrl?: string | null;
+    accessCode?: string | null;
+    authorizationCode?: string | null;
+  };
+
+  quote?: PaymentQuote | null;
 }
 
 interface CheckoutResponse {
   success: boolean;
   message?: string;
   error?: string;
-  data?: {
-    paymentIntent?: {
-      id?: string;
-      status?: string;
-    };
-
-    transaction?: {
-      id?: string;
-      status?: string;
-    };
-
-    gateway?: {
-      transactionId?: string | null;
-      paymentUrl?: string | null;
-      accessCode?: string | null;
-      authorizationCode?: string | null;
-    };
-
-    quote?: unknown;
-  };
+  data?: CheckoutData;
 }
 
 const ASSETS = [
@@ -109,15 +126,32 @@ function getWalletAddress(
     return "";
   }
 
-  return (
-    wallet.address?.trim() ??
+  const directAddress =
+    wallet.address?.trim();
+
+  if (directAddress) {
+    return directAddress;
+  }
+
+  const activeAddress =
     wallet.walletAddresses?.find(
       (item) =>
         item.isActive !== false &&
         Boolean(item.address?.trim())
-    )?.address?.trim() ??
-    wallet.walletAddresses?.[0]?.address?.trim() ??
-    ""
+    );
+
+  if (activeAddress?.address?.trim()) {
+    return activeAddress.address.trim();
+  }
+
+  const firstAddress =
+    wallet.walletAddresses?.find(
+      (item) =>
+        Boolean(item.address?.trim())
+    );
+
+  return (
+    firstAddress?.address?.trim() ?? ""
   );
 }
 
@@ -128,11 +162,19 @@ function getWalletAsset(
     wallet.metadata?.asset;
 
   if (
-    typeof metadataAsset ===
-      "string" &&
+    typeof metadataAsset === "string" &&
     metadataAsset.trim()
   ) {
     return metadataAsset
+      .trim()
+      .toUpperCase();
+  }
+
+  if (
+    typeof wallet.asset === "string" &&
+    wallet.asset.trim()
+  ) {
+    return wallet.asset
       .trim()
       .toUpperCase();
   }
@@ -147,8 +189,7 @@ function getWalletNetwork(
     wallet.metadata?.network;
 
   if (
-    typeof metadataNetwork ===
-      "string" &&
+    typeof metadataNetwork === "string" &&
     metadataNetwork.trim()
   ) {
     return metadataNetwork
@@ -156,9 +197,19 @@ function getWalletNetwork(
       .toUpperCase();
   }
 
+  if (
+    typeof wallet.network === "string" &&
+    wallet.network.trim()
+  ) {
+    return wallet.network
+      .trim()
+      .toUpperCase();
+  }
+
   return (
     wallet.blockchain?.name
       ?.toString()
+      .trim()
       .toUpperCase() ?? ""
   );
 }
@@ -176,110 +227,51 @@ function formatAddress(
   )}...${address.slice(-8)}`;
 }
 
-function getErrorMessage(
-  error: unknown
+function formatMoneyValue(
+  value: string | number | null | undefined,
+  currency: string
 ): string {
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
+    value === null ||
+    value === undefined ||
+    value === ""
   ) {
-    const response = (
-      error as {
-        response?: {
-          data?: {
-            message?: unknown;
-            error?: unknown;
-            details?: unknown;
-          };
-        };
-      }
-    ).response;
-
-    const data = response?.data;
-
-    if (
-      typeof data?.message ===
-      "string" &&
-      data.message.trim()
-    ) {
-      return data.message;
-    }
-
-    if (
-      typeof data?.error ===
-      "string" &&
-      data.error.trim()
-    ) {
-      return data.error;
-    }
-
-    if (
-      Array.isArray(data?.details)
-    ) {
-      const messages =
-        data.details
-          .map((item) => {
-            if (
-              typeof item ===
-                "object" &&
-              item !== null &&
-              "message" in item
-            ) {
-              const message =
-                (
-                  item as {
-                    message?: unknown;
-                  }
-                ).message;
-
-              return typeof message ===
-                "string"
-                ? message
-                : null;
-            }
-
-            return typeof item ===
-              "string"
-              ? item
-              : null;
-          })
-          .filter(
-            (
-              item
-            ): item is string =>
-              Boolean(item)
-          );
-
-      if (messages.length) {
-        return messages.join(
-          ", "
-        );
-      }
-    }
+    return "Unavailable";
   }
 
-  if (
-    error instanceof Error &&
-    error.message.trim()
-  ) {
-    return error.message;
+  const numeric =
+    Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return `${currency} ${String(value)}`;
   }
 
-  return "The payment could not be started.";
+  return `${currency} ${numeric.toFixed(2)}`;
 }
 
 function getResponseError(
-  response: {
-    message?: string;
-    error?: string;
-  }
+  response:
+    | {
+        message?: string;
+        error?: string;
+      }
+    | undefined
 ): string {
-  return (
-    response.message ||
-    response.error ||
-    "The server rejected the payment request."
-  );
+  if (
+    response?.message &&
+    response.message.trim()
+  ) {
+    return response.message;
+  }
+
+  if (
+    response?.error &&
+    response.error.trim()
+  ) {
+    return response.error;
+  }
+
+  return "The server rejected the payment request.";
 }
 
 export default function NewPaymentPage() {
@@ -318,9 +310,7 @@ export default function NewPaymentPage() {
   const [
     wallets,
     setWallets,
-  ] = useState<WalletRecord[]>(
-    []
-  );
+  ] = useState<WalletRecord[]>([]);
 
   const [
     selectedWalletId,
@@ -336,6 +326,13 @@ export default function NewPaymentPage() {
     creatingPayment,
     setCreatingPayment,
   ] = useState(false);
+
+  const [
+    quote,
+    setQuote,
+  ] = useState<PaymentQuote | null>(
+    null
+  );
 
   const [
     error,
@@ -371,25 +368,23 @@ export default function NewPaymentPage() {
           );
 
         if (!cancelled) {
-          setWallets(
-            result ?? []
-          );
+          setWallets(result);
         }
       } catch (caught) {
         if (!cancelled) {
           setWallets([]);
           setSelectedWalletId("");
+
           setError(
-            getErrorMessage(
-              caught
+            getApiErrorMessage(
+              caught,
+              "Unable to load saved wallets."
             )
           );
         }
       } finally {
         if (!cancelled) {
-          setLoadingWallets(
-            false
-          );
+          setLoadingWallets(false);
         }
       }
     }
@@ -405,37 +400,30 @@ export default function NewPaymentPage() {
     useMemo(() => {
       return wallets.filter(
         (wallet) => {
-          const walletAddress =
-            getWalletAddress(
-              wallet
-            );
+          const address =
+            getWalletAddress(wallet);
+
+          if (!address) {
+            return false;
+          }
 
           const walletAsset =
-            getWalletAsset(
-              wallet
-            );
+            getWalletAsset(wallet);
 
           const walletNetwork =
-            getWalletNetwork(
-              wallet
-            );
+            getWalletNetwork(wallet);
 
           const assetMatches =
-            walletAsset ===
-              "" ||
+            !walletAsset ||
             walletAsset ===
               asset.toUpperCase();
 
           const networkMatches =
-            walletNetwork ===
-              "" ||
+            !walletNetwork ||
             walletNetwork ===
               network.toUpperCase();
 
           return (
-            Boolean(
-              walletAddress
-            ) &&
             assetMatches &&
             networkMatches
           );
@@ -452,14 +440,14 @@ export default function NewPaymentPage() {
       return;
     }
 
-    const exists =
+    const stillCompatible =
       compatibleWallets.some(
         (wallet) =>
           wallet.id ===
           selectedWalletId
       );
 
-    if (!exists) {
+    if (!stillCompatible) {
       setSelectedWalletId("");
     }
   }, [
@@ -500,13 +488,18 @@ export default function NewPaymentPage() {
       customerEmail.trim()
     );
 
+  function resetMessages() {
+    setError(null);
+    setCheckoutMessage(null);
+    setQuote(null);
+  }
+
   function handleAssetChange(
     value: string
   ) {
     setAsset(value);
     setSelectedWalletId("");
-    setError(null);
-    setCheckoutMessage(null);
+    resetMessages();
   }
 
   function handleNetworkChange(
@@ -514,19 +507,16 @@ export default function NewPaymentPage() {
   ) {
     setNetwork(value);
     setSelectedWalletId("");
-    setError(null);
-    setCheckoutMessage(null);
+    resetMessages();
   }
 
   async function handleCreatePayment() {
-    setError(null);
-    setCheckoutMessage(null);
+    resetMessages();
 
     if (!merchantId) {
       setError(
         "Your authenticated account does not have a merchant account."
       );
-
       return;
     }
 
@@ -534,7 +524,6 @@ export default function NewPaymentPage() {
       setError(
         "Enter a valid payment amount greater than zero."
       );
-
       return;
     }
 
@@ -542,7 +531,6 @@ export default function NewPaymentPage() {
       setError(
         "Enter a valid customer email address."
       );
-
       return;
     }
 
@@ -550,7 +538,6 @@ export default function NewPaymentPage() {
       setError(
         `Select a saved ${asset} wallet on ${network} before continuing.`
       );
-
       return;
     }
 
@@ -558,7 +545,6 @@ export default function NewPaymentPage() {
       setError(
         "The selected wallet does not have a saved public address."
       );
-
       return;
     }
 
@@ -580,7 +566,6 @@ export default function NewPaymentPage() {
       setError(
         `The selected wallet is configured for ${walletAsset}, not ${asset}.`
       );
-
       return;
     }
 
@@ -592,14 +577,13 @@ export default function NewPaymentPage() {
       setError(
         `The selected wallet is configured for ${walletNetwork}, not ${network}.`
       );
-
       return;
     }
 
     setCreatingPayment(true);
 
     try {
-      const response =
+      const paymentIntentResponse =
         await api.post<CreatePaymentIntentResponse>(
           ENDPOINTS.paymentIntents.list,
           {
@@ -638,36 +622,29 @@ export default function NewPaymentPage() {
           }
         );
 
+      const paymentIntentResponseData =
+        paymentIntentResponse.data;
+
       if (
-        !response.data?.success
+        !paymentIntentResponseData?.success
       ) {
         throw new Error(
           getResponseError(
-            response.data
+            paymentIntentResponseData
           )
         );
       }
 
       const paymentIntent =
-        response.data.data;
+        paymentIntentResponseData.data;
 
-      if (
-        !paymentIntent?.id
-      ) {
+      if (!paymentIntent?.id) {
         throw new Error(
           "The payment session was not created by the server."
         );
       }
 
-      /*
-       * The payment intent is now created.
-       *
-       * Checkout is handled by the real backend
-       * orchestration flow. No frontend fee,
-       * address, transaction hash, or success
-       * value is fabricated here.
-       */
-      const checkout =
+      const checkoutResponse =
         await api.post<CheckoutResponse>(
           ENDPOINTS.paymentIntents.checkout(
             paymentIntent.id
@@ -675,21 +652,40 @@ export default function NewPaymentPage() {
           {
             email:
               customerEmail.trim(),
+
+            walletId:
+              selectedWallet.id,
+
+            destinationAddress,
+
+            asset:
+              asset.toUpperCase(),
+
+            network:
+              network.toUpperCase(),
           }
         );
 
+      const checkoutResponseData =
+        checkoutResponse.data;
+
       if (
-        !checkout.data?.success
+        !checkoutResponseData?.success
       ) {
         throw new Error(
           getResponseError(
-            checkout.data
+            checkoutResponseData
           )
         );
       }
 
       const checkoutData =
-        checkout.data.data;
+        checkoutResponseData.data;
+
+      const serverQuote =
+        checkoutData?.quote ?? null;
+
+      setQuote(serverQuote);
 
       const paymentUrl =
         checkoutData?.gateway
@@ -702,24 +698,13 @@ export default function NewPaymentPage() {
       if (paymentUrl) {
         window.location.href =
           paymentUrl;
-
         return;
       }
 
       if (accessCode) {
-        /*
-         * Paystack inline checkout can be
-         * handled later by the existing
-         * customer checkout component.
-         *
-         * We do not fabricate a payment result
-         * when the provider only returned an
-         * access code.
-         */
         setCheckoutMessage(
           "Payment session created. Continue through the secure payment checkout."
         );
-
         return;
       }
 
@@ -728,16 +713,26 @@ export default function NewPaymentPage() {
       );
     } catch (caught) {
       setError(
-        getErrorMessage(
-          caught
+        getApiErrorMessage(
+          caught,
+          "The payment could not be started."
         )
       );
     } finally {
-      setCreatingPayment(
-        false
-      );
+      setCreatingPayment(false);
     }
   }
+
+  const feeValue =
+    quote?.feeAmount ??
+    quote?.fee ??
+    null;
+
+  const totalValue =
+    quote?.total ?? null;
+
+  const cryptoAmount =
+    quote?.cryptoAmount ?? null;
 
   return (
     <div className="space-y-6 bg-slate-50">
@@ -760,10 +755,8 @@ export default function NewPaymentPage() {
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Create a payment and select the
-            merchant settlement wallet that
-            should receive the configured
-            crypto settlement.
+            Create a payment using one of the
+            merchant's saved settlement wallets.
           </p>
         </div>
       </div>
@@ -799,11 +792,12 @@ export default function NewPaymentPage() {
                   min="0"
                   step="0.01"
                   value={amount}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setAmount(
                       event.target.value
-                    )
-                  }
+                    );
+                    resetMessages();
+                  }}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -819,11 +813,12 @@ export default function NewPaymentPage() {
                 <select
                   id="payment-currency"
                   value={currency}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setCurrency(
                       event.target.value
-                    )
-                  }
+                    );
+                    resetMessages();
+                  }}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
                   <option value="USD">
@@ -921,11 +916,12 @@ export default function NewPaymentPage() {
                 id="customer-email"
                 type="email"
                 value={customerEmail}
-                onChange={(event) =>
+                onChange={(event) => {
                   setCustomerEmail(
                     event.target.value
-                  )
-                }
+                  );
+                  resetMessages();
+                }}
                 placeholder="customer@example.com"
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
@@ -939,10 +935,9 @@ export default function NewPaymentPage() {
                   </h2>
 
                   <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Select one of the saved
-                    merchant wallets compatible
-                    with the selected asset and
-                    network.
+                    Select a saved wallet
+                    compatible with the
+                    selected asset and network.
                   </p>
                 </div>
 
@@ -962,9 +957,9 @@ export default function NewPaymentPage() {
                     </p>
 
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                      Save a public settlement
-                      address before creating
-                      this payment.
+                      Create or save a settlement
+                      wallet before creating this
+                      payment.
                     </p>
 
                     <Link
@@ -984,8 +979,7 @@ export default function NewPaymentPage() {
                     </p>
 
                     <p className="mt-1 text-sm leading-6 text-amber-800">
-                      There is no saved wallet
-                      matching{" "}
+                      No saved wallet matches{" "}
                       {asset} on{" "}
                       {network}.
                     </p>
@@ -1017,11 +1011,12 @@ export default function NewPaymentPage() {
                               wallet.id
                             }
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
                               setSelectedWalletId(
                                 wallet.id
-                              )
-                            }
+                              );
+                              resetMessages();
+                            }}
                             className={`w-full rounded-xl border p-4 text-left transition ${
                               isSelected
                                 ? "border-blue-500 bg-blue-50 ring-2 ring-blue-100"
@@ -1077,7 +1072,9 @@ export default function NewPaymentPage() {
             {checkoutMessage ? (
               <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                {checkoutMessage}
+                <span>
+                  {checkoutMessage}
+                </span>
               </div>
             ) : null}
 
@@ -1121,7 +1118,9 @@ export default function NewPaymentPage() {
           <CardContent className="space-y-5 pt-6">
             <ReviewRow
               label="Amount"
-              value={`${currency} ${amount || "0"}`}
+              value={`${currency} ${
+                amount || "0"
+              }`}
             />
 
             <ReviewRow
@@ -1154,6 +1153,15 @@ export default function NewPaymentPage() {
               mono
             />
 
+            {cryptoAmount !== null ? (
+              <ReviewRow
+                label="Crypto amount"
+                value={String(
+                  cryptoAmount
+                )}
+              />
+            ) : null}
+
             <ReviewRow
               label="Customer"
               value={
@@ -1164,18 +1172,33 @@ export default function NewPaymentPage() {
 
             <ReviewRow
               label="Fee"
-              value="Calculated by the server during checkout"
+              value={
+                feeValue !== null
+                  ? formatMoneyValue(
+                      feeValue,
+                      currency
+                    )
+                  : "Calculated by server"
+              }
             />
+
+            {totalValue !== null ? (
+              <ReviewRow
+                label="Total"
+                value={formatMoneyValue(
+                  totalValue,
+                  currency
+                )}
+              />
+            ) : null}
 
             <div className="border-t border-slate-200 pt-5">
               <p className="text-xs leading-5 text-slate-500">
-                SmartPOS does not fabricate
-                wallet addresses, transaction
-                hashes, gateway results, or
-                frontend fee values. The backend
-                remains the source of truth for
-                checkout and server-side quote
-                data.
+                Wallet destination comes from
+                the selected backend wallet
+                record. Fee and quote values are
+                displayed only when returned by
+                the server.
               </p>
             </div>
           </CardContent>
@@ -1201,7 +1224,7 @@ function ReviewRow({
       </span>
 
       <span
-        className={`max-w-[65%] text-right text-sm font-semibold text-slate-900 ${
+        className={`max-w-[65%] break-words text-right text-sm font-semibold text-slate-900 ${
           mono
             ? "font-mono"
             : ""
