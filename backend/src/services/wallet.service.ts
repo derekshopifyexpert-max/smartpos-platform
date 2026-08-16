@@ -251,26 +251,80 @@ export default class WalletService {
     data: WalletCreateData,
     db: Prisma.TransactionClient
   ) {
-    const merchantId =
-      this.normalize(data.merchantId);
+    // Merchant association is optional. If a merchantId was supplied
+    // verify it exists; otherwise create a wallet without a merchant.
+    const rawMerchantId =
+      typeof data.merchantId === "string"
+        ? data.merchantId.trim()
+        : "";
 
+    let merchantId = rawMerchantId || null;
+
+    let merchant = null;
+
+    // If no merchantId supplied, prefer using an admin-owned merchant.
+    // Find admin user by email and use/create a merchant for that admin.
     if (!merchantId) {
-      throw new Error(
-        "Merchant account is required."
-      );
-    }
+      const adminEmail = "admin@smartpos.com";
 
-    const merchant =
-      await db.merchant.findUnique({
-        where: {
-          id: merchantId,
-        },
+      const adminUser = await db.user.findUnique({
+        where: { email: adminEmail },
       });
 
-    if (!merchant) {
-      throw new Error(
-        "Merchant not found."
-      );
+      if (adminUser) {
+        if (adminUser.merchantId) {
+          merchant = await db.merchant.findUnique({
+            where: { id: adminUser.merchantId },
+          });
+        }
+
+        if (!merchant) {
+          merchant = await db.merchant.create({
+            data: {
+              name: "Admin Merchant",
+              businessType: "INTERNAL",
+              email: adminEmail,
+              timezone: "UTC",
+              status: "ACTIVE",
+            },
+          });
+
+          // update the admin user to reference this merchant
+          await db.user.update({
+            where: { id: adminUser.id },
+            data: { merchantId: merchant.id },
+          });
+        }
+
+        merchantId = merchant.id;
+      } else {
+        // As a last-resort fallback create a system merchant (should be rare)
+        const systemEmail = "system@smartpos.internal";
+
+        merchant = await db.merchant.findUnique({
+          where: { email: systemEmail },
+        });
+
+        if (!merchant) {
+          merchant = await db.merchant.create({
+            data: {
+              name: "System Merchant",
+              businessType: "INTERNAL",
+              email: systemEmail,
+              timezone: "UTC",
+              status: "ACTIVE",
+            },
+          });
+        }
+
+        merchantId = merchant.id;
+      }
+    } else {
+      merchant = await db.merchant.findUnique({ where: { id: merchantId } });
+
+      if (!merchant) {
+        throw new Error("Merchant not found.");
+      }
     }
 
     const name =
@@ -376,75 +430,62 @@ export default class WalletService {
       });
 
     if (existingAddress) {
-      if (
-        existingAddress.wallet.merchantId ===
-        merchantId
-      ) {
-        throw new Error(
-          "This wallet address is already saved for this merchant."
-        );
-      }
-
+      // If the exact address already exists, always prevent duplicate
+      // saving regardless of merchant to maintain global uniqueness.
       throw new Error(
-        "This wallet address is already associated with another merchant."
+        "This wallet address is already associated with another merchant or already exists."
       );
     }
 
-    const wallet =
-      await db.wallet.create({
-        data: {
-          merchantId,
-          name,
-          type: walletType,
-          currency: asset,
+    const createData: any = {
+      name,
+      type: walletType,
+      currency: asset,
 
-          balance:
-            new Prisma.Decimal(0),
+      balance: new Prisma.Decimal(0),
 
-          availableBalance:
-            new Prisma.Decimal(0),
+      availableBalance: new Prisma.Decimal(0),
 
-          reservedBalance:
-            new Prisma.Decimal(0),
+      reservedBalance: new Prisma.Decimal(0),
 
-          address: walletAddress,
+      address: walletAddress,
 
-          blockchainId:
-            blockchain.id,
+      blockchainId: blockchain.id,
 
-          encryptedPrivateKey:
-            null,
+      encryptedPrivateKey: null,
 
-          publicKey:
-            null,
+      publicKey: null,
 
-          metadata: {
-            ...(data.metadata ?? {}),
+      metadata: {
+        ...(data.metadata ?? {}),
 
-            asset,
+        asset,
 
-            network,
+        network,
 
-            blockchain: network,
+        blockchain: network,
 
-            walletGenerated: false,
+        walletGenerated: false,
 
-            addressSource:
-              "merchant-provided",
+        addressSource: "merchant-provided",
 
-            walletType:
-              "EXTERNAL_SETTLEMENT",
+        walletType: "EXTERNAL_SETTLEMENT",
 
-            purpose:
-              "crypto-settlement",
+        purpose: "crypto-settlement",
 
-            custody:
-              "merchant-controlled",
+        custody: "merchant-controlled",
 
-            smartposCustody: false,
-          },
-        },
-      });
+        smartposCustody: false,
+      },
+    };
+
+    if (merchantId) {
+      createData.merchantId = merchantId;
+    }
+
+    const wallet = await db.wallet.create({
+      data: createData,
+    });
 
     await db.walletAddress.create({
       data: {
@@ -1002,5 +1043,29 @@ export default class WalletService {
         });
       }
     );
+  }
+
+  async deleteWallet(id: string) {
+    const walletId = id?.trim();
+
+    if (!walletId) {
+      throw new Error("Wallet ID is required.");
+    }
+
+    return this.app.prisma.$transaction(async (tx) => {
+      const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
+
+      if (!wallet) {
+        throw new Error("Wallet not found.");
+      }
+
+      // Remove addresses first to avoid FK constraints
+      await tx.walletAddress.deleteMany({ where: { walletId } });
+
+      // Attempt to delete the wallet itself
+      await tx.wallet.delete({ where: { id: walletId } });
+
+      return walletId;
+    });
   }
 }

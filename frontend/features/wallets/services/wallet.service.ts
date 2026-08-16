@@ -307,3 +307,25 @@ export async function getWallet(
     );
   }
 }
+
+export async function deleteWallet(
+  id: string
+): Promise<{ id: string }> {
+  const walletId = requireWalletId(id);
+
+  try {
+    const response = await api.delete(
+      ENDPOINTS.wallets.detail(walletId)
+    );
+
+    if (response.data?.success !== true) {
+      throw new Error(
+        response.data?.message ?? response.data?.error ?? "Unable to delete wallet."
+      );
+    }
+
+    return { id: walletId };
+  } catch (error) {
+    throw new Error(getApiErrorMessage(error, "Unable to delete wallet."));
+  }
+}

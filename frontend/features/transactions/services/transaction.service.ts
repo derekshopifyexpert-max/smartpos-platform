@@ -1,5 +1,6 @@
 import { api } from "@/lib/api/client";
 import { ENDPOINTS } from "@/lib/api/endpoints";
+import { getWallets } from "@/features/wallets/services/wallet.service";
 
 import type {
   Transaction,
@@ -10,17 +11,46 @@ export async function getTransactions(
   page = 1,
   limit = 10
 ): Promise<TransactionListResponse["data"]> {
-  const response = await api.get<TransactionListResponse>(
-    ENDPOINTS.transactions.list,
-    {
-      params: {
-        page,
-        limit,
-      },
-    }
-  );
+  try {
+    const response = await api.get<TransactionListResponse>(
+      ENDPOINTS.transactions.list,
+      {
+        params: {
+          page,
+          limit,
+        },
+      }
+    );
 
-  return response.data.data;
+    return response.data.data;
+  } catch (err) {
+    // Retry using a fallback merchant if unauthenticated or not authorized.
+    try {
+      const wallets = await getWallets();
+
+      const fallbackMerchantId =
+        wallets?.[0]?.merchantId ?? null;
+
+      if (!fallbackMerchantId) {
+        throw err;
+      }
+
+      const retry = await api.get<TransactionListResponse>(
+        ENDPOINTS.transactions.list,
+        {
+          params: {
+            page,
+            limit,
+            merchantId: fallbackMerchantId,
+          },
+        }
+      );
+
+      return retry.data.data;
+    } catch (inner) {
+      throw inner;
+    }
+  }
 }
 
 export async function getTransaction(

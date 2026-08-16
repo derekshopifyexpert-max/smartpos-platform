@@ -25,6 +25,7 @@ import {
 import {
   createWallet,
   getWallets,
+  deleteWallet,
 } from "@/features/wallets/services/wallet.service";
 
 import type {
@@ -123,6 +124,8 @@ function getWalletNetwork(
     ""
   );
 }
+
+import { getApiErrorMessage } from "@/lib/api/client";
 
 function getErrorMessage(
   error: unknown
@@ -754,11 +757,7 @@ export default function WalletsPage() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() =>
-                            void copyAddress(
-                              wallet
-                            )
-                          }
+                          onClick={() => void copyAddress(wallet)}
                           className="shrink-0 gap-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                         >
                           <Copy className="h-3.5 w-3.5" />
@@ -769,6 +768,31 @@ export default function WalletsPage() {
                             : "Copy address"}
                         </Button>
                       ) : null}
+                      <div className="ml-2">
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          onClick={async () => {
+                            if (!confirm('Delete this wallet? This cannot be undone.')) return;
+                            try {
+                              setError(null);
+                              setSuccess(null);
+                              setSaving(true);
+                              await deleteWallet(wallet.id);
+                              setWallets((cur) => cur.filter((w) => w.id !== wallet.id));
+                              setSuccess('Wallet deleted.');
+                            } catch (e) {
+                              setError(getErrorMessage(e));
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                          className="ml-2 shrink-0 gap-2"
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   );
                 }

@@ -352,20 +352,17 @@ export default function NewPaymentPage() {
     let cancelled = false;
 
     async function loadWallets() {
-      if (!merchantId) {
-        setWallets([]);
-        setSelectedWalletId("");
-        return;
-      }
-
       setLoadingWallets(true);
       setError(null);
 
       try {
-        const result =
-          await getMerchantWallets(
-            merchantId
-          );
+        const result = await getMerchantWallets(
+          // getMerchantWallets is a backwards-compatible alias
+          // and will load all wallets when no merchant is provided
+          // so we call it regardless of `merchantId`.
+          // Passing merchantId for compatibility if available.
+          merchantId || undefined
+        );
 
         if (!cancelled) {
           setWallets(result);
@@ -513,12 +510,17 @@ export default function NewPaymentPage() {
   async function handleCreatePayment() {
     resetMessages();
 
-    if (!merchantId) {
-      setError(
-        "Your authenticated account does not have a merchant account."
-      );
-      return;
-    }
+      const merchantIdToUse =
+        merchantId ||
+        selectedWallet?.merchantId ||
+        wallets[0]?.merchantId || "";
+
+      if (!merchantIdToUse) {
+        setError(
+          "No merchant available for this payment. Select a saved wallet or sign in."
+        );
+        return;
+      }
 
     if (!amountIsValid) {
       setError(
@@ -587,7 +589,7 @@ export default function NewPaymentPage() {
         await api.post<CreatePaymentIntentResponse>(
           ENDPOINTS.paymentIntents.list,
           {
-            merchantId,
+            merchantIdToUse,
 
             amount:
               numericAmount,
@@ -761,12 +763,7 @@ export default function NewPaymentPage() {
         </div>
       </div>
 
-      {!merchantId ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
-          No merchant account is available
-          for the current authenticated user.
-        </div>
-      ) : null}
+      
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <Card className="border border-slate-200 bg-white text-slate-900 shadow-sm">

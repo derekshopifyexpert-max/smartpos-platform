@@ -246,26 +246,18 @@ export default class WalletController {
     reply: FastifyReply
   ) => {
     try {
-      const merchantId =
-        getAuthenticatedMerchantId(
-          request
-        );
-
-      if (!merchantId) {
-        return reply.code(401).send({
-          success: false,
-          error:
-            "Authenticated merchant account is required.",
-        });
-      }
-
+      // Allow creating wallets without requiring an authenticated
+      // merchant. If a merchantId is provided in the request body
+      // it will be used; otherwise wallets will be created without
+      // an associated merchant.
       const body =
         (request.body ?? {}) as CreateWalletBody;
 
       const wallet =
         await this.walletService.createWallet({
           ...body,
-          merchantId,
+          // keep whatever merchantId (if any) the client supplied
+          merchantId: body.merchantId,
         });
 
       if (!wallet) {
@@ -590,6 +582,41 @@ export default class WalletController {
           err: error,
         },
         "Merchant wallet retrieval failed"
+      );
+
+      return reply.code(400).send({
+        success: false,
+        error: getErrorMessage(error),
+      });
+    }
+  };
+
+  /**
+   * Delete a wallet record.
+   */
+  delete = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    try {
+      const id = getWalletId(request);
+
+      if (!id) {
+        return reply.code(400).send({
+          success: false,
+          error: "Wallet ID is required.",
+        });
+      }
+
+      const result = await this.walletService.deleteWallet(id);
+
+      return reply.send({ success: true, data: { id: result } });
+    } catch (error) {
+      request.log.error(
+        {
+          err: error,
+        },
+        "Wallet deletion failed"
       );
 
       return reply.code(400).send({

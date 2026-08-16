@@ -38,6 +38,13 @@ export default async function walletRoutes(
     handler: walletController.get,
   });
 
+  app.delete("/wallets/:id", {
+    preHandler: validateParams(
+      walletIdSchema
+    ),
+    handler: walletController.delete,
+  });
+
   app.post("/wallets/:id/credit", {
     preHandler: [
       validateParams(walletIdSchema),
