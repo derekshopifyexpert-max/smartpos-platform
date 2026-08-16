@@ -11,6 +11,7 @@ import {
   Copy,
   Plus,
   Wallet as WalletIcon,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -61,18 +62,37 @@ const NETWORKS = [
 function getWalletAddress(
   wallet: WalletRecord
 ): string {
-  return (
-    wallet.address?.trim() ??
+  const directAddress =
+    typeof wallet.address === "string"
+      ? wallet.address.trim()
+      : "";
+
+  if (directAddress) {
+    return directAddress;
+  }
+
+  const activeAddress =
     wallet.walletAddresses?.find(
       (item) =>
+        item &&
         item.isActive !== false &&
-        Boolean(
-          item.address?.trim()
-        )
-    )?.address?.trim() ??
-    wallet.walletAddresses?.[0]?.address?.trim() ??
-    ""
-  );
+        typeof item.address === "string" &&
+        item.address.trim()
+    );
+
+  if (activeAddress?.address?.trim()) {
+    return activeAddress.address.trim();
+  }
+
+  const firstAddress =
+    wallet.walletAddresses?.find(
+      (item) =>
+        item &&
+        typeof item.address === "string" &&
+        item.address.trim()
+    );
+
+  return firstAddress?.address?.trim() ?? "";
 }
 
 function getWalletAsset(
@@ -90,13 +110,25 @@ function getWalletAsset(
       .toUpperCase();
   }
 
-  return (
-    wallet.asset?.toString().toUpperCase() ??
-    wallet.currency
-      ?.toString()
-      .toUpperCase() ??
-    ""
-  );
+  if (
+    typeof wallet.asset === "string" &&
+    wallet.asset.trim()
+  ) {
+    return wallet.asset
+      .trim()
+      .toUpperCase();
+  }
+
+  if (
+    wallet.currency !== null &&
+    wallet.currency !== undefined
+  ) {
+    return String(wallet.currency)
+      .trim()
+      .toUpperCase();
+  }
+
+  return "";
 }
 
 function getWalletNetwork(
@@ -114,18 +146,43 @@ function getWalletNetwork(
       .toUpperCase();
   }
 
-  return (
-    wallet.network
-      ?.toString()
-      .toUpperCase() ??
-    wallet.blockchain?.name
-      ?.toString()
-      .toUpperCase() ??
-    ""
-  );
+  if (
+    typeof wallet.network === "string" &&
+    wallet.network.trim()
+  ) {
+    return wallet.network
+      .trim()
+      .toUpperCase();
+  }
+
+  if (
+    wallet.blockchain?.name &&
+    String(wallet.blockchain.name).trim()
+  ) {
+    return String(wallet.blockchain.name)
+      .trim()
+      .toUpperCase();
+  }
+
+  return "";
 }
 
-import { getApiErrorMessage } from "@/lib/api/client";
+function getNetworkLabel(
+  network: string
+): string {
+  const normalized =
+    network.trim().toUpperCase();
+
+  const match = NETWORKS.find(
+    (item) =>
+      item.value === normalized
+  );
+
+  return (
+    match?.label ??
+    network
+  );
+}
 
 function getErrorMessage(
   error: unknown
@@ -134,7 +191,7 @@ function getErrorMessage(
     error instanceof Error &&
     error.message.trim()
   ) {
-    return error.message;
+    return error.message.trim();
   }
 
   return "Wallet request failed.";
@@ -151,9 +208,12 @@ function validatePublicAddress(
     return "Enter the existing public wallet address.";
   }
 
+  const normalizedNetwork =
+    network.trim().toUpperCase();
+
   if (
-    network === "ETHEREUM" ||
-    network === "BSC"
+    normalizedNetwork === "ETHEREUM" ||
+    normalizedNetwork === "BSC"
   ) {
     if (
       !/^0x[a-fA-F0-9]{40}$/.test(
@@ -189,6 +249,13 @@ export default function WalletsPage() {
     saving,
     setSaving,
   ] = useState(false);
+
+  const [
+    deletingWalletId,
+    setDeletingWalletId,
+  ] = useState<string | null>(
+    null
+  );
 
   const [
     name,
@@ -241,13 +308,16 @@ export default function WalletsPage() {
       setError(null);
 
       try {
+        /*
+         * The authenticated API session determines which
+         * wallets are returned. No merchantId is required
+         * by the frontend.
+         */
         const result =
           await getWallets();
 
         if (!cancelled) {
-          setWallets(
-            result
-          );
+          setWallets(result);
         }
       } catch (caught) {
         if (!cancelled) {
@@ -286,9 +356,13 @@ export default function WalletsPage() {
       } saved for settlement.`;
     }, [wallets.length]);
 
-  async function handleSaveWallet() {
+  function clearMessages() {
     setError(null);
     setSuccess(null);
+  }
+
+  async function handleSaveWallet() {
+    clearMessages();
 
     const walletName =
       name.trim();
@@ -300,14 +374,14 @@ export default function WalletsPage() {
       return;
     }
 
-    if (!asset) {
+    if (!asset.trim()) {
       setError(
         "Select a crypto asset."
       );
       return;
     }
 
-    if (!network) {
+    if (!network.trim()) {
       setError(
         "Select a blockchain network."
       );
@@ -330,33 +404,42 @@ export default function WalletsPage() {
     setSaving(true);
 
     try {
+      const normalizedAsset =
+        asset.trim().toUpperCase();
+
+      const normalizedNetwork =
+        network.trim().toUpperCase();
+
+      const publicAddress =
+        address.trim();
+
       const saved =
         await createWallet({
           name: walletName,
 
           currency:
-            asset.toUpperCase(),
+            normalizedAsset,
 
           blockchain:
-            network.toUpperCase(),
+            normalizedNetwork,
 
           network:
-            network.toUpperCase(),
+            normalizedNetwork,
 
           asset:
-            asset.toUpperCase(),
+            normalizedAsset,
 
           address:
-            address.trim(),
+            publicAddress,
 
           type: "CRYPTO",
 
           metadata: {
             asset:
-              asset.toUpperCase(),
+              normalizedAsset,
 
             network:
-              network.toUpperCase(),
+              normalizedNetwork,
 
             source:
               "user-provided",
@@ -375,6 +458,11 @@ export default function WalletsPage() {
           },
         });
 
+      /*
+       * Put the server-returned wallet at the front
+       * immediately. The returned record is the source
+       * of truth, including its persisted address.
+       */
       setWallets(
         (current) => [
           saved,
@@ -411,12 +499,25 @@ export default function WalletsPage() {
   async function copyAddress(
     wallet: WalletRecord
   ) {
+    clearMessages();
+
     const walletAddress =
       getWalletAddress(wallet);
 
     if (!walletAddress) {
       setError(
         "This wallet does not have a saved public address."
+      );
+
+      return;
+    }
+
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
+      setError(
+        "Clipboard access is unavailable in this browser."
       );
 
       return;
@@ -442,6 +543,53 @@ export default function WalletsPage() {
     } catch {
       setError(
         "Unable to copy the wallet address."
+      );
+    }
+  }
+
+  async function handleDeleteWallet(
+    wallet: WalletRecord
+  ) {
+    const confirmed =
+      window.confirm(
+        `Delete "${wallet.name}"?\n\nThis removes the saved settlement destination from SmartPOS. This cannot be undone.`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    clearMessages();
+    setDeletingWalletId(
+      wallet.id
+    );
+
+    try {
+      await deleteWallet(
+        wallet.id
+      );
+
+      setWallets(
+        (current) =>
+          current.filter(
+            (item) =>
+              item.id !==
+              wallet.id
+          )
+      );
+
+      setSuccess(
+        "Wallet deleted successfully."
+      );
+    } catch (caught) {
+      setError(
+        getErrorMessage(
+          caught
+        )
+      );
+    } finally {
+      setDeletingWalletId(
+        null
       );
     }
   }
@@ -503,11 +651,12 @@ export default function WalletsPage() {
               <input
                 id="wallet-name"
                 value={name}
-                onChange={(event) =>
+                onChange={(event) => {
                   setName(
                     event.target.value
-                  )
-                }
+                  );
+                  clearMessages();
+                }}
                 placeholder="USDT Settlement Wallet"
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
@@ -528,8 +677,7 @@ export default function WalletsPage() {
                   setAsset(
                     event.target.value
                   );
-                  setError(null);
-                  setSuccess(null);
+                  clearMessages();
                 }}
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
@@ -565,8 +713,7 @@ export default function WalletsPage() {
                   setNetwork(
                     event.target.value
                   );
-                  setError(null);
-                  setSuccess(null);
+                  clearMessages();
                 }}
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
@@ -598,11 +745,12 @@ export default function WalletsPage() {
               <input
                 id="wallet-address"
                 value={address}
-                onChange={(event) =>
+                onChange={(event) => {
                   setAddress(
                     event.target.value
-                  )
-                }
+                  );
+                  clearMessages();
+                }}
                 placeholder="0x..."
                 autoComplete="off"
                 spellCheck={false}
@@ -706,6 +854,10 @@ export default function WalletsPage() {
                       wallet
                     );
 
+                  const isDeleting =
+                    deletingWalletId ===
+                    wallet.id;
+
                   return (
                     <div
                       key={
@@ -735,8 +887,9 @@ export default function WalletsPage() {
                             {walletAsset ||
                               "Crypto"}{" "}
                             ·{" "}
-                            {walletNetwork ||
-                              "Network unavailable"}
+                            {getNetworkLabel(
+                              walletNetwork
+                            )}
                           </p>
 
                           <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
@@ -752,45 +905,52 @@ export default function WalletsPage() {
                         </div>
                       </div>
 
-                      {walletAddress ? (
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {walletAddress ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              void copyAddress(
+                                wallet
+                              )
+                            }
+                            className="gap-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          >
+                            {copiedWalletId ===
+                            wallet.id ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+
+                            {copiedWalletId ===
+                            wallet.id
+                              ? "Copied"
+                              : "Copy address"}
+                          </Button>
+                        ) : null}
+
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => void copyAddress(wallet)}
-                          className="shrink-0 gap-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                          disabled={
+                            isDeleting
+                          }
+                          onClick={() =>
+                            void handleDeleteWallet(
+                              wallet
+                            )
+                          }
+                          className="gap-2 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
                         >
-                          <Copy className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" />
 
-                          {copiedWalletId ===
-                          wallet.id
-                            ? "Copied"
-                            : "Copy address"}
-                        </Button>
-                      ) : null}
-                      <div className="ml-2">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          onClick={async () => {
-                            if (!confirm('Delete this wallet? This cannot be undone.')) return;
-                            try {
-                              setError(null);
-                              setSuccess(null);
-                              setSaving(true);
-                              await deleteWallet(wallet.id);
-                              setWallets((cur) => cur.filter((w) => w.id !== wallet.id));
-                              setSuccess('Wallet deleted.');
-                            } catch (e) {
-                              setError(getErrorMessage(e));
-                            } finally {
-                              setSaving(false);
-                            }
-                          }}
-                          className="ml-2 shrink-0 gap-2"
-                        >
-                          Delete
+                          {isDeleting
+                            ? "Deleting..."
+                            : "Delete"}
                         </Button>
                       </div>
                     </div>

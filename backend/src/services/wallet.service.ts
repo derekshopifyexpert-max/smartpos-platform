@@ -1,4 +1,5 @@
-import { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
+
 import {
   Prisma,
   CurrencyType,
@@ -6,8 +7,13 @@ import {
   BlockchainNetworkType,
 } from "@prisma/client";
 
+import type {
+  AuthenticatedUser,
+} from "../types/auth.js";
+
 type WalletCreateData = {
-  merchantId?: string;
+  merchantId: string;
+
   name?: string;
   currency?: string;
   blockchain?: string;
@@ -27,13 +33,16 @@ export default class WalletService {
   private normalize(
     value?: string | null
   ): string {
-    return (value ?? "").trim().toUpperCase();
+    return (value ?? "")
+      .trim()
+      .toUpperCase();
   }
 
   private getNetworkType(
     value?: string
   ): BlockchainNetworkType {
-    const network = this.normalize(value);
+    const network =
+      this.normalize(value);
 
     if (!network) {
       throw new Error(
@@ -58,7 +67,8 @@ export default class WalletService {
   private getWalletType(
     value?: string
   ): WalletType {
-    const type = this.normalize(value);
+    const type =
+      this.normalize(value);
 
     if (!type) {
       return WalletType.CRYPTO;
@@ -87,7 +97,8 @@ export default class WalletService {
   private getCurrencyType(
     value?: string
   ): CurrencyType {
-    const currency = this.normalize(value);
+    const currency =
+      this.normalize(value);
 
     if (!currency) {
       throw new Error(
@@ -112,10 +123,13 @@ export default class WalletService {
   private validateEvmAddress(
     address: string
   ): string {
-    const value = address.trim();
+    const value =
+      address.trim();
 
     if (
-      !/^0x[a-fA-F0-9]{40}$/.test(value)
+      !/^0x[a-fA-F0-9]{40}$/.test(
+        value
+      )
     ) {
       throw new Error(
         "Enter a valid public EVM wallet address beginning with 0x and containing 40 hexadecimal characters."
@@ -128,7 +142,8 @@ export default class WalletService {
   private validateBitcoinAddress(
     address: string
   ): string {
-    const value = address.trim();
+    const value =
+      address.trim();
 
     const bech32 =
       /^(bc1q|bc1p)[ac-hj-np-z02-9]{38,58}$/.test(
@@ -152,7 +167,8 @@ export default class WalletService {
   private validateSolanaAddress(
     address: string
   ): string {
-    const value = address.trim();
+    const value =
+      address.trim();
 
     if (
       !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(
@@ -170,10 +186,13 @@ export default class WalletService {
   private validateCardanoAddress(
     address: string
   ): string {
-    const value = address.trim();
+    const value =
+      address.trim();
 
     if (
-      !/^addr1[a-z0-9]{90,}$/.test(value)
+      !/^addr1[a-z0-9]{90,}$/.test(
+        value
+      )
     ) {
       throw new Error(
         "Enter a valid Cardano public wallet address beginning with addr1."
@@ -186,7 +205,8 @@ export default class WalletService {
   private validateRippleAddress(
     address: string
   ): string {
-    const value = address.trim();
+    const value =
+      address.trim();
 
     if (
       !/^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(
@@ -205,7 +225,8 @@ export default class WalletService {
     network: BlockchainNetworkType,
     address?: string
   ): string {
-    const value = (address ?? "").trim();
+    const value =
+      (address ?? "").trim();
 
     if (!value) {
       throw new Error(
@@ -221,19 +242,29 @@ export default class WalletService {
       case BlockchainNetworkType.ARBITRUM:
       case BlockchainNetworkType.OPTIMISM:
       case BlockchainNetworkType.BASE:
-        return this.validateEvmAddress(value);
+        return this.validateEvmAddress(
+          value
+        );
 
       case BlockchainNetworkType.BITCOIN:
-        return this.validateBitcoinAddress(value);
+        return this.validateBitcoinAddress(
+          value
+        );
 
       case BlockchainNetworkType.SOLANA:
-        return this.validateSolanaAddress(value);
+        return this.validateSolanaAddress(
+          value
+        );
 
       case BlockchainNetworkType.CARDANO:
-        return this.validateCardanoAddress(value);
+        return this.validateCardanoAddress(
+          value
+        );
 
       case BlockchainNetworkType.RIPPLE:
-        return this.validateRippleAddress(value);
+        return this.validateRippleAddress(
+          value
+        );
 
       case BlockchainNetworkType.TRON:
         throw new Error(
@@ -247,338 +278,390 @@ export default class WalletService {
     }
   }
 
-  private async createWalletRecord(
-    data: WalletCreateData,
-    db: Prisma.TransactionClient
-  ) {
-    // Merchant association is optional. If a merchantId was supplied
-    // verify it exists; otherwise create a wallet without a merchant.
-    const rawMerchantId =
-      typeof data.merchantId === "string"
-        ? data.merchantId.trim()
+  async resolveMerchantId(
+    user: AuthenticatedUser
+  ): Promise<string | null> {
+    const directMerchantId =
+      typeof user.merchantId === "string"
+        ? user.merchantId.trim()
         : "";
 
-    let merchantId = rawMerchantId || null;
-
-    let merchant = null;
-
-    // If no merchantId supplied, prefer using an admin-owned merchant.
-    // Find admin user by email and use/create a merchant for that admin.
-    if (!merchantId) {
-      const adminEmail = "admin@smartpos.com";
-
-      const adminUser = await db.user.findUnique({
-        where: { email: adminEmail },
-      });
-
-      if (adminUser) {
-        if (adminUser.merchantId) {
-          merchant = await db.merchant.findUnique({
-            where: { id: adminUser.merchantId },
-          });
-        }
-
-        if (!merchant) {
-          merchant = await db.merchant.create({
-            data: {
-              name: "Admin Merchant",
-              businessType: "INTERNAL",
-              email: adminEmail,
-              timezone: "UTC",
-              status: "ACTIVE",
+    if (directMerchantId) {
+      const merchant =
+        await this.app.prisma.merchant.findUnique(
+          {
+            where: {
+              id: directMerchantId,
             },
-          });
-
-          // update the admin user to reference this merchant
-          await db.user.update({
-            where: { id: adminUser.id },
-            data: { merchantId: merchant.id },
-          });
-        }
-
-        merchantId = merchant.id;
-      } else {
-        // As a last-resort fallback create a system merchant (should be rare)
-        const systemEmail = "system@smartpos.internal";
-
-        merchant = await db.merchant.findUnique({
-          where: { email: systemEmail },
-        });
-
-        if (!merchant) {
-          merchant = await db.merchant.create({
-            data: {
-              name: "System Merchant",
-              businessType: "INTERNAL",
-              email: systemEmail,
-              timezone: "UTC",
-              status: "ACTIVE",
+            select: {
+              id: true,
+              status: true,
+              deletedAt: true,
             },
-          });
-        }
+          }
+        );
 
-        merchantId = merchant.id;
-      }
-    } else {
-      merchant = await db.merchant.findUnique({ where: { id: merchantId } });
-
-      if (!merchant) {
-        throw new Error("Merchant not found.");
+      if (
+        merchant &&
+        !merchant.deletedAt &&
+        merchant.status !== "SUSPENDED"
+      ) {
+        return merchant.id;
       }
     }
 
-    const name =
-      (data.name ?? "").trim();
+    const userIdCandidates = [
+      user.sub,
+      user.id,
+      user.userId,
+    ].filter(
+      (
+        value
+      ): value is string =>
+        typeof value === "string" &&
+        value.trim().length > 0
+    );
 
-    if (!name) {
-      throw new Error(
-        "Wallet name is required."
-      );
+    for (
+      const candidate of userIdCandidates
+    ) {
+      const dbUser =
+        await this.app.prisma.user.findUnique(
+          {
+            where: {
+              id: candidate.trim(),
+            },
+            select: {
+              merchantId: true,
+            },
+          }
+        );
+
+      if (dbUser?.merchantId) {
+        return dbUser.merchantId;
+      }
     }
-
-    if (name.length < 2) {
-      throw new Error(
-        "Wallet name must be at least 2 characters."
-      );
-    }
-
-    if (name.length > 100) {
-      throw new Error(
-        "Wallet name must not exceed 100 characters."
-      );
-    }
-
-    const blockchainName =
-      this.normalize(
-        data.blockchain ?? data.network
-      );
-
-    const networkName =
-      this.normalize(
-        data.network ?? data.blockchain
-      );
-
-    if (!blockchainName || !networkName) {
-      throw new Error(
-        "Blockchain and network are required."
-      );
-    }
-
-    if (blockchainName !== networkName) {
-      throw new Error(
-        "Blockchain and network must refer to the same network."
-      );
-    }
-
-    const network =
-      this.getNetworkType(networkName);
-
-    const asset =
-      this.getCurrencyType(
-        data.asset ?? data.currency
-      );
-
-    const suppliedCurrency =
-      this.normalize(data.currency);
 
     if (
-      suppliedCurrency &&
-      suppliedCurrency !== asset
+      typeof user.email === "string" &&
+      user.email.trim()
     ) {
-      throw new Error(
-        "Wallet currency and asset must refer to the same crypto asset."
-      );
+      const dbUser =
+        await this.app.prisma.user.findUnique(
+          {
+            where: {
+              email:
+                user.email
+                  .trim()
+                  .toLowerCase(),
+            },
+            select: {
+              merchantId: true,
+            },
+          }
+        );
+
+      if (dbUser?.merchantId) {
+        return dbUser.merchantId;
+      }
     }
 
-    const walletType =
-      this.getWalletType(data.type);
-
-    const walletAddress =
-      this.validateAddress(
-        network,
-        data.address ??
-          data.walletAddress
-      );
-
-    const blockchain =
-      await db.blockchainNetwork.findUnique({
-        where: {
-          name: network,
-        },
-      });
-
-    if (!blockchain) {
-      throw new Error(
-        `${network} is not configured in SmartPOS.`
-      );
-    }
-
-    if (!blockchain.isActive) {
-      throw new Error(
-        `${network} is currently inactive.`
-      );
-    }
-
-    const existingAddress =
-      await db.walletAddress.findUnique({
-        where: {
-          address: walletAddress,
-        },
-        include: {
-          wallet: true,
-        },
-      });
-
-    if (existingAddress) {
-      // If the exact address already exists, always prevent duplicate
-      // saving regardless of merchant to maintain global uniqueness.
-      throw new Error(
-        "This wallet address is already associated with another merchant or already exists."
-      );
-    }
-
-    const createData: any = {
-      name,
-      type: walletType,
-      currency: asset,
-
-      balance: new Prisma.Decimal(0),
-
-      availableBalance: new Prisma.Decimal(0),
-
-      reservedBalance: new Prisma.Decimal(0),
-
-      address: walletAddress,
-
-      blockchainId: blockchain.id,
-
-      encryptedPrivateKey: null,
-
-      publicKey: null,
-
-      metadata: {
-        ...(data.metadata ?? {}),
-
-        asset,
-
-        network,
-
-        blockchain: network,
-
-        walletGenerated: false,
-
-        addressSource: "merchant-provided",
-
-        walletType: "EXTERNAL_SETTLEMENT",
-
-        purpose: "crypto-settlement",
-
-        custody: "merchant-controlled",
-
-        smartposCustody: false,
-      },
-    };
-
-    if (merchantId) {
-      createData.merchantId = merchantId;
-    }
-
-    const wallet = await db.wallet.create({
-      data: createData,
-    });
-
-    await db.walletAddress.create({
-      data: {
-        walletId: wallet.id,
-
-        address: walletAddress,
-
-        blockchainId:
-          blockchain.id,
-
-        label: "Primary",
-
-        isActive: true,
-
-        metadata: {
-          asset,
-          network,
-          source:
-            "merchant-provided",
-          addressType:
-            "PUBLIC_SETTLEMENT_ADDRESS",
-        },
-      },
-    });
-
-    const savedWallet =
-      await db.wallet.findUnique({
-        where: {
-          id: wallet.id,
-        },
-
-        include: {
-          blockchain: true,
-          walletAddresses: true,
-        },
-      });
-
-    if (!savedWallet) {
-      throw new Error(
-        "Wallet could not be retrieved after saving."
-      );
-    }
-
-    return savedWallet;
+    return null;
   }
 
   async createWallet(
     data: WalletCreateData
   ) {
-    return this.app.prisma.$transaction(
-      (tx) =>
-        this.createWalletRecord(
-          data,
-          tx
-        )
-    );
-  }
+    const merchantId =
+      data.merchantId.trim();
 
-  async getWallet(
-    id: string
-  ) {
-    const walletId = id.trim();
-
-    if (!walletId) {
+    if (!merchantId) {
       throw new Error(
-        "Wallet ID is required."
+        "Authenticated merchant account is required."
       );
     }
 
-    return this.app.prisma.wallet.findUnique({
-      where: {
-        id: walletId,
-      },
-      include: {
-        blockchain: true,
-        walletAddresses: true,
-      },
-    });
+    return this.app.prisma.$transaction(
+      async (tx) => {
+        const merchant =
+          await tx.merchant.findUnique({
+            where: {
+              id: merchantId,
+            },
+            select: {
+              id: true,
+              status: true,
+              deletedAt: true,
+            },
+          });
+
+        if (!merchant) {
+          throw new Error(
+            "Merchant not found."
+          );
+        }
+
+        if (merchant.deletedAt) {
+          throw new Error(
+            "Merchant account is no longer active."
+          );
+        }
+
+        if (
+          merchant.status === "SUSPENDED"
+        ) {
+          throw new Error(
+            "Merchant account is suspended."
+          );
+        }
+
+        const name =
+          (data.name ?? "").trim();
+
+        if (!name) {
+          throw new Error(
+            "Wallet name is required."
+          );
+        }
+
+        if (name.length < 2) {
+          throw new Error(
+            "Wallet name must be at least 2 characters."
+          );
+        }
+
+        if (name.length > 100) {
+          throw new Error(
+            "Wallet name must not exceed 100 characters."
+          );
+        }
+
+        const blockchainName =
+          this.normalize(
+            data.blockchain ??
+              data.network
+          );
+
+        const networkName =
+          this.normalize(
+            data.network ??
+              data.blockchain
+          );
+
+        if (
+          !blockchainName ||
+          !networkName
+        ) {
+          throw new Error(
+            "Blockchain and network are required."
+          );
+        }
+
+        if (
+          blockchainName !==
+          networkName
+        ) {
+          throw new Error(
+            "Blockchain and network must refer to the same network."
+          );
+        }
+
+        const network =
+          this.getNetworkType(
+            networkName
+          );
+
+        const asset =
+          this.getCurrencyType(
+            data.asset ??
+              data.currency
+          );
+
+        const suppliedCurrency =
+          this.normalize(
+            data.currency
+          );
+
+        if (
+          suppliedCurrency &&
+          suppliedCurrency !== asset
+        ) {
+          throw new Error(
+            "Wallet currency and asset must refer to the same crypto asset."
+          );
+        }
+
+        const walletType =
+          this.getWalletType(
+            data.type
+          );
+
+        const walletAddress =
+          this.validateAddress(
+            network,
+            data.address ??
+              data.walletAddress
+          );
+
+        const blockchain =
+          await tx.blockchainNetwork.findUnique(
+            {
+              where: {
+                name: network,
+              },
+            }
+          );
+
+        if (!blockchain) {
+          throw new Error(
+            `${network} is not configured in SmartPOS.`
+          );
+        }
+
+        if (!blockchain.isActive) {
+          throw new Error(
+            `${network} is currently inactive.`
+          );
+        }
+
+        const existingAddress =
+          await tx.walletAddress.findUnique(
+            {
+              where: {
+                address: walletAddress,
+              },
+            }
+          );
+
+        if (existingAddress) {
+          throw new Error(
+            "This wallet address is already associated with a wallet."
+          );
+        }
+
+        const wallet =
+          await tx.wallet.create({
+            data: {
+              merchantId,
+
+              name,
+
+              type: walletType,
+
+              currency: asset,
+
+              balance:
+                new Prisma.Decimal(0),
+
+              availableBalance:
+                new Prisma.Decimal(0),
+
+              reservedBalance:
+                new Prisma.Decimal(0),
+
+              address:
+                walletAddress,
+
+              blockchainId:
+                blockchain.id,
+
+              encryptedPrivateKey:
+                null,
+
+              publicKey: null,
+
+              metadata: {
+                ...(data.metadata ?? {}),
+
+                asset,
+
+                network,
+
+                blockchain: network,
+
+                walletGenerated:
+                  false,
+
+                addressSource:
+                  "merchant-provided",
+
+                walletType:
+                  "EXTERNAL_SETTLEMENT",
+
+                purpose:
+                  "crypto-settlement",
+
+                custody:
+                  "merchant-controlled",
+
+                smartposCustody:
+                  false,
+              },
+            },
+          });
+
+        await tx.walletAddress.create({
+          data: {
+            walletId:
+              wallet.id,
+
+            address:
+              walletAddress,
+
+            blockchainId:
+              blockchain.id,
+
+            label:
+              "Primary",
+
+            isActive:
+              true,
+
+            metadata: {
+              asset,
+
+              network,
+
+              source:
+                "merchant-provided",
+
+              addressType:
+                "PUBLIC_SETTLEMENT_ADDRESS",
+            },
+          },
+        });
+
+        const savedWallet =
+          await tx.wallet.findUnique({
+            where: {
+              id: wallet.id,
+            },
+            include: {
+              blockchain: true,
+              walletAddresses: true,
+            },
+          });
+
+        if (!savedWallet) {
+          throw new Error(
+            "Wallet could not be retrieved after saving."
+          );
+        }
+
+        return savedWallet;
+      }
+    );
   }
 
   async getWalletForMerchant(
     walletId: string,
-    merchantId?: string
+    merchantId: string
   ) {
-    const id = walletId.trim();
-    const merchant =
-      this.normalize(merchantId);
+    const id =
+      walletId.trim();
 
-    if (!merchant) {
-      throw new Error(
-        "Merchant account is required."
-      );
-    }
+    const merchant =
+      merchantId.trim();
 
     if (!id) {
       throw new Error(
@@ -586,17 +669,28 @@ export default class WalletService {
       );
     }
 
+    if (!merchant) {
+      throw new Error(
+        "Merchant account is required."
+      );
+    }
+
     const wallet =
-      await this.app.prisma.wallet.findFirst({
-        where: {
-          id,
-          merchantId: merchant,
-        },
-        include: {
-          blockchain: true,
-          walletAddresses: true,
-        },
-      });
+      await this.app.prisma.wallet.findFirst(
+        {
+          where: {
+            id,
+
+            merchantId:
+              merchant,
+          },
+
+          include: {
+            blockchain: true,
+            walletAddresses: true,
+          },
+        }
+      );
 
     if (!wallet) {
       throw new Error(
@@ -611,7 +705,7 @@ export default class WalletService {
     merchantId: string
   ) {
     const merchant =
-      this.normalize(merchantId);
+      merchantId.trim();
 
     if (!merchant) {
       throw new Error(
@@ -619,10 +713,27 @@ export default class WalletService {
       );
     }
 
+    return this.app.prisma.wallet.findMany(
+      {
+        where: {
+          merchantId:
+            merchant,
+        },
+
+        include: {
+          blockchain: true,
+          walletAddresses: true,
+        },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+      }
+    );
+  }
+
+  async listWallets() {
     return this.app.prisma.wallet.findMany({
-      where: {
-        merchantId: merchant,
-      },
       include: {
         blockchain: true,
         walletAddresses: true,
@@ -633,11 +744,40 @@ export default class WalletService {
     });
   }
 
+  async ensureAdminMerchant(): Promise<string> {
+    const adminEmail = "admin@smartpos.com";
+
+    const adminUser = await this.app.prisma.user.findUnique({
+      where: { email: adminEmail },
+      select: { merchantId: true },
+    });
+
+    if (adminUser?.merchantId) {
+      return adminUser.merchantId;
+    }
+
+    const merchant = await this.app.prisma.merchant.findFirst({
+      where: { name: "Admin Merchant" },
+      select: { id: true },
+    });
+
+    if (merchant?.id) {
+      return merchant.id;
+    }
+
+    throw new Error(
+      "Admin merchant not found. Run the reset_to_admin script to ensure an admin user and merchant exist."
+    );
+  }
+
   async creditWallet(
     walletId: string,
-    amount: Prisma.Decimal
+    amount: Prisma.Decimal,
+    merchantId: string
   ) {
-    if (amount.lessThanOrEqualTo(0)) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
       throw new Error(
         "Credit amount must be greater than zero."
       );
@@ -646,9 +786,11 @@ export default class WalletService {
     return this.app.prisma.$transaction(
       async (tx) => {
         const wallet =
-          await tx.wallet.findUnique({
+          await tx.wallet.findFirst({
             where: {
               id: walletId,
+              merchantId:
+                merchantId.trim(),
             },
           });
 
@@ -668,13 +810,17 @@ export default class WalletService {
 
         return tx.wallet.update({
           where: {
-            id: walletId,
+            id: wallet.id,
           },
+
           data: {
-            balance: newBalance,
+            balance:
+              newBalance,
+
             availableBalance:
               newBalance,
           },
+
           include: {
             blockchain: true,
             walletAddresses: true,
@@ -686,9 +832,12 @@ export default class WalletService {
 
   async debitWallet(
     walletId: string,
-    amount: Prisma.Decimal
+    amount: Prisma.Decimal,
+    merchantId: string
   ) {
-    if (amount.lessThanOrEqualTo(0)) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
       throw new Error(
         "Debit amount must be greater than zero."
       );
@@ -697,9 +846,11 @@ export default class WalletService {
     return this.app.prisma.$transaction(
       async (tx) => {
         const wallet =
-          await tx.wallet.findUnique({
+          await tx.wallet.findFirst({
             where: {
               id: walletId,
+              merchantId:
+                merchantId.trim(),
             },
           });
 
@@ -714,7 +865,9 @@ export default class WalletService {
             wallet.balance
           );
 
-        if (balance.lessThan(amount)) {
+        if (
+          balance.lessThan(amount)
+        ) {
           throw new Error(
             "Insufficient wallet balance."
           );
@@ -725,13 +878,17 @@ export default class WalletService {
 
         return tx.wallet.update({
           where: {
-            id: walletId,
+            id: wallet.id,
           },
+
           data: {
-            balance: newBalance,
+            balance:
+              newBalance,
+
             availableBalance:
               newBalance,
           },
+
           include: {
             blockchain: true,
             walletAddresses: true,
@@ -744,26 +901,43 @@ export default class WalletService {
   async transferFunds(
     fromWalletId: string,
     toWalletId: string,
-    amount: Prisma.Decimal
+    amount: Prisma.Decimal,
+    merchantId: string
   ) {
-    if (amount.lessThanOrEqualTo(0)) {
+    if (
+      amount.lessThanOrEqualTo(0)
+    ) {
       throw new Error(
         "Transfer amount must be greater than zero."
       );
     }
 
-    if (fromWalletId === toWalletId) {
+    if (
+      fromWalletId ===
+      toWalletId
+    ) {
       throw new Error(
         "Source and destination wallets must be different."
+      );
+    }
+
+    const merchant =
+      merchantId.trim();
+
+    if (!merchant) {
+      throw new Error(
+        "Merchant account is required."
       );
     }
 
     return this.app.prisma.$transaction(
       async (tx) => {
         const fromWallet =
-          await tx.wallet.findUnique({
+          await tx.wallet.findFirst({
             where: {
               id: fromWalletId,
+              merchantId:
+                merchant,
             },
           });
 
@@ -774,9 +948,11 @@ export default class WalletService {
         }
 
         const toWallet =
-          await tx.wallet.findUnique({
+          await tx.wallet.findFirst({
             where: {
               id: toWalletId,
+              merchantId:
+                merchant,
             },
           });
 
@@ -809,263 +985,130 @@ export default class WalletService {
             fromWallet.balance
           );
 
-        if (fromBalance.lessThan(amount)) {
+        if (
+          fromBalance.lessThan(
+            amount
+          )
+        ) {
           throw new Error(
             "Insufficient wallet balance."
           );
         }
 
-        await tx.wallet.update({
-          where: {
-            id: fromWalletId,
-          },
-          data: {
-            balance:
-              fromBalance.minus(amount),
-
-            availableBalance:
-              fromBalance.minus(amount),
-          },
-        });
+        const newFromBalance =
+          fromBalance.minus(
+            amount
+          );
 
         const toBalance =
           new Prisma.Decimal(
             toWallet.balance
           );
 
+        const newToBalance =
+          toBalance.plus(
+            amount
+          );
+
         await tx.wallet.update({
           where: {
-            id: toWalletId,
+            id: fromWallet.id,
           },
+
           data: {
             balance:
-              toBalance.plus(amount),
+              newFromBalance,
 
             availableBalance:
-              toBalance.plus(amount),
+              newFromBalance,
+          },
+        });
+
+        await tx.wallet.update({
+          where: {
+            id: toWallet.id,
+          },
+
+          data: {
+            balance:
+              newToBalance,
+
+            availableBalance:
+              newToBalance,
           },
         });
 
         return {
-          fromWalletId,
-          toWalletId,
+          fromWalletId:
+            fromWallet.id,
+
+          toWalletId:
+            toWallet.id,
+
           amount,
-          status: "SUCCESS",
+
+          status:
+            "SUCCESS",
         };
       }
     );
   }
 
-  async reserveFunds(
-    walletId: string,
-    amount: Prisma.Decimal
+  async deleteWallet(
+    id: string,
+    merchantId: string
   ) {
-    if (amount.lessThanOrEqualTo(0)) {
-      throw new Error(
-        "Reserve amount must be greater than zero."
-      );
-    }
+    const walletId =
+      id.trim();
 
-    return this.app.prisma.$transaction(
-      async (tx) => {
-        const wallet =
-          await tx.wallet.findUnique({
-            where: {
-              id: walletId,
-            },
-          });
-
-        if (!wallet) {
-          throw new Error(
-            "Wallet not found."
-          );
-        }
-
-        const available =
-          new Prisma.Decimal(
-            wallet.availableBalance
-          );
-
-        const reserved =
-          new Prisma.Decimal(
-            wallet.reservedBalance
-          );
-
-        if (available.lessThan(amount)) {
-          throw new Error(
-            "Insufficient available balance."
-          );
-        }
-
-        return tx.wallet.update({
-          where: {
-            id: walletId,
-          },
-          data: {
-            availableBalance:
-              available.minus(amount),
-
-            reservedBalance:
-              reserved.plus(amount),
-          },
-          include: {
-            blockchain: true,
-            walletAddresses: true,
-          },
-        });
-      }
-    );
-  }
-
-  async releaseFunds(
-    walletId: string,
-    amount: Prisma.Decimal
-  ) {
-    if (amount.lessThanOrEqualTo(0)) {
-      throw new Error(
-        "Release amount must be greater than zero."
-      );
-    }
-
-    return this.app.prisma.$transaction(
-      async (tx) => {
-        const wallet =
-          await tx.wallet.findUnique({
-            where: {
-              id: walletId,
-            },
-          });
-
-        if (!wallet) {
-          throw new Error(
-            "Wallet not found."
-          );
-        }
-
-        const available =
-          new Prisma.Decimal(
-            wallet.availableBalance
-          );
-
-        const reserved =
-          new Prisma.Decimal(
-            wallet.reservedBalance
-          );
-
-        if (reserved.lessThan(amount)) {
-          throw new Error(
-            "Insufficient reserved balance."
-          );
-        }
-
-        return tx.wallet.update({
-          where: {
-            id: walletId,
-          },
-          data: {
-            availableBalance:
-              available.plus(amount),
-
-            reservedBalance:
-              reserved.minus(amount),
-          },
-          include: {
-            blockchain: true,
-            walletAddresses: true,
-          },
-        });
-      }
-    );
-  }
-
-  async captureFunds(
-    walletId: string,
-    amount: Prisma.Decimal
-  ) {
-    if (amount.lessThanOrEqualTo(0)) {
-      throw new Error(
-        "Capture amount must be greater than zero."
-      );
-    }
-
-    return this.app.prisma.$transaction(
-      async (tx) => {
-        const wallet =
-          await tx.wallet.findUnique({
-            where: {
-              id: walletId,
-            },
-          });
-
-        if (!wallet) {
-          throw new Error(
-            "Wallet not found."
-          );
-        }
-
-        const balance =
-          new Prisma.Decimal(
-            wallet.balance
-          );
-
-        const reserved =
-          new Prisma.Decimal(
-            wallet.reservedBalance
-          );
-
-        if (reserved.lessThan(amount)) {
-          throw new Error(
-            "Insufficient reserved balance."
-          );
-        }
-
-        if (balance.lessThan(amount)) {
-          throw new Error(
-            "Insufficient wallet balance."
-          );
-        }
-
-        return tx.wallet.update({
-          where: {
-            id: walletId,
-          },
-          data: {
-            balance:
-              balance.minus(amount),
-
-            reservedBalance:
-              reserved.minus(amount),
-          },
-          include: {
-            blockchain: true,
-            walletAddresses: true,
-          },
-        });
-      }
-    );
-  }
-
-  async deleteWallet(id: string) {
-    const walletId = id?.trim();
+    const merchant =
+      merchantId.trim();
 
     if (!walletId) {
-      throw new Error("Wallet ID is required.");
+      throw new Error(
+        "Wallet ID is required."
+      );
     }
 
-    return this.app.prisma.$transaction(async (tx) => {
-      const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
+    if (!merchant) {
+      throw new Error(
+        "Merchant account is required."
+      );
+    }
 
-      if (!wallet) {
-        throw new Error("Wallet not found.");
+    return this.app.prisma.$transaction(
+      async (tx) => {
+        const wallet =
+          await tx.wallet.findFirst({
+            where: {
+              id: walletId,
+              merchantId:
+                merchant,
+            },
+          });
+
+        if (!wallet) {
+          throw new Error(
+            "Wallet not found."
+          );
+        }
+
+        await tx.walletAddress.deleteMany(
+          {
+            where: {
+              walletId,
+            },
+          }
+        );
+
+        await tx.wallet.delete({
+          where: {
+            id: walletId,
+          },
+        });
+
+        return walletId;
       }
-
-      // Remove addresses first to avoid FK constraints
-      await tx.walletAddress.deleteMany({ where: { walletId } });
-
-      // Attempt to delete the wallet itself
-      await tx.wallet.delete({ where: { id: walletId } });
-
-      return walletId;
-    });
+    );
   }
 }

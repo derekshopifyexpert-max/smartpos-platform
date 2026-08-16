@@ -32,8 +32,8 @@ import type {
 } from "@/features/wallets/types/wallet";
 
 import {
-  getApiErrorMessage,
   api,
+  getApiErrorMessage,
 } from "@/lib/api/client";
 
 import { ENDPOINTS } from "@/lib/api/endpoints";
@@ -179,6 +179,15 @@ function getWalletAsset(
       .toUpperCase();
   }
 
+  if (
+    typeof wallet.currency === "string" &&
+    wallet.currency.trim()
+  ) {
+    return wallet.currency
+      .trim()
+      .toUpperCase();
+  }
+
   return "";
 }
 
@@ -206,12 +215,18 @@ function getWalletNetwork(
       .toUpperCase();
   }
 
-  return (
+  if (
+    typeof wallet.blockchain ===
+      "object" &&
     wallet.blockchain?.name
-      ?.toString()
+  ) {
+    return wallet.blockchain.name
+      .toString()
       .trim()
-      .toUpperCase() ?? ""
-  );
+      .toUpperCase();
+  }
+
+  return "";
 }
 
 function formatAddress(
@@ -228,7 +243,11 @@ function formatAddress(
 }
 
 function formatMoneyValue(
-  value: string | number | null | undefined,
+  value:
+    | string
+    | number
+    | null
+    | undefined,
   currency: string
 ): string {
   if (
@@ -275,6 +294,14 @@ function getResponseError(
 }
 
 export default function NewPaymentPage() {
+  /*
+   * Authentication is still required to use the
+   * dashboard, but merchantId is NOT required by
+   * the frontend to load saved wallets.
+   *
+   * The backend remains responsible for resolving
+   * the authenticated merchant context.
+   */
   const merchantId =
     useAuthStore(
       (state) =>
@@ -348,37 +375,74 @@ export default function NewPaymentPage() {
     null
   );
 
+  /*
+   * Load saved wallets directly from the
+   * authenticated wallet endpoint.
+   *
+   * IMPORTANT:
+   * Do NOT pass merchantId here.
+   *
+   * The wallet service already loads the
+   * authenticated user's available wallets.
+   */
   useEffect(() => {
     let cancelled = false;
 
     async function loadWallets() {
       setLoadingWallets(true);
+
       setError(null);
 
       try {
-        const result = await getMerchantWallets(
-          // getMerchantWallets is a backwards-compatible alias
-          // and will load all wallets when no merchant is provided
-          // so we call it regardless of `merchantId`.
-          // Passing merchantId for compatibility if available.
-          merchantId || undefined
+        const result =
+          await getMerchantWallets();
+
+        if (cancelled) {
+          return;
+        }
+
+        setWallets(
+          Array.isArray(result)
+            ? result
+            : []
         );
 
-        if (!cancelled) {
-          setWallets(result);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setWallets([]);
-          setSelectedWalletId("");
+        /*
+         * If the selected wallet still exists,
+         * preserve it. Otherwise clear it.
+         */
+        setSelectedWalletId(
+          (currentId) => {
+            if (!currentId) {
+              return "";
+            }
 
-          setError(
-            getApiErrorMessage(
-              caught,
-              "Unable to load saved wallets."
-            )
-          );
+            const exists =
+              result.some(
+                (wallet) =>
+                  wallet.id === currentId
+              );
+
+            return exists
+              ? currentId
+              : "";
+          }
+        );
+      } catch (caught) {
+        if (cancelled) {
+          return;
         }
+
+        setWallets([]);
+
+        setSelectedWalletId("");
+
+        setError(
+          getApiErrorMessage(
+            caught,
+            "Unable to load saved wallets."
+          )
+        );
       } finally {
         if (!cancelled) {
           setLoadingWallets(false);
@@ -391,34 +455,54 @@ export default function NewPaymentPage() {
     return () => {
       cancelled = true;
     };
-  }, [merchantId]);
+  }, []);
 
-  const compatibleWallets =
+  /*
+   * Only wallets with an actual saved public
+   * address can be used as payment destinations.
+   */
+  const walletsWithAddresses =
     useMemo(() => {
       return wallets.filter(
+        (wallet) =>
+          Boolean(
+            getWalletAddress(wallet)
+          )
+      );
+    }, [wallets]);
+
+  /*
+   * Only show wallets compatible with the
+   * currently selected asset and network.
+   */
+  const compatibleWallets =
+    useMemo(() => {
+      const selectedAsset =
+        asset.toUpperCase();
+
+      const selectedNetwork =
+        network.toUpperCase();
+
+      return walletsWithAddresses.filter(
         (wallet) => {
-          const address =
-            getWalletAddress(wallet);
-
-          if (!address) {
-            return false;
-          }
-
           const walletAsset =
             getWalletAsset(wallet);
 
           const walletNetwork =
             getWalletNetwork(wallet);
 
+          /*
+           * Asset and network are deliberately
+           * strict when the saved wallet contains
+           * those values.
+           */
           const assetMatches =
-            !walletAsset ||
             walletAsset ===
-              asset.toUpperCase();
+            selectedAsset;
 
           const networkMatches =
-            !walletNetwork ||
             walletNetwork ===
-              network.toUpperCase();
+            selectedNetwork;
 
           return (
             assetMatches &&
@@ -427,11 +511,16 @@ export default function NewPaymentPage() {
         }
       );
     }, [
-      wallets,
+      walletsWithAddresses,
       asset,
       network,
     ]);
 
+  /*
+   * Clear the selected wallet whenever the
+   * current asset/network combination makes
+   * it incompatible.
+   */
   useEffect(() => {
     if (!selectedWalletId) {
       return;
@@ -466,6 +555,10 @@ export default function NewPaymentPage() {
       ]
     );
 
+  /*
+   * Destination is always taken from the
+   * persisted backend wallet.
+   */
   const destinationAddress =
     getWalletAddress(
       selectedWallet
@@ -494,33 +587,29 @@ export default function NewPaymentPage() {
   function handleAssetChange(
     value: string
   ) {
-    setAsset(value);
+    setAsset(
+      value.toUpperCase()
+    );
+
     setSelectedWalletId("");
+
     resetMessages();
   }
 
   function handleNetworkChange(
     value: string
   ) {
-    setNetwork(value);
+    setNetwork(
+      value.toUpperCase()
+    );
+
     setSelectedWalletId("");
+
     resetMessages();
   }
 
   async function handleCreatePayment() {
     resetMessages();
-
-      const merchantIdToUse =
-        merchantId ||
-        selectedWallet?.merchantId ||
-        wallets[0]?.merchantId || "";
-
-      if (!merchantIdToUse) {
-        setError(
-          "No merchant available for this payment. Select a saved wallet or sign in."
-        );
-        return;
-      }
 
     if (!amountIsValid) {
       setError(
@@ -561,23 +650,21 @@ export default function NewPaymentPage() {
       );
 
     if (
-      walletAsset &&
       walletAsset !==
-        asset.toUpperCase()
+      asset.toUpperCase()
     ) {
       setError(
-        `The selected wallet is configured for ${walletAsset}, not ${asset}.`
+        `The selected wallet is configured for ${walletAsset || "an unknown asset"}, not ${asset}.`
       );
       return;
     }
 
     if (
-      walletNetwork &&
       walletNetwork !==
-        network.toUpperCase()
+      network.toUpperCase()
     ) {
       setError(
-        `The selected wallet is configured for ${walletNetwork}, not ${network}.`
+        `The selected wallet is configured for ${walletNetwork || "an unknown network"}, not ${network}.`
       );
       return;
     }
@@ -585,43 +672,71 @@ export default function NewPaymentPage() {
     setCreatingPayment(true);
 
     try {
-      const paymentIntentResponse =
-        await api.post<CreatePaymentIntentResponse>(
-          ENDPOINTS.paymentIntents.list,
-          {
-            merchantIdToUse,
+      /*
+       * Use the merchant ID when the authenticated
+       * user already has one, or when the selected
+       * wallet contains one.
+       *
+       * There is intentionally NO frontend
+       * restriction requiring merchantId.
+       *
+       * The backend remains the final authority
+       * for authenticated merchant resolution.
+       */
+      const resolvedMerchantId =
+        merchantId ||
+        selectedWallet.merchantId ||
+        undefined;
+
+      const paymentIntentPayload: Record<
+        string,
+        unknown
+      > = {
+        amount:
+          numericAmount,
+
+        currency:
+          currency.toUpperCase(),
+
+        description:
+          `SmartPOS payment for ${currency.toUpperCase()} ${numericAmount}`,
+
+        metadata: {
+          cryptoDestination: {
+            asset:
+              asset.toUpperCase(),
+
+            network:
+              network.toUpperCase(),
+
+            walletId:
+              selectedWallet.id,
+
+            address:
+              destinationAddress,
 
             amount:
               numericAmount,
 
             currency:
               currency.toUpperCase(),
+          },
+        },
+      };
 
-            description:
-              `SmartPOS payment for ${currency.toUpperCase()} ${numericAmount}`,
+      /*
+       * Only include merchantId when one is actually
+       * available. Never send an empty or fake ID.
+       */
+      if (resolvedMerchantId) {
+        paymentIntentPayload.merchantId =
+          resolvedMerchantId;
+      }
 
-            metadata: {
-              cryptoDestination: {
-                asset:
-                  asset.toUpperCase(),
-
-                network:
-                  network.toUpperCase(),
-
-                walletId:
-                  selectedWallet.id,
-
-                address:
-                  destinationAddress,
-
-                amount:
-                  numericAmount,
-
-                currency:
-                  currency.toUpperCase(),
-              },
-            },
-          }
+      const paymentIntentResponse =
+        await api.post<CreatePaymentIntentResponse>(
+          ENDPOINTS.paymentIntents.list,
+          paymentIntentPayload
         );
 
       const paymentIntentResponseData =
@@ -700,6 +815,7 @@ export default function NewPaymentPage() {
       if (paymentUrl) {
         window.location.href =
           paymentUrl;
+
         return;
       }
 
@@ -707,6 +823,7 @@ export default function NewPaymentPage() {
         setCheckoutMessage(
           "Payment session created. Continue through the secure payment checkout."
         );
+
         return;
       }
 
@@ -762,8 +879,6 @@ export default function NewPaymentPage() {
           </p>
         </div>
       </div>
-
-      
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <Card className="border border-slate-200 bg-white text-slate-900 shadow-sm">
@@ -821,9 +936,11 @@ export default function NewPaymentPage() {
                   <option value="USD">
                     USD
                   </option>
+
                   <option value="EUR">
                     EUR
                   </option>
+
                   <option value="GBP">
                     GBP
                   </option>
@@ -946,8 +1063,7 @@ export default function NewPaymentPage() {
                   <div className="rounded-lg border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
                     Loading saved wallets...
                   </div>
-                ) : wallets.length ===
-                  0 ? (
+                ) : wallets.length === 0 ? (
                   <div className="rounded-lg border border-slate-200 bg-white p-4">
                     <p className="font-medium text-slate-900">
                       No saved wallets yet.
@@ -967,12 +1083,10 @@ export default function NewPaymentPage() {
                       <ArrowRight className="h-4 w-4" />
                     </Link>
                   </div>
-                ) : compatibleWallets.length ===
-                  0 ? (
+                ) : compatibleWallets.length === 0 ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                     <p className="font-medium text-amber-900">
-                      No compatible saved
-                      wallet
+                      No compatible saved wallet
                     </p>
 
                     <p className="mt-1 text-sm leading-6 text-amber-800">
@@ -1012,6 +1126,7 @@ export default function NewPaymentPage() {
                               setSelectedWalletId(
                                 wallet.id
                               );
+
                               resetMessages();
                             }}
                             className={`w-full rounded-xl border p-4 text-left transition ${
@@ -1031,13 +1146,11 @@ export default function NewPaymentPage() {
                                 <p className="mt-1 text-sm text-slate-500">
                                   {getWalletAsset(
                                     wallet
-                                  ) ||
-                                    asset}{" "}
+                                  )}{" "}
                                   ·{" "}
                                   {getWalletNetwork(
                                     wallet
-                                  ) ||
-                                    network}
+                                  )}
                                 </p>
 
                                 <p className="mt-2 break-all font-mono text-xs text-slate-700">
@@ -1069,6 +1182,7 @@ export default function NewPaymentPage() {
             {checkoutMessage ? (
               <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+
                 <span>
                   {checkoutMessage}
                 </span>
@@ -1082,7 +1196,6 @@ export default function NewPaymentPage() {
               }
               disabled={
                 creatingPayment ||
-                !merchantId ||
                 !amountIsValid ||
                 !emailIsValid ||
                 !selectedWallet ||

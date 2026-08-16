@@ -7,8 +7,7 @@ export default fp(async (app) => {
     secret: env.JWT_SECRET,
 
     sign: {
-      expiresIn:
-        env.JWT_ACCESS_EXPIRES_IN,
+      expiresIn: env.JWT_ACCESS_EXPIRES_IN,
     },
   });
 });

@@ -5,9 +5,14 @@ import {
 } from "fastify";
 
 import WalletService from "../services/wallet.service.js";
+
 import type {
   CreateWalletBody,
 } from "../types/wallet.js";
+
+import type {
+  AuthenticatedUser,
+} from "../types/auth.js";
 
 const SENSITIVE_WALLET_FIELDS = new Set([
   "encryptedPrivateKey",
@@ -86,8 +91,8 @@ function getErrorMessage(
   }
 
   if (
-    typeof error === "object" &&
-    error !== null
+    error &&
+    typeof error === "object"
   ) {
     const value =
       error as Record<string, unknown>;
@@ -110,101 +115,10 @@ function getErrorMessage(
   return "Wallet request failed.";
 }
 
-/**
- * Get the merchant ID belonging to the
- * authenticated user.
- *
- * The authenticated identity is authoritative.
- * A route merchantId may only be used as a
- * compatibility check and must never override
- * the authenticated merchant.
- */
-function getAuthenticatedMerchantId(
+function getAuthenticatedUser(
   request: FastifyRequest
-): string | undefined {
-  const user =
-    request.user as
-      | Record<string, unknown>
-      | undefined;
-
-  if (!user) {
-    return undefined;
-  }
-
-  const directMerchantId =
-    user.merchantId;
-
-  if (
-    typeof directMerchantId === "string" &&
-    directMerchantId.trim()
-  ) {
-    return directMerchantId.trim();
-  }
-
-  const nestedMerchant =
-    user.merchant;
-
-  if (
-    nestedMerchant &&
-    typeof nestedMerchant === "object"
-  ) {
-    const merchant =
-      nestedMerchant as Record<
-        string,
-        unknown
-      >;
-
-    if (
-      typeof merchant.id === "string" &&
-      merchant.id.trim()
-    ) {
-      return merchant.id.trim();
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Verify that a route merchantId, when supplied,
- * belongs to the authenticated merchant.
- *
- * This prevents a merchant from changing the URL
- * to access another merchant's wallet collection.
- */
-function validateMerchantRoute(
-  request: FastifyRequest,
-  merchantId: string
-): string | null {
-  const params =
-    request.params as
-      | Record<string, unknown>
-      | undefined;
-
-  const routeMerchantId =
-    params?.merchantId;
-
-  if (
-    routeMerchantId === undefined
-  ) {
-    return null;
-  }
-
-  if (
-    typeof routeMerchantId !== "string" ||
-    !routeMerchantId.trim()
-  ) {
-    return "Merchant ID is required.";
-  }
-
-  if (
-    routeMerchantId.trim() !==
-    merchantId
-  ) {
-    return "You are not authorized to access this merchant's wallets.";
-  }
-
-  return null;
+): AuthenticatedUser {
+  return request.user as AuthenticatedUser;
 }
 
 function getWalletId(
@@ -232,45 +146,37 @@ export default class WalletController {
     private readonly walletService: WalletService
   ) {}
 
-  /**
-   * Create a merchant settlement wallet.
-   *
-   * SmartPOS does not generate wallet addresses.
-   * The merchant supplies an existing public address.
-   *
-   * The merchantId is always taken from the
-   * authenticated user rather than the request body.
-   */
   create = async (
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
     try {
-      // Allow creating wallets without requiring an authenticated
-      // merchant. If a merchantId is provided in the request body
-      // it will be used; otherwise wallets will be created without
-      // an associated merchant.
-      const body =
-        (request.body ?? {}) as CreateWalletBody;
+      const user = getAuthenticatedUser(request);
 
-      const wallet =
-        await this.walletService.createWallet({
-          ...body,
-          // keep whatever merchantId (if any) the client supplied
-          merchantId: body.merchantId,
-        });
+      let merchantId = await this.walletService.resolveMerchantId(user);
 
-      if (!wallet) {
-        return reply.code(500).send({
-          success: false,
-          error:
-            "Wallet could not be created.",
-        });
+      const body = (request.body ?? {}) as CreateWalletBody;
+
+      // allow client to pass merchantId in body when unauthenticated
+      if (!merchantId && typeof body.merchantId === "string") {
+        merchantId = body.merchantId.trim();
       }
+
+      // fallback to admin-owned merchant when no merchantId present
+      if (!merchantId) {
+        merchantId = await this.walletService.ensureAdminMerchant();
+      }
+
+      const wallet = await this.walletService.createWallet({
+        ...body,
+        merchantId,
+      });
 
       return reply.code(201).send({
         success: true,
         data: sanitizeWallet(wallet),
+        message:
+          "Wallet created successfully.",
       });
     } catch (error) {
       request.log.error(
@@ -280,6 +186,146 @@ export default class WalletController {
         "Wallet creation failed"
       );
 
+      const message =
+        getErrorMessage(error);
+
+      const statusCode =
+        message.includes(
+          "not linked to a merchant"
+        )
+          ? 403
+          : 400;
+
+      return reply.code(statusCode).send({
+        success: false,
+        error: message,
+      });
+    }
+  };
+
+  get = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    try {
+      const id =
+        getWalletId(request);
+
+      if (!id) {
+        return reply.code(400).send({
+          success: false,
+          error: "Wallet ID is required.",
+        });
+      }
+
+      const user =
+        getAuthenticatedUser(request);
+
+      const merchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
+
+      if (!merchantId) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "Your authenticated account is not linked to a merchant account.",
+        });
+      }
+
+      const wallet =
+        await this.walletService.getWalletForMerchant(
+          id,
+          merchantId
+        );
+
+      return reply.send({
+        success: true,
+        data: sanitizeWallet(wallet),
+      });
+    } catch (error) {
+      request.log.error(
+        {
+          err: error,
+        },
+        "Wallet retrieval failed"
+      );
+
+      const message =
+        getErrorMessage(error);
+
+      return reply.code(
+        message === "Wallet not found."
+          ? 404
+          : 400
+      ).send({
+        success: false,
+        error: message,
+      });
+    }
+  };
+
+  merchantWallets = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    try {
+      const user =
+        getAuthenticatedUser(request);
+
+      const authenticatedMerchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
+
+      if (!authenticatedMerchantId) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "Your authenticated account is not linked to a merchant account.",
+        });
+      }
+
+      const params =
+        request.params as {
+          merchantId?: string;
+        };
+
+      const requestedMerchantId =
+        params.merchantId?.trim();
+
+      if (
+        !requestedMerchantId ||
+        requestedMerchantId !==
+          authenticatedMerchantId
+      ) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "You are not authorized to access this merchant's wallets.",
+        });
+      }
+
+      const wallets =
+        await this.walletService.merchantWallets(
+          authenticatedMerchantId
+        );
+
+      return reply.send({
+        success: true,
+        data: sanitizeWallets(
+          wallets ?? []
+        ),
+      });
+    } catch (error) {
+      request.log.error(
+        {
+          err: error,
+        },
+        "Merchant wallet retrieval failed"
+      );
+
       return reply.code(400).send({
         success: false,
         error: getErrorMessage(error),
@@ -287,10 +333,224 @@ export default class WalletController {
     }
   };
 
-  /**
-   * Transfer funds between internal SmartPOS
-   * wallet balance records.
-   */
+  delete = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    try {
+      const id =
+        getWalletId(request);
+
+      if (!id) {
+        return reply.code(400).send({
+          success: false,
+          error: "Wallet ID is required.",
+        });
+      }
+
+      const user =
+        getAuthenticatedUser(request);
+
+      const merchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
+
+      if (!merchantId) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "Your authenticated account is not linked to a merchant account.",
+        });
+      }
+
+      await this.walletService.deleteWallet(
+        id,
+        merchantId
+      );
+
+      return reply.send({
+        success: true,
+        data: {
+          id,
+        },
+        message:
+          "Wallet deleted successfully.",
+      });
+    } catch (error) {
+      request.log.error(
+        {
+          err: error,
+        },
+        "Wallet deletion failed"
+      );
+
+      const message =
+        getErrorMessage(error);
+
+      return reply.code(
+        message === "Wallet not found."
+          ? 404
+          : 400
+      ).send({
+        success: false,
+        error: message,
+      });
+    }
+  };
+
+  credit = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    try {
+      const id =
+        getWalletId(request);
+
+      const body =
+        (request.body ?? {}) as {
+          amount?: number | string;
+        };
+
+      if (!id) {
+        return reply.code(400).send({
+          success: false,
+          error: "Wallet ID is required.",
+        });
+      }
+
+      if (
+        body.amount === undefined ||
+        body.amount === null ||
+        body.amount === ""
+      ) {
+        return reply.code(400).send({
+          success: false,
+          error:
+            "Credit amount is required.",
+        });
+      }
+
+      const user =
+        getAuthenticatedUser(request);
+
+      const merchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
+
+      if (!merchantId) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "Your authenticated account is not linked to a merchant account.",
+        });
+      }
+
+      const wallet =
+        await this.walletService.creditWallet(
+          id,
+          new Prisma.Decimal(
+            body.amount
+          ),
+          merchantId
+        );
+
+      return reply.send({
+        success: true,
+        data: sanitizeWallet(wallet),
+      });
+    } catch (error) {
+      request.log.error(
+        {
+          err: error,
+        },
+        "Wallet credit failed"
+      );
+
+      return reply.code(400).send({
+        success: false,
+        error: getErrorMessage(error),
+      });
+    }
+  };
+
+  debit = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    try {
+      const id =
+        getWalletId(request);
+
+      const body =
+        (request.body ?? {}) as {
+          amount?: number | string;
+        };
+
+      if (!id) {
+        return reply.code(400).send({
+          success: false,
+          error: "Wallet ID is required.",
+        });
+      }
+
+      if (
+        body.amount === undefined ||
+        body.amount === null ||
+        body.amount === ""
+      ) {
+        return reply.code(400).send({
+          success: false,
+          error:
+            "Debit amount is required.",
+        });
+      }
+
+      const user =
+        getAuthenticatedUser(request);
+
+      const merchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
+
+      if (!merchantId) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "Your authenticated account is not linked to a merchant account.",
+        });
+      }
+
+      const wallet =
+        await this.walletService.debitWallet(
+          id,
+          new Prisma.Decimal(
+            body.amount
+          ),
+          merchantId
+        );
+
+      return reply.send({
+        success: true,
+        data: sanitizeWallet(wallet),
+      });
+    } catch (error) {
+      request.log.error(
+        {
+          err: error,
+        },
+        "Wallet debit failed"
+      );
+
+      return reply.code(400).send({
+        success: false,
+        error: getErrorMessage(error),
+      });
+    }
+  };
+
   transferFunds = async (
     request: FastifyRequest,
     reply: FastifyReply
@@ -326,13 +586,30 @@ export default class WalletController {
         });
       }
 
-      const amount = body.amount;
+      const user =
+        getAuthenticatedUser(request);
+
+      const merchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
+
+      if (!merchantId) {
+        return reply.code(403).send({
+          success: false,
+          error:
+            "Your authenticated account is not linked to a merchant account.",
+        });
+      }
 
       const result =
         await this.walletService.transferFunds(
           body.fromWalletId.trim(),
           body.toWalletId.trim(),
-          new Prisma.Decimal(amount)
+          new Prisma.Decimal(
+            body.amount
+          ),
+          merchantId
         );
 
       return reply.send({
@@ -354,270 +631,20 @@ export default class WalletController {
     }
   };
 
-  /**
-   * Credit an internal SmartPOS wallet balance.
-   */
-  credit = async (
+  // Public list of wallets (no authentication required)
+  list = async (
     request: FastifyRequest,
     reply: FastifyReply
   ) => {
     try {
-      const id =
-        getWalletId(request);
-
-      const body =
-        (request.body ?? {}) as {
-          amount?: number | string;
-        };
-
-      if (!id) {
-        return reply.code(400).send({
-          success: false,
-          error: "Wallet ID is required.",
-        });
-      }
-
-      const amount = body.amount;
-
-      if (
-        amount === undefined ||
-        amount === null ||
-        amount === ""
-      ) {
-        return reply.code(400).send({
-          success: false,
-          error:
-            "Credit amount is required.",
-        });
-      }
-
-      const wallet =
-        await this.walletService.creditWallet(
-          id,
-          new Prisma.Decimal(amount)
-        );
+      const wallets = await this.walletService.listWallets();
 
       return reply.send({
         success: true,
-        data: sanitizeWallet(wallet),
+        data: sanitizeWallets(wallets ?? []),
       });
     } catch (error) {
-      request.log.error(
-        {
-          err: error,
-        },
-        "Wallet credit failed"
-      );
-
-      return reply.code(400).send({
-        success: false,
-        error: getErrorMessage(error),
-      });
-    }
-  };
-
-  /**
-   * Debit an internal SmartPOS wallet balance.
-   */
-  debit = async (
-    request: FastifyRequest,
-    reply: FastifyReply
-  ) => {
-    try {
-      const id =
-        getWalletId(request);
-
-      const body =
-        (request.body ?? {}) as {
-          amount?: number | string;
-        };
-
-      if (!id) {
-        return reply.code(400).send({
-          success: false,
-          error: "Wallet ID is required.",
-        });
-      }
-
-      const amount = body.amount;
-
-      if (
-        amount === undefined ||
-        amount === null ||
-        amount === ""
-      ) {
-        return reply.code(400).send({
-          success: false,
-          error:
-            "Debit amount is required.",
-        });
-      }
-
-      const wallet =
-        await this.walletService.debitWallet(
-          id,
-          new Prisma.Decimal(amount)
-        );
-
-      return reply.send({
-        success: true,
-        data: sanitizeWallet(wallet),
-      });
-    } catch (error) {
-      request.log.error(
-        {
-          err: error,
-        },
-        "Wallet debit failed"
-      );
-
-      return reply.code(400).send({
-        success: false,
-        error: getErrorMessage(error),
-      });
-    }
-  };
-
-  /**
-   * Get one wallet.
-   */
-  get = async (
-    request: FastifyRequest,
-    reply: FastifyReply
-  ) => {
-    try {
-      const id =
-        getWalletId(request);
-
-      if (!id) {
-        return reply.code(400).send({
-          success: false,
-          error: "Wallet ID is required.",
-        });
-      }
-
-      const wallet =
-        await this.walletService.getWallet(
-          id
-        );
-
-      if (!wallet) {
-        return reply.code(404).send({
-          success: false,
-          error: "Wallet not found.",
-        });
-      }
-
-      return reply.send({
-        success: true,
-        data: sanitizeWallet(wallet),
-      });
-    } catch (error) {
-      request.log.error(
-        {
-          err: error,
-        },
-        "Wallet retrieval failed"
-      );
-
-      return reply.code(400).send({
-        success: false,
-        error: getErrorMessage(error),
-      });
-    }
-  };
-
-  /**
-   * Get all wallets belonging to the
-   * authenticated merchant.
-   *
-   * The merchantId in the URL is checked against
-   * the authenticated merchant and can never override it.
-   */
-  merchantWallets = async (
-    request: FastifyRequest,
-    reply: FastifyReply
-  ) => {
-    try {
-      const merchantId =
-        getAuthenticatedMerchantId(
-          request
-        );
-
-      if (!merchantId) {
-        return reply.code(401).send({
-          success: false,
-          error:
-            "Authenticated merchant account is required.",
-        });
-      }
-
-      const routeError =
-        validateMerchantRoute(
-          request,
-          merchantId
-        );
-
-      if (routeError) {
-        return reply.code(403).send({
-          success: false,
-          error: routeError,
-        });
-      }
-
-      const wallets =
-        await this.walletService.merchantWallets(
-          merchantId
-        );
-
-      return reply.send({
-        success: true,
-        data: sanitizeWallets(
-          wallets ?? []
-        ),
-      });
-    } catch (error) {
-      request.log.error(
-        {
-          err: error,
-        },
-        "Merchant wallet retrieval failed"
-      );
-
-      return reply.code(400).send({
-        success: false,
-        error: getErrorMessage(error),
-      });
-    }
-  };
-
-  /**
-   * Delete a wallet record.
-   */
-  delete = async (
-    request: FastifyRequest,
-    reply: FastifyReply
-  ) => {
-    try {
-      const id = getWalletId(request);
-
-      if (!id) {
-        return reply.code(400).send({
-          success: false,
-          error: "Wallet ID is required.",
-        });
-      }
-
-      const result = await this.walletService.deleteWallet(id);
-
-      return reply.send({ success: true, data: { id: result } });
-    } catch (error) {
-      request.log.error(
-        {
-          err: error,
-        },
-        "Wallet deletion failed"
-      );
+      request.log.error({ err: error }, "Wallet list failed");
 
       return reply.code(400).send({
         success: false,

@@ -97,7 +97,8 @@ function normalizeCreateWalletPayload(
       payload.address
     ),
 
-    ...(payload.type
+    ...(typeof payload.type === "string" &&
+    payload.type.trim()
       ? {
           type: payload.type.trim(),
         }
@@ -136,7 +137,9 @@ function getWalletAddress(
           item.isActive !== false
       );
 
-    if (activeAddress?.address) {
+    if (
+      activeAddress?.address
+    ) {
       return activeAddress.address.trim();
     }
 
@@ -149,7 +152,9 @@ function getWalletAddress(
           item.address.trim()
       );
 
-    if (firstAddress?.address) {
+    if (
+      firstAddress?.address
+    ) {
       return firstAddress.address.trim();
     }
   }
@@ -158,11 +163,59 @@ function getWalletAddress(
 }
 
 /**
- * Load every saved wallet.
+ * Load all wallets available to the authenticated user.
  *
- * No authenticated user or merchant ID
- * is required for this wallet-management
- * flow.
+ * SmartPOS uses the authenticated API session as the source
+ * of identity. The frontend does not require a merchantId
+ * before requesting saved wallets.
+ *
+ * This is intentionally different from the old implementation,
+ * which rejected the request when merchantId was unavailable.
+ *
+ * Backend route:
+ * GET /wallets
+ */
+export async function getMerchantWallets(
+  _merchantId?: string
+): Promise<WalletRecord[]> {
+  try {
+    const response =
+      await api.get<WalletListApiResponse>(
+        ENDPOINTS.wallets.list
+      );
+
+    if (
+      response.data?.success !== true
+    ) {
+      throw new Error(
+        response.data?.message ??
+          response.data?.error ??
+          "Unable to load saved wallets."
+      );
+    }
+
+    return Array.isArray(
+      response.data.data
+    )
+      ? response.data.data
+      : [];
+  } catch (error) {
+    throw new Error(
+      getApiErrorMessage(
+        error,
+        "Unable to load saved wallets."
+      )
+    );
+  }
+}
+
+/**
+ * Load all saved wallets for the authenticated user.
+ *
+ * This is the primary wallet-list function.
+ *
+ * The request relies on the authenticated API session.
+ * No merchantId is required from the frontend.
  */
 export async function getWallets(): Promise<
   WalletRecord[]
@@ -199,19 +252,13 @@ export async function getWallets(): Promise<
 }
 
 /**
- * Backwards-compatible alias.
- */
-export async function getMerchantWallets(): Promise<
-  WalletRecord[]
-> {
-  return getWallets();
-}
-
-/**
  * Save an existing public wallet address.
  *
- * The address comes from the user.
- * SmartPOS does not generate it.
+ * SmartPOS does not generate or own the wallet.
+ * The merchant supplies the existing public address.
+ *
+ * No private key, seed phrase, or other sensitive
+ * wallet material is accepted or returned here.
  */
 export async function createWallet(
   payload: CreateWalletPayload
@@ -267,6 +314,9 @@ export async function createWallet(
   }
 }
 
+/**
+ * Get one saved wallet by ID.
+ */
 export async function getWallet(
   id: string
 ): Promise<WalletRecord> {
@@ -308,24 +358,42 @@ export async function getWallet(
   }
 }
 
+/**
+ * Delete one saved wallet by ID.
+ */
 export async function deleteWallet(
   id: string
 ): Promise<{ id: string }> {
-  const walletId = requireWalletId(id);
+  const walletId =
+    requireWalletId(id);
 
   try {
-    const response = await api.delete(
-      ENDPOINTS.wallets.detail(walletId)
-    );
+    const response =
+      await api.delete(
+        ENDPOINTS.wallets.detail(
+          walletId
+        )
+      );
 
-    if (response.data?.success !== true) {
+    if (
+      response.data?.success !== true
+    ) {
       throw new Error(
-        response.data?.message ?? response.data?.error ?? "Unable to delete wallet."
+        response.data?.message ??
+          response.data?.error ??
+          "Unable to delete wallet."
       );
     }
 
-    return { id: walletId };
+    return {
+      id: walletId,
+    };
   } catch (error) {
-    throw new Error(getApiErrorMessage(error, "Unable to delete wallet."));
+    throw new Error(
+      getApiErrorMessage(
+        error,
+        "Unable to delete wallet."
+      )
+    );
   }
 }

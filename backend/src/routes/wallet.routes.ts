@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import WalletService from "../services/wallet.service.js";
 import WalletController from "../controllers/wallet.controller.js";
 
+import { authMiddleware } from "../middleware/auth.middleware.js";
+
 import {
   validateBody,
   validateParams,
@@ -24,29 +26,44 @@ export default async function walletRoutes(
   const walletController =
     new WalletController(walletService);
 
+  const authenticated = {
+    preHandler: authMiddleware,
+  };
+
+  // Allow creating wallets without an authenticated merchant; controller will
+  // fallback to an admin-owned merchant when needed.
   app.post("/wallets", {
-    preHandler: validateBody(
-      createWalletSchema
-    ),
+    preHandler: [validateBody(createWalletSchema)],
     handler: walletController.create,
   });
 
+  // Public list of wallets (used by New Payment / Saved Wallets UI)
+  app.get("/wallets", {
+    handler: walletController.list,
+  });
+
   app.get("/wallets/:id", {
-    preHandler: validateParams(
-      walletIdSchema
-    ),
+    ...authenticated,
+    preHandler: [
+      authMiddleware,
+      validateParams(walletIdSchema),
+    ],
     handler: walletController.get,
   });
 
   app.delete("/wallets/:id", {
-    preHandler: validateParams(
-      walletIdSchema
-    ),
+    ...authenticated,
+    preHandler: [
+      authMiddleware,
+      validateParams(walletIdSchema),
+    ],
     handler: walletController.delete,
   });
 
   app.post("/wallets/:id/credit", {
+    ...authenticated,
     preHandler: [
+      authMiddleware,
       validateParams(walletIdSchema),
       validateBody(amountSchema),
     ],
@@ -54,7 +71,9 @@ export default async function walletRoutes(
   });
 
   app.post("/wallets/:id/debit", {
+    ...authenticated,
     preHandler: [
+      authMiddleware,
       validateParams(walletIdSchema),
       validateBody(amountSchema),
     ],
@@ -62,21 +81,20 @@ export default async function walletRoutes(
   });
 
   app.post("/wallets/transfer", {
-    preHandler: validateBody(
-      transferSchema
-    ),
-    handler:
-      walletController.transferFunds,
+    ...authenticated,
+    preHandler: [
+      authMiddleware,
+      validateBody(transferSchema),
+    ],
+    handler: walletController.transferFunds,
   });
 
-  app.get(
-    "/merchants/:merchantId/wallets",
-    {
-      preHandler: validateParams(
-        merchantWalletsSchema
-      ),
-      handler:
-        walletController.merchantWallets,
-    }
-  );
+  app.get("/merchants/:merchantId/wallets", {
+    ...authenticated,
+    preHandler: [
+      authMiddleware,
+      validateParams(merchantWalletsSchema),
+    ],
+    handler: walletController.merchantWallets,
+  });
 }

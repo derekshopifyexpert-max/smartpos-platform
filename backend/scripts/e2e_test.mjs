@@ -1,6 +1,7 @@
-import fetch from 'node-fetch';
-
 const BASE = 'http://127.0.0.1:4000/api/v1';
+
+// Node 18+ provides a global `fetch`. If it's not available, the script will
+// fail and the user can install `node-fetch` or run tests from a newer Node.
 
 async function run() {
   try {
