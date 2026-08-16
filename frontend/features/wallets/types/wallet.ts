@@ -25,17 +25,20 @@ export interface WalletRecord {
 
   status?: string | null;
 
-  /*
-   * This is the merchant's public settlement address.
-   * SmartPOS does not generate or own it.
+  /**
+   * Existing public settlement address supplied by the merchant.
+   *
+   * SmartPOS does not generate this address.
    */
   address?: string | null;
 
   blockchainId?: string | null;
 
-  /*
-   * Kept for compatibility with existing API responses.
-   * The backend must never expose private key material.
+  /**
+   * Public metadata only.
+   *
+   * Private keys, encrypted private keys, seed phrases and
+   * mnemonics must never appear in this interface.
    */
   publicKey?: string | null;
 
@@ -59,15 +62,22 @@ export interface WalletRecord {
 
 export interface CreateWalletPayload {
   merchantId: string;
+
   name: string;
+
   currency: string;
+
   blockchain: string;
+
   network: string;
+
   asset: string;
 
-  /*
-   * Required because SmartPOS stores an existing
-   * merchant-owned wallet rather than generating one.
+  /**
+   * Existing public wallet address supplied by the merchant.
+   *
+   * SmartPOS stores and validates this address.
+   * SmartPOS never generates it.
    */
   address: string;
 
