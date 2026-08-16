@@ -845,36 +845,46 @@ model ReceiptTemplate {
 }
 
 model Wallet {
-  id                     String                  @id @default(cuid())
-  merchantId             String
-  name                   String
-  type                   WalletType              @default(FIAT)
-  currency               CurrencyType            @default(USD)
-  balance                Decimal                 @default(0) @db.Decimal(18, 8)
-  reservedBalance        Decimal                 @default(0) @db.Decimal(18, 8)
-  availableBalance       Decimal                 @default(0) @db.Decimal(18, 8)
-  status                 WalletStatus            @default(ACTIVE)
-  address                String?
-  blockchainId           String?
-  encryptedPrivateKey    String?
-  publicKey              String?
-  bankAccountId          String?                 @unique
-  metadata               Json?
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  id                    String          @id @default(cuid())
+  merchantId            String?
+  merchant              Merchant?       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  name                  String
+  type                  WalletType      @default(CRYPTO)
+  currency              CurrencyType    @default(USD)
+
+  balance               Decimal         @default(0) @db.Decimal(18, 8)
+  reservedBalance       Decimal         @default(0) @db.Decimal(18, 8)
+  availableBalance      Decimal         @default(0) @db.Decimal(18, 8)
+
+  status                WalletStatus    @default(ACTIVE)
+
+  address               String?
+
+  blockchainId          String?
+  blockchain            BlockchainNetwork? @relation(fields: [blockchainId], references: [id], onDelete: SetNull)
+
+  encryptedPrivateKey   String?
+  publicKey             String?
+
+  bankAccountId         String?         @unique
+  bankAccount           BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+
+  metadata              Json?
+
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  balances              WalletBalance[]
+  walletAddresses       WalletAddress[]
+  walletKeys            WalletKey[]
+  walletAudits          WalletAudit[]
+  settlements           Settlement[]
+  transactionFees       TransactionFee[]
+  transactions          Transaction[]
   blockchainTransactions BlockchainTransaction[]
-  settlements            Settlement[]
-  transactions           Transaction[]
-  transactionFees        TransactionFee[]
-  bankAccount            BankAccount?            @relation(fields: [bankAccountId], references: [id])
-  blockchain             BlockchainNetwork?      @relation(fields: [blockchainId], references: [id])
-  merchant               Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  walletAddresses        WalletAddress[]
-  walletAudits           WalletAudit[]
-  balances               WalletBalance[]
-  walletKeys             WalletKey[]
-  walletTransfers        WalletTransfer[]        @relation("FromWallet")
-  incomingTransfers      WalletTransfer[]        @relation("ToWallet")
+  walletTransfers       WalletTransfer[] @relation("FromWallet")
+  incomingTransfers     WalletTransfer[] @relation("ToWallet")
 
   @@index([merchantId])
   @@index([currency])

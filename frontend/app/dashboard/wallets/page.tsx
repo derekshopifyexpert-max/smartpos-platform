@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
 } from "react";
+
 import {
   Check,
   Copy,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -22,16 +24,12 @@ import {
 
 import {
   createWallet,
-  getMerchantWallets,
+  getWallets,
 } from "@/features/wallets/services/wallet.service";
 
 import type {
   WalletRecord,
 } from "@/features/wallets/types/wallet";
-
-import {
-  useAuthStore,
-} from "@/store/auth.store";
 
 const ASSETS = [
   {
@@ -67,7 +65,9 @@ function getWalletAddress(
     wallet.walletAddresses?.find(
       (item) =>
         item.isActive !== false &&
-        Boolean(item.address?.trim())
+        Boolean(
+          item.address?.trim()
+        )
     )?.address?.trim() ??
     wallet.walletAddresses?.[0]?.address?.trim() ??
     ""
@@ -81,8 +81,7 @@ function getWalletAsset(
     wallet.metadata?.asset;
 
   if (
-    typeof metadataAsset ===
-      "string" &&
+    typeof metadataAsset === "string" &&
     metadataAsset.trim()
   ) {
     return metadataAsset
@@ -91,9 +90,11 @@ function getWalletAsset(
   }
 
   return (
+    wallet.asset?.toString().toUpperCase() ??
     wallet.currency
       ?.toString()
-      .toUpperCase() ?? ""
+      .toUpperCase() ??
+    ""
   );
 }
 
@@ -104,8 +105,7 @@ function getWalletNetwork(
     wallet.metadata?.network;
 
   if (
-    typeof metadataNetwork ===
-      "string" &&
+    typeof metadataNetwork === "string" &&
     metadataNetwork.trim()
   ) {
     return metadataNetwork
@@ -114,93 +114,19 @@ function getWalletNetwork(
   }
 
   return (
+    wallet.network
+      ?.toString()
+      .toUpperCase() ??
     wallet.blockchain?.name
       ?.toString()
-      .toUpperCase() ?? ""
+      .toUpperCase() ??
+    ""
   );
 }
 
 function getErrorMessage(
   error: unknown
 ): string {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error
-  ) {
-    const response = (
-      error as {
-        response?: {
-          data?: {
-            message?: unknown;
-            error?: unknown;
-            details?: unknown;
-          };
-        };
-      }
-    ).response;
-
-    const data = response?.data;
-
-    if (
-      typeof data?.message ===
-      "string" &&
-      data.message.trim()
-    ) {
-      return data.message;
-    }
-
-    if (
-      typeof data?.error ===
-      "string" &&
-      data.error.trim()
-    ) {
-      return data.error;
-    }
-
-    if (
-      Array.isArray(data?.details)
-    ) {
-      const messages =
-        data.details
-          .map((item) => {
-            if (
-              typeof item ===
-                "object" &&
-              item !== null &&
-              "message" in item
-            ) {
-              const message =
-                (
-                  item as {
-                    message?: unknown;
-                  }
-                ).message;
-
-              return typeof message ===
-                "string"
-                ? message
-                : null;
-            }
-
-            return typeof item ===
-              "string"
-              ? item
-              : null;
-          })
-          .filter(
-            (
-              item
-            ): item is string =>
-              Boolean(item)
-          );
-
-      if (messages.length > 0) {
-        return messages.join(", ");
-      }
-    }
-  }
-
   if (
     error instanceof Error &&
     error.message.trim()
@@ -244,14 +170,6 @@ function validatePublicAddress(
 }
 
 export default function WalletsPage() {
-  const user =
-    useAuthStore(
-      (state) => state.user
-    );
-
-  const merchantId =
-    user?.merchantId?.trim() ?? "";
-
   const [
     wallets,
     setWallets,
@@ -316,28 +234,16 @@ export default function WalletsPage() {
     let cancelled = false;
 
     async function loadWallets() {
-      if (!merchantId) {
-        setWallets([]);
-
-        setError(
-          "No merchant account is associated with this signed-in user."
-        );
-
-        return;
-      }
-
       setLoading(true);
       setError(null);
 
       try {
         const result =
-          await getMerchantWallets(
-            merchantId
-          );
+          await getWallets();
 
         if (!cancelled) {
           setWallets(
-            result ?? []
+            result
           );
         }
       } catch (caught) {
@@ -362,7 +268,7 @@ export default function WalletsPage() {
     return () => {
       cancelled = true;
     };
-  }, [merchantId]);
+  }, []);
 
   const walletSummary =
     useMemo(() => {
@@ -377,49 +283,9 @@ export default function WalletsPage() {
       } saved for settlement.`;
     }, [wallets.length]);
 
-  function handleNetworkChange(
-    value: string
-  ) {
-    setNetwork(value);
-    setError(null);
-    setSuccess(null);
-
-    /*
-     * SmartPOS currently supports public
-     * EVM addresses for Ethereum and BNB
-     * Smart Chain only.
-     *
-     * Do not allow an EVM address to be
-     * labelled as TRON, Solana, Bitcoin,
-     * Cardano, or another network.
-     */
-    if (
-      value !== "ETHEREUM" &&
-      value !== "BSC"
-    ) {
-      setAddress("");
-    }
-  }
-
-  function handleAssetChange(
-    value: string
-  ) {
-    setAsset(value);
-    setError(null);
-    setSuccess(null);
-  }
-
   async function handleSaveWallet() {
     setError(null);
     setSuccess(null);
-
-    if (!merchantId) {
-      setError(
-        "Your authenticated account does not have a merchant account."
-      );
-
-      return;
-    }
 
     const walletName =
       name.trim();
@@ -428,7 +294,6 @@ export default function WalletsPage() {
       setError(
         "Enter a wallet name."
       );
-
       return;
     }
 
@@ -436,7 +301,6 @@ export default function WalletsPage() {
       setError(
         "Select a crypto asset."
       );
-
       return;
     }
 
@@ -444,7 +308,6 @@ export default function WalletsPage() {
       setError(
         "Select a blockchain network."
       );
-
       return;
     }
 
@@ -455,7 +318,9 @@ export default function WalletsPage() {
       );
 
     if (addressError) {
-      setError(addressError);
+      setError(
+        addressError
+      );
       return;
     }
 
@@ -464,34 +329,24 @@ export default function WalletsPage() {
     try {
       const saved =
         await createWallet({
-          merchantId,
-
-          name:
-            walletName,
+          name: walletName,
 
           currency:
-            "USD",
+            asset.toUpperCase(),
 
           blockchain:
-            network,
+            network.toUpperCase(),
 
-          network,
+          network:
+            network.toUpperCase(),
 
-          asset,
+          asset:
+            asset.toUpperCase(),
 
-          type:
-            "CRYPTO",
-
-          /*
-           * This is the ONLY wallet address
-           * involved in wallet creation.
-           *
-           * SmartPOS stores the address supplied
-           * by the merchant. It does not generate
-           * one.
-           */
           address:
             address.trim(),
+
+          type: "CRYPTO",
 
           metadata: {
             asset:
@@ -501,7 +356,7 @@ export default function WalletsPage() {
               network.toUpperCase(),
 
             source:
-              "merchant-settlement-wallet",
+              "user-provided",
 
             walletGenerated:
               false,
@@ -511,6 +366,9 @@ export default function WalletsPage() {
 
             purpose:
               "crypto-settlement",
+
+            custody:
+              "external",
           },
         });
 
@@ -538,7 +396,9 @@ export default function WalletsPage() {
       );
     } catch (caught) {
       setError(
-        getErrorMessage(caught)
+        getErrorMessage(
+          caught
+        )
       );
     } finally {
       setSaving(false);
@@ -596,9 +456,9 @@ export default function WalletsPage() {
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Save the public cryptocurrency
-            addresses that SmartPOS should
-            use as settlement destinations.
+            Save existing public cryptocurrency
+            addresses that SmartPOS should use
+            as settlement destinations.
           </p>
         </div>
 
@@ -613,15 +473,6 @@ export default function WalletsPage() {
         </div>
       </div>
 
-      {!merchantId ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          No merchant account is associated
-          with the current authenticated user.
-          Sign in with a merchant account before
-          saving a settlement wallet.
-        </div>
-      ) : null}
-
       <Card className="border border-slate-200 bg-white text-slate-900 shadow-sm">
         <CardHeader className="border-b border-slate-100">
           <CardTitle className="text-slate-900">
@@ -630,9 +481,9 @@ export default function WalletsPage() {
 
           <p className="text-sm leading-6 text-slate-500">
             Enter an existing public wallet
-            address controlled by the merchant.
-            SmartPOS only validates and saves
-            the address.
+            address. SmartPOS stores the address
+            you provide and does not generate or
+            custody the wallet.
           </p>
         </CardHeader>
 
@@ -670,11 +521,13 @@ export default function WalletsPage() {
               <select
                 id="wallet-asset"
                 value={asset}
-                onChange={(event) =>
-                  handleAssetChange(
+                onChange={(event) => {
+                  setAsset(
                     event.target.value
-                  )
-                }
+                  );
+                  setError(null);
+                  setSuccess(null);
+                }}
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {ASSETS.map(
@@ -705,11 +558,13 @@ export default function WalletsPage() {
               <select
                 id="wallet-network"
                 value={network}
-                onChange={(event) =>
-                  handleNetworkChange(
+                onChange={(event) => {
+                  setNetwork(
                     event.target.value
-                  )
-                }
+                  );
+                  setError(null);
+                  setSuccess(null);
+                }}
                 className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {NETWORKS.map(
@@ -752,18 +607,17 @@ export default function WalletsPage() {
               />
 
               <p className="mt-2 text-xs leading-5 text-slate-500">
-                Enter only the public address.
-                Never enter a private key,
-                seed phrase, mnemonic, or secret.
+                Public address only. Never enter
+                a private key or seed phrase.
               </p>
             </div>
           </div>
 
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-800">
-            SmartPOS does not generate or
-            custody wallet addresses. The
-            address you provide becomes the
-            saved settlement destination.
+            SmartPOS saves the existing address
+            you provide. It does not generate a
+            wallet or require ownership of the
+            address.
           </div>
 
           {error ? (
@@ -785,10 +639,7 @@ export default function WalletsPage() {
               onClick={() =>
                 void handleSaveWallet()
               }
-              disabled={
-                saving ||
-                !merchantId
-              }
+              disabled={saving}
               className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
@@ -813,8 +664,7 @@ export default function WalletsPage() {
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
               Loading saved wallets...
             </div>
-          ) : wallets.length ===
-            0 ? (
+          ) : wallets.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
               <div className="flex items-start gap-3">
                 <div className="rounded-lg bg-white p-2 text-blue-700 ring-1 ring-slate-200">
@@ -827,10 +677,9 @@ export default function WalletsPage() {
                   </p>
 
                   <p className="mt-1 text-sm leading-6 text-slate-600">
-                    Save an existing public
-                    wallet address to use it
-                    as a crypto settlement
-                    destination.
+                    Save an existing public wallet
+                    address to use it as a crypto
+                    settlement destination.
                   </p>
                 </div>
               </div>

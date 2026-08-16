@@ -1,31 +1,20 @@
 export interface WalletAddressRecord {
   id: string;
   address: string;
-
   blockchainId?: string | null;
-
   label?: string | null;
-
   isActive?: boolean;
-
   createdAt?: string | null;
-
   updatedAt?: string | null;
-
   metadata?: Record<string, unknown> | null;
 }
 
 export interface WalletBlockchainRecord {
   id?: string | null;
-
   name?: string | null;
-
   nativeCurrency?: string | null;
-
   blockTime?: number | null;
-
   isActive?: boolean | null;
-
   metadata?: Record<string, unknown> | null;
 }
 
@@ -38,7 +27,7 @@ export interface WalletRecord {
 
   type?: string | null;
 
-  currency?: string | null;
+  currency?: number | string | null;
 
   balance?: number | string | null;
 
@@ -48,11 +37,6 @@ export interface WalletRecord {
 
   status?: string | null;
 
-  /**
-   * Primary public settlement address.
-   *
-   * This value must come from the backend.
-   */
   address?: string | null;
 
   blockchainId?: string | null;
@@ -73,8 +57,6 @@ export interface WalletRecord {
 }
 
 export interface CreateWalletPayload {
-  merchantId: string;
-
   name: string;
 
   currency: string;

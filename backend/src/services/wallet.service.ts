@@ -24,7 +24,9 @@ export default class WalletService {
     private readonly app: FastifyInstance
   ) {}
 
-  private normalize(value?: string | null): string {
+  private normalize(
+    value?: string | null
+  ): string {
     return (value ?? "").trim().toUpperCase();
   }
 
@@ -34,7 +36,9 @@ export default class WalletService {
     const network = this.normalize(value);
 
     if (!network) {
-      throw new Error("Blockchain network is required.");
+      throw new Error(
+        "Blockchain network is required."
+      );
     }
 
     if (
@@ -86,7 +90,9 @@ export default class WalletService {
     const currency = this.normalize(value);
 
     if (!currency) {
-      throw new Error("Wallet asset is required.");
+      throw new Error(
+        "Wallet asset is required."
+      );
     }
 
     if (
@@ -108,7 +114,9 @@ export default class WalletService {
   ): string {
     const value = address.trim();
 
-    if (!/^0x[a-fA-F0-9]{40}$/.test(value)) {
+    if (
+      !/^0x[a-fA-F0-9]{40}$/.test(value)
+    ) {
       throw new Error(
         "Enter a valid public EVM wallet address beginning with 0x and containing 40 hexadecimal characters."
       );
@@ -164,7 +172,9 @@ export default class WalletService {
   ): string {
     const value = address.trim();
 
-    if (!/^addr1[a-z0-9]{90,}$/.test(value)) {
+    if (
+      !/^addr1[a-z0-9]{90,}$/.test(value)
+    ) {
       throw new Error(
         "Enter a valid Cardano public wallet address beginning with addr1."
       );
@@ -258,7 +268,9 @@ export default class WalletService {
       });
 
     if (!merchant) {
-      throw new Error("Merchant not found.");
+      throw new Error(
+        "Merchant not found."
+      );
     }
 
     const name =
@@ -315,13 +327,6 @@ export default class WalletService {
     const suppliedCurrency =
       this.normalize(data.currency);
 
-    /*
-     * If currency is supplied separately, it must
-     * represent the same crypto asset.
-     *
-     * Do not silently turn USDT into USD or another
-     * currency.
-     */
     if (
       suppliedCurrency &&
       suppliedCurrency !== asset
@@ -341,11 +346,6 @@ export default class WalletService {
           data.walletAddress
       );
 
-    /*
-     * SmartPOS stores an existing merchant-controlled
-     * public address. It does not generate or authorize
-     * the wallet.
-     */
     const blockchain =
       await db.blockchainNetwork.findUnique({
         where: {

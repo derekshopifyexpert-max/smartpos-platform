@@ -11,19 +11,18 @@ export const ENDPOINTS = {
 
   merchants: {
     list: "/merchants",
+
     detail: (
       id: string
     ) => `/merchants/${id}`,
+
     dashboard: (
       id: string
     ) => `/merchants/${id}/dashboard`,
   },
 
   wallets: {
-    list: (
-      merchantId: string
-    ) =>
-      `/merchants/${merchantId}/wallets`,
+    list: "/wallets",
 
     create: "/wallets",
 

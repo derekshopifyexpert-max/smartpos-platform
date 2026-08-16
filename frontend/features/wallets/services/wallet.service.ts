@@ -1,6 +1,6 @@
 import {
-  getApiErrorMessage,
   api,
+  getApiErrorMessage,
 } from "@/lib/api/client";
 
 import { ENDPOINTS } from "@/lib/api/endpoints";
@@ -29,15 +29,6 @@ function requireString(
   return normalized;
 }
 
-function requireMerchantId(
-  merchantId: unknown
-): string {
-  return requireString(
-    merchantId,
-    "Merchant account is required."
-  );
-}
-
 function requireWalletId(
   id: unknown
 ): string {
@@ -56,12 +47,12 @@ function requireWalletName(
   );
 }
 
-function requireWalletAddress(
+function requireAddress(
   address: unknown
 ): string {
   return requireString(
     address,
-    "Wallet public address is required."
+    "Public wallet address is required."
   );
 }
 
@@ -78,122 +69,108 @@ function normalizeCreateWalletPayload(
   }
 
   return {
-    ...payload,
+    name: requireWalletName(
+      payload.name
+    ),
 
-    merchantId:
-      requireMerchantId(
-        payload.merchantId
-      ),
+    currency: requireString(
+      payload.currency,
+      "Wallet currency is required."
+    ),
 
-    name:
-      requireWalletName(
-        payload.name
-      ),
+    blockchain: requireString(
+      payload.blockchain,
+      "Blockchain is required."
+    ),
 
-    currency:
-      requireString(
-        payload.currency,
-        "Wallet currency is required."
-      ),
+    network: requireString(
+      payload.network,
+      "Network is required."
+    ),
 
-    blockchain:
-      requireString(
-        payload.blockchain,
-        "Blockchain is required."
-      ),
+    asset: requireString(
+      payload.asset,
+      "Wallet asset is required."
+    ),
 
-    network:
-      requireString(
-        payload.network,
-        "Network is required."
-      ),
+    address: requireAddress(
+      payload.address
+    ),
 
-    asset:
-      requireString(
-        payload.asset,
-        "Wallet asset is required."
-      ),
+    ...(payload.type
+      ? {
+          type: payload.type.trim(),
+        }
+      : {}),
 
-    address:
-      requireWalletAddress(
-        payload.address
-      ),
+    ...(payload.metadata
+      ? {
+          metadata: payload.metadata,
+        }
+      : {}),
   };
 }
 
 function getWalletAddress(
   wallet: WalletRecord
 ): string | null {
-  const directAddress =
-    typeof wallet.address ===
-      "string"
-      ? wallet.address.trim()
-      : "";
-
-  if (directAddress) {
-    return directAddress;
+  if (
+    typeof wallet.address === "string" &&
+    wallet.address.trim()
+  ) {
+    return wallet.address.trim();
   }
 
-  const addresses =
+  if (
     Array.isArray(
       wallet.walletAddresses
     )
-      ? wallet.walletAddresses
-      : [];
+  ) {
+    const activeAddress =
+      wallet.walletAddresses.find(
+        (item) =>
+          item &&
+          typeof item.address ===
+            "string" &&
+          item.address.trim() &&
+          item.isActive !== false
+      );
 
-  const activeAddress =
-    addresses.find(
-      (item) =>
-        item &&
-        typeof item.address ===
-          "string" &&
-        item.address.trim() &&
-        item.isActive !== false
-    );
+    if (activeAddress?.address) {
+      return activeAddress.address.trim();
+    }
 
-  if (activeAddress) {
-    return (
-      activeAddress.address.trim() ||
-      null
-    );
-  }
+    const firstAddress =
+      wallet.walletAddresses.find(
+        (item) =>
+          item &&
+          typeof item.address ===
+            "string" &&
+          item.address.trim()
+      );
 
-  const firstAddress =
-    addresses.find(
-      (item) =>
-        item &&
-        typeof item.address ===
-          "string" &&
-        item.address.trim()
-    );
-
-  if (firstAddress) {
-    return (
-      firstAddress.address.trim() ||
-      null
-    );
+    if (firstAddress?.address) {
+      return firstAddress.address.trim();
+    }
   }
 
   return null;
 }
 
 /**
- * Load all wallets belonging to a merchant.
+ * Load every saved wallet.
+ *
+ * No authenticated user or merchant ID
+ * is required for this wallet-management
+ * flow.
  */
-export async function getMerchantWallets(
-  merchantId: string
-): Promise<WalletRecord[]> {
-  const normalizedMerchantId =
-    requireMerchantId(
-      merchantId
-    );
-
+export async function getWallets(): Promise<
+  WalletRecord[]
+> {
   try {
     const response =
       await api.get<WalletListApiResponse>(
-        ENDPOINTS.wallets.list(
-          normalizedMerchantId
-        )
+        ENDPOINTS.wallets.list
       );
 
     if (
@@ -202,7 +179,7 @@ export async function getMerchantWallets(
       throw new Error(
         response.data?.message ??
           response.data?.error ??
-          "Unable to load merchant wallets."
+          "Unable to load wallets."
       );
     }
 
@@ -215,20 +192,26 @@ export async function getMerchantWallets(
     throw new Error(
       getApiErrorMessage(
         error,
-        "Unable to load merchant wallets."
+        "Unable to load wallets."
       )
     );
   }
 }
 
 /**
- * Create a merchant settlement wallet.
+ * Backwards-compatible alias.
+ */
+export async function getMerchantWallets(): Promise<
+  WalletRecord[]
+> {
+  return getWallets();
+}
+
+/**
+ * Save an existing public wallet address.
  *
- * SmartPOS does not generate or fabricate
- * blockchain addresses in the frontend.
- *
- * The supplied public address is validated
- * and persisted by the backend.
+ * The address comes from the user.
+ * SmartPOS does not generate it.
  */
 export async function createWallet(
   payload: CreateWalletPayload
@@ -251,7 +234,7 @@ export async function createWallet(
       throw new Error(
         response.data?.message ??
           response.data?.error ??
-          "Wallet could not be created."
+          "Wallet could not be saved."
       );
     }
 
@@ -260,16 +243,16 @@ export async function createWallet(
 
     if (!wallet) {
       throw new Error(
-        "The wallet was created but no wallet data was returned."
+        "The server did not return the saved wallet."
       );
     }
 
-    const persistedAddress =
+    const address =
       getWalletAddress(wallet);
 
-    if (!persistedAddress) {
+    if (!address) {
       throw new Error(
-        "The wallet was created, but the backend did not return its persisted public address."
+        "The wallet was saved without a public address."
       );
     }
 
@@ -278,15 +261,12 @@ export async function createWallet(
     throw new Error(
       getApiErrorMessage(
         error,
-        "Unable to create wallet."
+        "Unable to save wallet."
       )
     );
   }
 }
 
-/**
- * Load one wallet by ID.
- */
 export async function getWallet(
   id: string
 ): Promise<WalletRecord> {

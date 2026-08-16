@@ -10,18 +10,13 @@ import type { User } from "@/types/auth";
 interface AuthState {
   token: string | null;
   user: User | null;
+  hydrated: boolean;
+
   setAuth: (token: string, user: User) => void;
+  setHydrated: (hydrated: boolean) => void;
   logout: () => void;
 }
 
-/**
- * SSR-safe storage adapter.
- *
- * SmartPOS can render through Next.js on the server, where
- * window/localStorage does not exist. Zustand persist still
- * requires a valid StateStorage object, so we provide an
- * explicit adapter instead of returning Storage | undefined.
- */
 const authStorage: StateStorage = {
   getItem: (name: string) => {
     if (typeof window === "undefined") {
@@ -53,12 +48,17 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       user: null,
+      hydrated: false,
 
       setAuth: (token, user) => {
         set({
           token,
           user,
         });
+      },
+
+      setHydrated: (hydrated) => {
+        set({ hydrated });
       },
 
       logout: () => {
@@ -79,6 +79,10 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         user: state.user,
       }),
+
+      onRehydrateStorage: () => (state) => {
+        state?.setHydrated(true);
+      },
     }
   )
 );

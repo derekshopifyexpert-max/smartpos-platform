@@ -1,10 +1,7 @@
 import { z } from "zod";
 
-const requiredString = (message: string) =>
-  z.string().trim().min(1, message);
-
-export const createWalletSchema = z
-  .object({
+export const createWalletSchema =
+  z.object({
     name: z
       .string()
       .trim()
@@ -17,21 +14,41 @@ export const createWalletSchema = z
         "Wallet name must not exceed 100 characters."
       ),
 
-    currency: requiredString(
-      "Wallet asset is required."
-    ),
+    currency: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "Currency is required."
+      )
+      .max(
+        20,
+        "Currency must not exceed 20 characters."
+      ),
 
-    blockchain: requiredString(
-      "Blockchain is required."
-    ),
+    blockchain: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "Blockchain is required."
+      ),
 
-    network: requiredString(
-      "Network is required."
-    ),
+    network: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "Network is required."
+      ),
 
-    asset: requiredString(
-      "Asset is required."
-    ),
+    asset: z
+      .string()
+      .trim()
+      .min(
+        1,
+        "Asset is required."
+      ),
 
     type: z
       .string()
@@ -44,73 +61,60 @@ export const createWalletSchema = z
       .trim()
       .min(
         1,
-        "Public wallet address is required."
-      )
-      .max(
-        200,
-        "Wallet address is too long."
+        "Wallet address is required."
       ),
 
     metadata: z
-      .record(z.string(), z.unknown())
+      .record(z.unknown())
       .optional(),
-  })
-  .strict();
+  });
 
-export const walletIdSchema = z.object({
-  id: z
-    .string()
-    .trim()
-    .min(1, "Wallet ID is required."),
-});
+export const walletIdSchema =
+  z.object({
+    id: z
+      .string()
+      .min(
+        1,
+        "Wallet ID is required."
+      ),
+  });
 
-export const amountSchema = z.object({
-  amount: z.coerce
-    .number({
-      message: "Amount must be a valid number.",
-    })
-    .finite(
-      "Amount must be a finite number."
-    )
-    .positive(
-      "Amount must be greater than zero."
-    ),
-});
+export const amountSchema =
+  z.object({
+    amount: z.coerce
+      .number()
+      .positive(
+        "Amount must be greater than zero."
+      ),
+  });
 
-export const transferSchema = z.object({
-  fromWalletId: z
-    .string()
-    .trim()
-    .min(
-      1,
-      "Source wallet is required."
-    ),
+export const transferSchema =
+  z.object({
+    fromWalletId: z
+      .string()
+      .min(
+        1,
+        "Source wallet is required."
+      ),
 
-  toWalletId: z
-    .string()
-    .trim()
-    .min(
-      1,
-      "Destination wallet is required."
-    ),
+    toWalletId: z
+      .string()
+      .min(
+        1,
+        "Destination wallet is required."
+      ),
 
-  amount: z.coerce
-    .number({
-      message: "Amount must be a valid number.",
-    })
-    .finite(
-      "Amount must be a finite number."
-    )
-    .positive(
-      "Transfer amount must be greater than zero."
-    ),
-});
+    amount: z.coerce
+      .number()
+      .positive(
+        "Amount must be greater than zero."
+      ),
+  });
 
 export const merchantWalletsSchema =
   z.object({
     merchantId: z
       .string()
-      .trim()
       .min(
         1,
         "Merchant ID is required."
@@ -118,13 +122,21 @@ export const merchantWalletsSchema =
   });
 
 export type CreateWalletDto =
-  z.infer<typeof createWalletSchema>;
+  z.infer<
+    typeof createWalletSchema
+  >;
 
 export type WalletTransferDto =
-  z.infer<typeof transferSchema>;
+  z.infer<
+    typeof transferSchema
+  >;
 
 export type WalletAmountDto =
-  z.infer<typeof amountSchema>;
+  z.infer<
+    typeof amountSchema
+  >;
 
 export type MerchantWalletsDto =
-  z.infer<typeof merchantWalletsSchema>;
+  z.infer<
+    typeof merchantWalletsSchema
+  >;

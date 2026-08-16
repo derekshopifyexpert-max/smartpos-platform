@@ -18,14 +18,6 @@ export const api = axios.create({
   },
 });
 
-/**
- * Safely normalize Axios request headers.
- *
- * Axios 1.x allows AxiosHeaders, raw header objects, strings,
- * and undefined here. Converting through a fresh AxiosHeaders
- * instance avoids the TypeScript incompatibilities that occur
- * when assigning config.headers directly.
- */
 function normalizeHeaders(
   headers: AxiosRequestConfig["headers"]
 ): AxiosHeaders {
@@ -73,14 +65,29 @@ api.interceptors.request.use(
 
     return config;
   },
-  (error) =>
-    Promise.reject(error)
+  (error) => Promise.reject(error)
 );
 
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) =>
-    Promise.reject(error)
+  (error: AxiosError) => {
+    if (
+      error.response?.status === 401 &&
+      typeof window !== "undefined"
+    ) {
+      const currentPath =
+        window.location.pathname;
+
+      if (
+        currentPath !== "/login" &&
+        currentPath !== "/"
+      ) {
+        useAuthStore.getState().logout();
+      }
+    }
+
+    return Promise.reject(error);
+  }
 );
 
 export function getApiErrorMessage(
@@ -126,8 +133,7 @@ export function getApiErrorMessage(
           >;
 
         if (
-          typeof nested.message ===
-            "string" &&
+          typeof nested.message === "string" &&
           nested.message.trim()
         ) {
           return nested.message;

@@ -19,13 +19,10 @@ import {
 export default async function walletRoutes(
   app: FastifyInstance
 ): Promise<void> {
-  const walletService =
-    new WalletService(app);
+  const walletService = new WalletService(app);
 
   const walletController =
-    new WalletController(
-      walletService
-    );
+    new WalletController(walletService);
 
   app.post("/wallets", {
     preHandler: validateBody(

@@ -334,16 +334,13 @@ export default class WalletController {
         });
       }
 
-      const amount =
-        new Prisma.Decimal(
-          body.amount
-        );
+      const amount = body.amount;
 
       const result =
         await this.walletService.transferFunds(
           body.fromWalletId.trim(),
           body.toWalletId.trim(),
-          amount
+          new Prisma.Decimal(amount)
         );
 
       return reply.send({
@@ -388,10 +385,12 @@ export default class WalletController {
         });
       }
 
+      const amount = body.amount;
+
       if (
-        body.amount === undefined ||
-        body.amount === null ||
-        body.amount === ""
+        amount === undefined ||
+        amount === null ||
+        amount === ""
       ) {
         return reply.code(400).send({
           success: false,
@@ -403,9 +402,7 @@ export default class WalletController {
       const wallet =
         await this.walletService.creditWallet(
           id,
-          new Prisma.Decimal(
-            body.amount
-          )
+          new Prisma.Decimal(amount)
         );
 
       return reply.send({
@@ -450,10 +447,12 @@ export default class WalletController {
         });
       }
 
+      const amount = body.amount;
+
       if (
-        body.amount === undefined ||
-        body.amount === null ||
-        body.amount === ""
+        amount === undefined ||
+        amount === null ||
+        amount === ""
       ) {
         return reply.code(400).send({
           success: false,
@@ -465,9 +464,7 @@ export default class WalletController {
       const wallet =
         await this.walletService.debitWallet(
           id,
-          new Prisma.Decimal(
-            body.amount
-          )
+          new Prisma.Decimal(amount)
         );
 
       return reply.send({
