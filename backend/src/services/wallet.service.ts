@@ -281,6 +281,9 @@ export default class WalletService {
   async resolveMerchantId(
     user: AuthenticatedUser
   ): Promise<string | null> {
+    if (!user) {
+      return null;
+    }
     const directMerchantId =
       typeof user.merchantId === "string"
         ? user.merchantId.trim()
