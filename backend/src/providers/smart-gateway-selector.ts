@@ -14,17 +14,33 @@ export default class SmartGatewaySelector {
     _input: GatewaySelectionInput
   ): PaymentProvider {
 
-    const active = providers
-      .filter(provider => provider.isActive)
-      .sort((a, b) => {
+    // Filter out inactive providers
+    let candidates = providers.filter(p => p.isActive);
 
-        if (a.priority !== b.priority) {
-          return a.priority - b.priority;
-        }
+    // Exclude providers that clearly do not support the requested currency
+    // (simple mapping by provider name to supported currency set).
+    const currency = _input.currency?.toUpperCase();
 
-        return a.createdAt.getTime() - b.createdAt.getTime();
+    candidates = candidates.filter(p => {
+      const name = p.name.toLowerCase();
 
-      });
+      if (name === "paystack") {
+        // Paystack in our platform is configured to accept NGN only
+        return currency === "NGN";
+      }
+
+      // Default: assume provider supports all currencies
+      return true;
+    });
+
+    const active = candidates.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+
+      return a.createdAt.getTime() - b.createdAt.getTime();
+
+    });
 
     if (!active.length) {
       throw new Error("No active payment provider found.");

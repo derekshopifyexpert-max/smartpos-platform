@@ -42,61 +42,62 @@ export default class ProviderFailover {
         continue;
       }
 
-      const started =
-        Date.now();
+      const started = Date.now();
 
-      try {
+      // retry transient network/TLS failures once before marking provider as failed
+      const maxRetries = 1;
+      let attempt = 0;
+      let succeeded = false;
+      let lastAttemptError: unknown = undefined;
 
-        const provider =
-          this.manager.getProvider(
-            providerName
-          );
+      const isTransient = (err: any) => {
+        if (!err) return false;
+        const msg = String(err.message ?? err).toLowerCase();
+        if (msg.includes("ssl")) return true;
+        if (msg.includes("bad record mac")) return true;
+        if (msg.includes("tls alert")) return true;
+        if (err.code && ["ECONNRESET", "ECONNABORTED", "EPIPE", "ETIMEDOUT"].includes(err.code)) return true;
+        return false;
+      };
 
-        const result =
-          await callback(
-            provider,
-            providerName
-          );
+      for (; attempt <= maxRetries; attempt++) {
+        try {
+          const provider = this.manager.getProvider(providerName);
 
-        const duration =
-          Date.now() - started;
+          const result = await callback(provider, providerName);
 
-        this.breaker.success(
-          providerName
-        );
+          const duration = Date.now() - started;
 
-        this.metrics.record(
-          providerName,
-          true,
-          duration
-        );
+          this.breaker.success(providerName);
 
-        return {
-          providerName,
-          result
-        };
+          this.metrics.record(providerName, true, duration);
 
-      } catch (error) {
+          return {
+            providerName,
+            result,
+          };
+        } catch (error) {
+          lastAttemptError = error;
 
-        const duration =
-          Date.now() - started;
+          // if transient and we have retries left, wait and retry
+          if (attempt < maxRetries && isTransient(error)) {
+            const backoff = 300 * (attempt + 1);
+            console.warn(`[Failover] transient error from ${providerName}, retrying after ${backoff}ms`, error);
+            await new Promise((r) => setTimeout(r, backoff));
+            continue;
+          }
 
-        this.breaker.failure(
-          providerName
-        );
+          const duration = Date.now() - started;
 
-        this.metrics.record(
-          providerName,
-          false,
-          duration
-        );
+          this.breaker.failure(providerName);
 
-        console.warn(
-          `[Failover] ${providerName} failed`,
-          error
-        );
+          this.metrics.record(providerName, false, duration);
 
-        lastError = error;
+          console.warn(`[Failover] ${providerName} failed`, error);
+
+          lastError = error;
+          break;
+        }
       }
     }
 

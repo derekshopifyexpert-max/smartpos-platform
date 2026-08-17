@@ -71,4 +71,24 @@ export default class GatewayController {
 
   };
 
+  checkPaystackChannels = async (
+    _request: any,
+    reply: FastifyReply
+  ) => {
+    try {
+      // @ts-ignore
+      const result = await this.gatewayService.checkPaystackChannels();
+
+      return reply.send({
+        success: true,
+        data: result
+      });
+    } catch (e) {
+      return reply.code(500).send({
+        success: false,
+        error: e instanceof Error ? e.message : String(e)
+      });
+    }
+  };
+
 }

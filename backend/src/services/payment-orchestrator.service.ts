@@ -1,18 +1,14 @@
-import { FastifyInstance } from "fastify";
 import { Prisma } from "@prisma/client";
-
 import PaymentService from "./payment.service.js";
 import GatewayService from "./gateway.service.js";
 import ExchangeService from "./exchange.service.js";
 import BlockchainService from "./blockchain.service.js";
-
 import ProviderManager from "../providers/provider.manager.js";
 import SmartGatewaySelector from "../providers/smart-gateway-selector.js";
 import ProviderFailover from "../providers/provider-failover.js";
 import ProviderMetricsService from "../providers/provider-metrics.service.js";
 import {
   NotConfiguredCryptoTransferProvider,
-  type CryptoTransferProvider,
 } from "../providers/crypto-transfer.provider.js";
 
 export default class PaymentOrchestratorService {
@@ -36,10 +32,10 @@ export default class PaymentOrchestratorService {
 
   private readonly blockchainService: BlockchainService;
 
-  private readonly cryptoTransferProvider: CryptoTransferProvider;
+  private readonly cryptoTransferProvider: any;
 
   constructor(
-    private readonly app: FastifyInstance
+    private readonly app: any
   ) {
     this.paymentService =
       new PaymentService(app);
@@ -57,35 +53,11 @@ export default class PaymentOrchestratorService {
       new NotConfiguredCryptoTransferProvider();
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | JSON Helpers
-  |--------------------------------------------------------------------------
-  */
-
-  private normalizeJsonValue(
-    value: Prisma.JsonValue | Record<string, unknown>
-  ): Prisma.JsonValue {
-    return JSON.parse(
-      JSON.stringify(value)
-    ) as Prisma.JsonValue;
-  }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Crypto Destination Metadata
-  |--------------------------------------------------------------------------
-  */
-
   normalizeCryptoDestinationMetadata(
-    metadata?:
-      | Prisma.JsonValue
-      | Record<string, unknown>
+    metadata?: Prisma.JsonValue
   ): Prisma.JsonValue {
     const source =
-      metadata &&
-      typeof metadata === "object" &&
-      !Array.isArray(metadata)
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
         ? (metadata as Record<string, unknown>)
         : {};
 
@@ -122,12 +94,6 @@ export default class PaymentOrchestratorService {
     );
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Fiat → Crypto Settlement
-  |--------------------------------------------------------------------------
-  */
-
   async processFiatToCryptoSettlement(
     paymentIntentId: string,
     payload: {
@@ -157,7 +123,9 @@ export default class PaymentOrchestratorService {
     const destination =
       metadata &&
       typeof metadata === "object" &&
-      !Array.isArray(metadata) &&
+      !Array.isArray(
+        metadata
+      ) &&
       metadata.cryptoDestination &&
       typeof metadata.cryptoDestination ===
         "object" &&
@@ -188,8 +156,7 @@ export default class PaymentOrchestratorService {
 
     const destinationAddress =
       payload.destinationAddress ??
-      (typeof destination.address ===
-      "string"
+      (typeof destination.address === "string"
         ? destination.address
         : "");
 
@@ -225,43 +192,9 @@ export default class PaymentOrchestratorService {
         paymentIntent.currency as any,
         asset as any,
         new Prisma.Decimal(
-          paymentIntent.amount
+          Number(paymentIntent.amount)
         )
       );
-
-    /*
-    |--------------------------------------------------------------------------
-    | Convert Decimal values before putting the quote into JSON metadata.
-    |--------------------------------------------------------------------------
-    |
-    | Prisma.Decimal is not valid JSON. The quote itself remains untouched
-    | for business logic, while quoteMetadata is the JSON-safe representation
-    | stored in metadata.
-    |
-    */
-
-    const quoteMetadata =
-      this.normalizeJsonValue({
-        fromCurrency:
-          quote.fromCurrency,
-
-        toCurrency:
-          quote.toCurrency,
-
-        rate:
-          quote.rate.toString(),
-
-        amount:
-          quote.amount.toString(),
-
-        convertedAmount:
-          quote.convertedAmount.toString(),
-
-        expiresAt:
-          quote.expiresAt
-            ? quote.expiresAt.toISOString()
-            : null,
-      });
 
     const conversion =
       await this.exchangeService.createConversion({
@@ -279,7 +212,7 @@ export default class PaymentOrchestratorService {
 
         fromAmount:
           new Prisma.Decimal(
-            paymentIntent.amount
+            Number(paymentIntent.amount)
           ),
 
         exchangeProvider:
@@ -296,7 +229,7 @@ export default class PaymentOrchestratorService {
 
             asset,
 
-            quote: quoteMetadata,
+            quote,
           }),
       });
 
@@ -346,12 +279,6 @@ export default class PaymentOrchestratorService {
         }
       );
 
-    /*
-    |--------------------------------------------------------------------------
-    | Transaction Metadata
-    |--------------------------------------------------------------------------
-    */
-
     const existingTransactionMetadata =
       transaction.metadata &&
       typeof transaction.metadata ===
@@ -373,7 +300,7 @@ export default class PaymentOrchestratorService {
         status:
           settlementResult.status,
 
-        quote: quoteMetadata,
+        quote: quote,
 
         conversionId:
           conversion.id,
@@ -420,12 +347,6 @@ export default class PaymentOrchestratorService {
       },
     };
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Checkout
-  |--------------------------------------------------------------------------
-  */
 
   async checkoutPaymentIntent(
     paymentIntentId: string,
@@ -481,10 +402,32 @@ export default class PaymentOrchestratorService {
       );
     }
 
+    // Ensure paymentIntent currency matches merchant currency to avoid provider mismatches.
+    try {
+      const merchant = await this.app.prisma.merchant.findUnique({
+        where: { id: paymentIntent.merchantId },
+        select: { id: true, currency: true }
+      });
+
+      if (merchant && String(merchant.currency) !== String(paymentIntent.currency)) {
+        console.warn(`Aligning paymentIntent currency ${paymentIntent.currency} -> ${merchant.currency} for merchant ${merchant.id}`);
+
+        await this.app.prisma.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { currency: merchant.currency }
+        });
+
+        // reflect change locally
+        paymentIntent.currency = merchant.currency as any;
+      }
+    } catch (e) {
+      console.error('Failed to align paymentIntent currency with merchant:', e);
+    }
+
     /*
-    |--------------------------------------------------------------------------
+    |
     | Crypto Destination Validation
-    |--------------------------------------------------------------------------
+    |
     */
 
     const checkoutMetadata =
@@ -519,8 +462,7 @@ export default class PaymentOrchestratorService {
         "object"
     ) {
       const destinationAddress =
-        typeof cryptoDestination.address ===
-        "string"
+        typeof cryptoDestination.address === "string"
           ? cryptoDestination.address
           : undefined;
 
@@ -534,24 +476,12 @@ export default class PaymentOrchestratorService {
       }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Existing Transaction
-    |--------------------------------------------------------------------------
-    */
-
     const existingTransaction =
       paymentIntent.transactions.find(
         (transaction) =>
           transaction.status ===
           "INITIATED"
       );
-
-    /*
-    |--------------------------------------------------------------------------
-    | Create Transaction
-    |--------------------------------------------------------------------------
-    */
 
     const transaction =
       existingTransaction ??
@@ -690,94 +620,82 @@ export default class PaymentOrchestratorService {
 
         requestHeaders: {}
       });
-    
+
       if (!transaction.reference) {
   throw new Error(
     "Transaction reference is missing."
   );
 }
 
+    // Prepare provider payload. For Paystack, Paystack only accepts NGN in this account —
+    // convert amounts to NGN and record original currency/amount in metadata.
+    let providerAmount = Number(paymentIntent.amount);
+    let providerCurrency = String(paymentIntent.currency);
+
+    if (selectedProvider.name === "paystack" && providerCurrency.toUpperCase() !== "NGN") {
+      const quote = await this.exchangeService.calculateQuote(
+        paymentIntent.currency as any,
+        "NGN" as any,
+        new Prisma.Decimal(Number(paymentIntent.amount))
+      );
+
+      providerAmount = Number(quote.convertedAmount.toString());
+      providerCurrency = "NGN";
+
+      // update the saved gatewayRequest to reflect the actual payload sent to the provider
+      const providerPayload = {
+        amount: providerAmount.toString(),
+        currency: providerCurrency,
+        reference: transaction.reference,
+        customerEmail: email,
+        originalAmount: paymentIntent.amount,
+        originalCurrency: String(paymentIntent.currency)
+      };
+
+      try {
+        await this.app.prisma.gatewayRequest.update({
+          where: { id: gatewayRequest.id },
+          data: { requestBody: providerPayload }
+        });
+      } catch (e) {
+        // non-fatal: continue even if updating logging record fails
+        console.error('Failed to update gatewayRequest with provider payload', e);
+      }
+    }
+
     try {
-      const execution =
-        await this.failover.execute(
-          providerNames,
-          async provider =>
-            provider.createPayment({
-              amount:
-                Number(
-                  paymentIntent.amount
-                ),
+      const execution = await this.failover.execute(
+        providerNames,
+        async provider =>
+          provider.createPayment({
+            amount: providerAmount,
+            currency: providerCurrency,
+            reference: transaction.reference!,
+            description: paymentIntent.description ?? undefined,
+            customer: {
+              email,
+              firstName: customer.firstName ?? paymentIntent.customer?.firstName ?? undefined,
+              lastName: customer.lastName ?? paymentIntent.customer?.lastName ?? undefined,
+              phone: customer.phone ?? paymentIntent.customer?.phone ?? undefined
+            },
+            metadata: {
+              paymentIntentId: paymentIntent.id,
+              transactionId: transaction.id,
+              paymentAttemptId: paymentAttempt.id
+            }
+          })
+      );
 
-              currency:
-                String(
-                  paymentIntent.currency
-                ),
-
-              reference:
-                transaction.reference!,
-
-              description:
-                paymentIntent.description ??
-                undefined,
-
-              customer: {
-                email,
-
-                firstName:
-                  customer.firstName ??
-                  paymentIntent.customer?.firstName ??
-                  undefined,
-
-                lastName:
-                  customer.lastName ??
-                  paymentIntent.customer?.lastName ??
-                  undefined,
-
-                phone:
-                  customer.phone ??
-                  paymentIntent.customer?.phone ??
-                  undefined
-              },
-
-              metadata: {
-                paymentIntentId:
-                  paymentIntent.id,
-
-                transactionId:
-                  transaction.id,
-
-                paymentAttemptId:
-                  paymentAttempt.id
-              }
-            })
-        );
-
-      const providerResponse =
-        execution.result;
-
-      const authorizationCode =
-        providerResponse.authorizationCode ??
-        null;
+      const providerResponse = execution.result;
+      const authorizationCode = providerResponse.authorizationCode ?? null;
 
       await this.app.prisma.transaction.update({
-        where: {
-          id: transaction.id
-        },
-
+        where: { id: transaction.id },
         data: {
-          gatewayTransactionId:
-            providerResponse.transactionId ??
-            providerResponse.reference ??
-            null,
-
-          gatewayProvider:
-            execution.providerName,
-
-          authCode:
-            authorizationCode,
-
-          approvalCode:
-            authorizationCode
+          gatewayTransactionId: providerResponse.transactionId ?? providerResponse.reference ?? null,
+          gatewayProvider: execution.providerName,
+          authCode: authorizationCode,
+          approvalCode: authorizationCode
         }
       });
 
@@ -801,8 +719,7 @@ export default class PaymentOrchestratorService {
           200,
 
         responseBody:
-          providerResponse.raw ??
-          {},
+          providerResponse.raw ?? {},
 
         responseHeaders:
           {},
@@ -844,6 +761,71 @@ export default class PaymentOrchestratorService {
           providerResponse
       };
     } catch (error) {
+      const anyErr = error as any;
+      const providerMessage = anyErr?.response?.data?.message ?? anyErr?.message ?? "";
+
+      if (typeof providerMessage === "string" && providerMessage.toLowerCase().includes("currency not supported")) {
+        try {
+          const quote = await this.exchangeService.calculateQuote(
+            paymentIntent.currency as any,
+            "NGN" as any,
+            new Prisma.Decimal(Number(paymentIntent.amount))
+          );
+
+          const convertedAmount = Number(quote.convertedAmount.toString());
+
+          const execution2 = await this.failover.execute(
+            providerNames,
+            async provider =>
+              provider.createPayment({
+                amount: convertedAmount,
+                currency: "NGN",
+                reference: transaction.reference!,
+                description: paymentIntent.description ?? undefined,
+                customer: {
+                  email,
+                  firstName: customer.firstName ?? paymentIntent.customer?.firstName ?? undefined,
+                  lastName: customer.lastName ?? paymentIntent.customer?.lastName ?? undefined,
+                  phone: customer.phone ?? paymentIntent.customer?.phone ?? undefined
+                },
+                metadata: {
+                  paymentIntentId: paymentIntent.id,
+                  transactionId: transaction.id,
+                  paymentAttemptId: paymentAttempt.id,
+                  originalCurrency: paymentIntent.currency,
+                  originalAmount: paymentIntent.amount
+                }
+              })
+          );
+
+          const providerResponse = execution2.result;
+
+          await this.gatewayService.createGatewayResponse({
+            gatewayRequestId: gatewayRequest.id,
+            statusCode: 200,
+            responseBody: providerResponse.raw ?? {},
+            responseHeaders: {},
+            responseTime: 0
+          });
+
+          return {
+            paymentIntent,
+            transaction,
+            paymentAttempt,
+            provider: execution2.providerName,
+            gateway: {
+              transactionId: providerResponse.transactionId ?? providerResponse.reference ?? null,
+              paymentUrl: providerResponse.paymentUrl ?? null,
+              accessCode: providerResponse.accessCode ?? null,
+              authorizationCode: providerResponse.authorizationCode ?? null
+            },
+            response: providerResponse
+          };
+        } catch (e) {
+          Object.assign(anyErr, { inner: e });
+        }
+      }
+
       await this.gatewayService.createGatewayResponse({
         gatewayRequestId:
           gatewayRequest.id,
@@ -894,9 +876,7 @@ export default class PaymentOrchestratorService {
       paymentIntent.expiresAt &&
       paymentIntent.expiresAt <= new Date()
     ) {
-      await this.paymentService.expirePaymentIntent(
-        paymentIntent.id
-      );
+      await this.paymentService.expirePaymentIntent(paymentIntent.id);
       throw new Error(
         "Payment Intent has expired."
       );
@@ -956,19 +936,15 @@ export default class PaymentOrchestratorService {
       paymentIntent.expiresAt &&
       paymentIntent.expiresAt <= new Date()
     ) {
-      await this.paymentService.expirePaymentIntent(
-        paymentIntent.id
-      );
-      throw new Error(
-        "Payment Intent has expired."
-      );
+      await this.paymentService.expirePaymentIntent(paymentIntent.id);
+      throw new Error("Payment Intent has expired.");
     }
 
     if (
       customerId &&
       paymentIntent.customerId &&
       paymentIntent.customerId !== customerId
-    ) {
+      ) {
       throw new Error(
         "This payment intent does not belong to the current customer."
       );
@@ -1022,16 +998,14 @@ export default class PaymentOrchestratorService {
       );
     }
 
-    const selectedProvider =
-      this.selector.select(
-        providers,
-        {
-          merchantId: paymentIntent.merchantId,
-          currency: String(paymentIntent.currency),
-          amount: Number(paymentIntent.amount),
-          paymentMethod: "card"
-        }
-      );
+    const selectedProvider = this.selector.select(
+      providers, {
+        merchantId: paymentIntent.merchantId,
+        currency: String(paymentIntent.currency),
+        amount: Number(paymentIntent.amount),
+        paymentMethod: "card"
+      }
+    );
 
     const provider =
       this.providerManager.getProvider(
@@ -1067,17 +1041,10 @@ export default class PaymentOrchestratorService {
           provider.chargeWithAuthorization({
             amount: Number(paymentIntent.amount),
             currency: String(paymentIntent.currency),
-            email:
-              paymentIntent.customer?.email ??
-              customerId ??
-              "customer@example.com",
-            authorizationCode:
-              authorization.authorizationCode ??
-              "",
+            email: paymentIntent.customer?.email ?? customerId ?? "customer@example.com",
+            authorizationCode: authorization.authorizationCode ?? "",
             reference: transaction.reference!,
-            description:
-              paymentIntent.description ??
-              undefined,
+            description: paymentIntent.description ?? undefined,
             metadata: {
               paymentIntentId: paymentIntent.id,
               transactionId: transaction.id,
@@ -1136,9 +1103,7 @@ export default class PaymentOrchestratorService {
         paymentUrl: response.paymentUrl ?? null,
         accessCode: response.accessCode ?? null,
         authorizationCode:
-          response.authorizationCode ??
-          authorization.authorizationCode ??
-          null
+          response.authorizationCode ?? authorization.authorizationCode ?? null
       },
       response
     };
@@ -1299,164 +1264,34 @@ export default class PaymentOrchestratorService {
 
     const provider =
       this.providerManager.getProvider(
-
         providerRecord.name
-
-      );
-
-    const transaction =
-      await this.paymentService.createTransaction({
-
-        idempotencyKey: data.idempotencyKey,
-
-        merchantId: data.merchantId,
-
-        customerId: data.customerId,
-
-        amount: data.amount,
-
-        currency: data.currency,
-
-        paymentMethod: data.paymentMethod,
-
-        type: "payment",
-
-        description: data.description,
-
-        paymentIntentId: paymentIntent.id,
-
-        metadata: data.metadata
-
-      });
-
-    const gatewayRequest =
-      await this.gatewayService.createGatewayRequest({
-
-        providerId: providerRecord.id,
-
-        transactionId: transaction.id,
-
-        endpoint: "/payment",
-
-        method: "POST",
-
-        requestBody: (data.metadata ?? {}) as Prisma.JsonValue,
-
-        requestHeaders: {} as Prisma.JsonValue
-
-      });
-  try {
-
-    const started =
-      Date.now();
-
-    const execution =
-      await this.failover.execute(
-
-        providerNames,
-
-        async provider =>
-          provider.createPayment({
-
-            amount:
-              Number(data.amount),
-
-            currency:
-              String(data.currency),
-
-            description:
-              data.description,
-
-            reference:
-              transaction.reference ??
-              transaction.id,
-
-            metadata:
-              data.metadata as any
-
-          })
-
       );
 
     const providerResponse =
-      execution.result;
-
-    this.metrics.record(
-
-      execution.providerName,
-
-      true,
-
-      Date.now() - started
-
-    );
-
-    await this.gatewayService.createGatewayResponse({
-
-      gatewayRequestId:
-        gatewayRequest.id,
-
-      statusCode:
-        200,
-
-      responseBody:
-        providerResponse.raw,
-
-      responseHeaders:
-        {} as Prisma.JsonValue
-
-    });
-
-    return {
-
-      paymentIntent,
-
-      transaction,
-
-      provider:
-        providerResponse.reference,
-
-      response:
-        providerResponse
-
-    };
-
-  } catch (error) {
-
-      this.metrics.record(
-
-        providerRecord.name,
-
-        false,
-
-        0
-
+      await this.failover.execute(
+        providerNames,
+        async () => provider.createPayment({
+          amount: Number(data.amount),
+          currency: String(data.currency),
+          reference: data.idempotencyKey ?? `pi:${paymentIntent.id}`,
+          description: data.description ?? undefined,
+          customer: {
+            email: paymentIntent.customer?.email ?? "customer@example.com",
+            firstName: paymentIntent.customer?.firstName ?? undefined,
+            lastName: paymentIntent.customer?.lastName ?? undefined
+          },
+          metadata: data.metadata ?? {}
+        })
       );
 
-      await this.gatewayService.createGatewayResponse({
-
-        gatewayRequestId:
-          gatewayRequest.id,
-
-        statusCode: 500,
-
-        responseBody:
-          {} as Prisma.JsonValue,
-
-        responseHeaders:
-          {} as Prisma.JsonValue,
-
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unknown error"
-
-      });
-
-      throw error;
-
-    }
-
+    return providerResponse;
   }
 
+  private normalizeJsonValue(
+    value: Prisma.JsonValue | Record<string, unknown>
+  ): Prisma.JsonValue {
+    return JSON.parse(
+      JSON.stringify(value)
+    ) as Prisma.JsonValue;
+  }
 }

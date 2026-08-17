@@ -317,7 +317,8 @@ export default function NewPaymentPage() {
   const [
     currency,
     setCurrency,
-  ] = useState("USD");
+  ] = useState("NGN");
+
 
   const [
     asset,
@@ -933,18 +934,13 @@ export default function NewPaymentPage() {
                   }}
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
-                  <option value="USD">
-                    USD
-                  </option>
-
-                  <option value="EUR">
-                    EUR
-                  </option>
-
-                  <option value="GBP">
-                    GBP
+                  <option value="NGN">
+                    NGN
                   </option>
                 </select>
+                <p className="mt-2 text-xs text-slate-500">
+                  Payments are processed in Naira (NGN) for Paystack-supported merchants.
+                </p>
               </div>
 
               <div>

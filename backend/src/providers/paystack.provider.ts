@@ -59,71 +59,63 @@ export default class PaystackProvider extends BaseProvider {
       );
     }
 
-    const response =
-      await this.client.post(
+    try {
+      const response = await this.client.post(
         "/transaction/initialize",
         {
           amount: String(amount),
 
-          email:
-            input.customer.email,
+          email: input.customer.email,
 
-          currency:
-            input.currency.toUpperCase(),
+          currency: input.currency.toUpperCase(),
 
-          reference:
-            input.reference,
+          reference: input.reference,
 
-          description:
-            input.description,
+          description: input.description,
 
-          channels: [
-            "card"
-          ],
+          channels: ["card"],
 
-          metadata:
-            JSON.stringify(
-              input.metadata ?? {}
-            )
+          metadata: JSON.stringify(input.metadata ?? {})
         }
       );
 
-    const data =
-      response.data?.data;
+      const data = response.data?.data;
 
-    if (
-      response.data?.status !== true ||
-      !data?.authorization_url ||
-      !data?.reference
-    ) {
-      throw new Error(
-        response.data?.message ??
-        "Paystack failed to initialize the transaction."
-      );
+      if (response.data?.status !== true || !data?.authorization_url || !data?.reference) {
+        throw new Error(response.data?.message ?? "Paystack failed to initialize the transaction.");
+      }
+
+      return {
+        success: true,
+
+        message: response.data.message ?? "Authorization URL created",
+
+        reference: data.reference,
+
+        transactionId: data.reference,
+
+        paymentUrl: data.authorization_url,
+
+        accessCode: data.access_code,
+
+        raw: response.data
+      };
+    } catch (err) {
+      // Enhanced debug logging for transient TLS/HTTP errors
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyErr = err as any;
+
+        console.error("Paystack createPayment error:", {
+          message: anyErr.message,
+          code: anyErr.code,
+          status: anyErr.response?.status,
+          data: anyErr.response?.data,
+        });
+      } catch {}
+
+      throw err;
     }
-
-    return {
-      success: true,
-
-      message:
-        response.data.message ??
-        "Authorization URL created",
-
-      reference:
-        data.reference,
-
-      transactionId:
-        data.reference,
-
-      paymentUrl:
-        data.authorization_url,
-
-      accessCode:
-        data.access_code,
-
-      raw:
-        response.data
-    };
   }
 
   async verifyPayment(

@@ -240,4 +240,61 @@ export default class GatewayService {
     };
   }
 
+  async checkPaystackChannels() {
+    // Run lightweight initialize calls for common currencies to verify account channels
+    const dotenv = await import('dotenv');
+    dotenv.config({ path: './.env' });
+
+    const axios = (await import('axios')).default;
+
+    const secret = process.env.PAYSTACK_SECRET_KEY;
+
+    if (!secret) {
+      throw new Error('PAYSTACK_SECRET_KEY not configured in environment.');
+    }
+
+    const client = axios.create({
+      baseURL: 'https://api.paystack.co',
+      timeout: 15000,
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const currencies = ['NGN', 'USD'];
+
+    const results: Record<string, unknown> = {};
+
+    for (const cur of currencies) {
+      try {
+        const resp = await client.post('/transaction/initialize', {
+          amount: '100',
+          currency: cur,
+          reference: `SMRTCHK-${cur}-${Date.now()}`,
+          customerEmail: 'admin@smartpos.com',
+          channels: ['card']
+        });
+
+        results[cur] = {
+          ok: true,
+          status: resp.status,
+          data: resp.data
+        };
+      } catch (err) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyErr = err as any;
+
+        results[cur] = {
+          ok: false,
+          message: anyErr.message,
+          status: anyErr.response?.status ?? null,
+          data: anyErr.response?.data ?? null
+        };
+      }
+    }
+
+    return results;
+  }
+
 }

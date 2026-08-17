@@ -37,9 +37,13 @@ data: payment
     reply: FastifyReply
   ) => {
 
+    const body = request.body as any;
+    // Force payment intents to NGN so Paystack (configured for NGN) can process them.
+    body.currency = 'NGN';
+
     const payment =
       await this.paymentService.createPaymentIntent(
-        request.body as any
+        body
       );
 
     return reply.code(201).send({
@@ -305,16 +309,34 @@ data: payment
         };
       };
 
-    const result =
-  await this.paymentOrchestratorService.checkoutPaymentIntent(
-    id,
-    customer
-  );
+    try {
+      const result =
+        await this.paymentOrchestratorService.checkoutPaymentIntent(
+          id,
+          customer
+        );
 
-    return reply.send({
-      success: true,
-      data: result
-    });
+      return reply.send({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      // Surface provider/checkout errors cleanly to the frontend
+      const anyErr = error as any;
+
+      const providerMessage =
+        anyErr?.response?.data?.message ||
+        anyErr?.message ||
+        "Payment provider error.";
+
+      const statusCode =
+        anyErr?.response?.status || 502;
+
+      return reply.code(statusCode).send({
+        success: false,
+        message: `Payment gateway error: ${String(providerMessage)}`
+      });
+    }
   };
 
   processCryptoSettlement = async (
