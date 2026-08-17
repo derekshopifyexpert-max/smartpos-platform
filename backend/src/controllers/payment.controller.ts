@@ -19,10 +19,13 @@ request: FastifyRequest,
 reply: FastifyReply
 ) => {
 
+const body = request.body as any;
+
 const payment =
-await this.paymentOrchestratorService.createPayment(
-request.body as any
-);
+await this.paymentOrchestratorService.createPayment({
+  ...body,
+  paymentProviderAccountId: body.paymentProviderAccountId
+});
 
 return reply.code(201).send({
 success: true,

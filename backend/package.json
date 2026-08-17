@@ -24,7 +24,11 @@
     "setup": "npm run prisma:generate && npm run prisma:deploy && npm run prisma:seed",
     "prisma:deploy": "prisma migrate deploy --schema ../database/schema/schema.prisma",
     "prisma:status": "prisma migrate status --schema ../database/schema/schema.prisma",
-    "e2e:test": "tsx scripts/e2e-test.ts"
+    "e2e:test": "tsx scripts/e2e-test.ts",
+    "e2e:harness": "USE_MOCK_CRYPTO_PROVIDER=true tsx scripts/e2e-harness.ts",
+    "e2e:real": "tsx scripts/e2e-harness.ts",
+    "ci:test": "npm run typecheck && npm run lint && npm run test",
+    "ci:e2e": "npm run prisma:generate && npm run prisma:push && npm run e2e:harness"
   },
  
   "dependencies": {

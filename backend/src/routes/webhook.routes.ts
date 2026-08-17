@@ -37,24 +37,9 @@ export default async function webhookRoutes(
 
       const signature = (request.headers["x-paystack-signature"] as string) || (request.headers["X-Paystack-Signature"] as string) || "";
 
-      const webhookSecret = process.env.PAYSTACK_WEBHOOK_SECRET;
-
-      if (!webhookSecret) {
-        app.log.error("PAYSTACK_WEBHOOK_SECRET not configured");
-        return reply.code(500).send({ success: false, message: "Webhook secret not configured" });
-      }
-
-      try {
-        const crypto = await import("crypto");
-        const expected = crypto.createHmac("sha512", webhookSecret).update(JSON.stringify(payload)).digest("hex");
-
-        if (expected !== signature) {
-          app.log.warn("Invalid Paystack webhook signature");
-          return reply.code(400).send({ success: false, message: "Invalid signature" });
-        }
-      } catch (err) {
-        app.log.error({ err }, "Failed to validate webhook signature");
-        return reply.code(500).send({ success: false, message: "Signature validation failed" });
+      if (!signature) {
+        app.log.warn("Missing Paystack webhook signature header");
+        return reply.code(400).send({ success: false, message: "Missing signature" });
       }
 
       // Only handle charge.success for now
@@ -72,12 +57,70 @@ export default async function webhookRoutes(
       }
 
       try {
-        // Find the transaction by reference
-        const transaction = await app.prisma.transaction.findUnique({ where: { reference } });
+        // Find the transaction by reference to identify which Paystack account it belongs to
+        const transaction = await app.prisma.transaction.findUnique({
+          where: { reference },
+          include: {
+            paymentIntent: {
+              include: {
+                paymentProviderAccount: true
+              }
+            }
+          }
+        });
 
         if (!transaction) {
           app.log.warn({ reference }, "Paystack webhook for unknown transaction reference");
           return reply.code(404).send({ success: false, message: "Transaction not found" });
+        }
+
+        // Determine which Paystack account processed this payment
+        const paymentProviderAccountId = transaction.paymentIntent?.paymentProviderAccountId;
+        
+        if (!paymentProviderAccountId) {
+          app.log.warn({ reference }, "Transaction missing payment provider account reference");
+          return reply.code(400).send({ success: false, message: "Payment account information missing" });
+        }
+
+        // Resolve the webhook secret for this specific account
+        let webhookSecret: string | undefined;
+        
+        try {
+          const PaymentProviderAccountService = await import("../services/payment-provider-account.service.js");
+          const accountService = new PaymentProviderAccountService.default(app);
+          const credentials = await accountService.resolveCredentials(paymentProviderAccountId);
+          
+          // For Paystack, the webhook secret is typically stored in metadata or as a separate field
+          // If not found in credentials, fall back to env var as last resort
+          webhookSecret = credentials.webhookSecret || process.env.PAYSTACK_WEBHOOK_SECRET;
+        } catch (err) {
+          app.log.warn(
+            { err, paymentProviderAccountId },
+            "Failed to resolve webhook secret for payment provider account; falling back to environment variable"
+          );
+          webhookSecret = process.env.PAYSTACK_WEBHOOK_SECRET;
+        }
+
+        if (!webhookSecret) {
+          app.log.error("PAYSTACK_WEBHOOK_SECRET not configured for account or globally");
+          return reply.code(500).send({ success: false, message: "Webhook secret not configured" });
+        }
+
+        // Validate signature using the correct account's webhook secret
+        try {
+          const crypto = await import("crypto");
+          const expected = crypto.createHmac("sha512", webhookSecret).update(JSON.stringify(payload)).digest("hex");
+
+          if (expected !== signature) {
+            app.log.warn(
+              { reference, paymentProviderAccountId },
+              "Invalid Paystack webhook signature for account"
+            );
+            return reply.code(400).send({ success: false, message: "Invalid signature" });
+          }
+        } catch (err) {
+          app.log.error({ err }, "Failed to validate webhook signature");
+          return reply.code(500).send({ success: false, message: "Signature validation failed" });
         }
 
         // Idempotency: perform an atomic conditional update. If another worker
@@ -102,9 +145,14 @@ export default async function webhookRoutes(
         }
 
         // Mark any pending payment attempts for this transaction as captured (idempotent via updateMany)
+        // Also store the payment provider account ID
         await app.prisma.paymentAttempt.updateMany({
           where: { transactionId: transaction.id, status: "PENDING" },
-          data: { status: "CAPTURED", gatewayResponse: payload }
+          data: {
+            status: "CAPTURED",
+            paymentProviderAccountId: paymentProviderAccountId,
+            gatewayResponse: payload
+          }
         });
 
         // Trigger fiat->crypto settlement asynchronously

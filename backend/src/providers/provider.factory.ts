@@ -67,4 +67,86 @@ export default class ProviderFactory {
         );
     }
   }
+
+  /**
+   * Create a provider instance with explicitly supplied credentials.
+   * Used for multi-account support where credentials vary by selected account.
+   */
+  static createWithSecret(
+    provider: string,
+    credentials: { secretKey?: string; apiKey?: string; apiSecret?: string }
+  ): BaseProvider {
+
+    switch (
+      provider.toLowerCase()
+    ) {
+
+      case "paystack":
+
+        if (!credentials.secretKey) {
+          throw new Error(
+            "Paystack requires secretKey"
+          );
+        }
+
+        return new PaystackProvider(
+          credentials.secretKey
+        );
+
+      case "stripe":
+
+        if (!credentials.secretKey) {
+          throw new Error(
+            "Stripe requires secretKey"
+          );
+        }
+
+        return new StripeProvider(
+          credentials.secretKey
+        );
+
+      case "flutterwave":
+
+        if (!credentials.secretKey) {
+          throw new Error(
+            "Flutterwave requires secretKey"
+          );
+        }
+
+        return new FlutterwaveProvider(
+          credentials.secretKey
+        );
+
+      case "coinbase":
+
+        if (!credentials.apiKey) {
+          throw new Error(
+            "Coinbase requires apiKey"
+          );
+        }
+
+        return new CoinbaseProvider(
+          credentials.apiKey
+        );
+
+      case "binance":
+
+        if (!credentials.apiKey || !credentials.apiSecret) {
+          throw new Error(
+            "Binance requires apiKey and apiSecret"
+          );
+        }
+
+        return new BinanceProvider(
+          credentials.apiKey,
+          credentials.apiSecret
+        );
+
+      default:
+
+        throw new Error(
+          `Unsupported production payment provider: ${provider}`
+        );
+    }
+  }
 }

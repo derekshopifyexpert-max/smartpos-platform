@@ -1725,49 +1725,55 @@ model PaymentMethod {
 }
 
 model PaymentIntent {
-  id              String           @id @default(cuid())
-  merchantId      String
-  customerId      String?
-  paymentMethodId String?
-  amount          Decimal          @db.Decimal(18, 4)
-  currency        CurrencyType     @default(USD)
-  status          PaymentStatus    @default(PENDING)
-  description     String?
-  clientSecret    String?          @unique
-  metadata        Json?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  expiresAt       DateTime?
-  paymentAttempts PaymentAttempt[]
-  customer        Customer?        @relation(fields: [customerId], references: [id])
-  merchant        Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  paymentMethod   PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
-  transactions    Transaction[]
+  id                           String           @id @default(cuid())
+  merchantId                   String
+  customerId                   String?
+  paymentMethodId              String?
+  paymentProviderAccountId     String?
+  amount                       Decimal          @db.Decimal(18, 4)
+  currency                     CurrencyType     @default(USD)
+  status                       PaymentStatus    @default(PENDING)
+  description                  String?
+  clientSecret                 String?          @unique
+  metadata                     Json?
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
+  expiresAt                    DateTime?
+  paymentAttempts              PaymentAttempt[]
+  customer                     Customer?        @relation(fields: [customerId], references: [id])
+  merchant                     Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  paymentMethod                PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
+  paymentProviderAccount       PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
+  transactions                 Transaction[]
 
   @@index([merchantId])
   @@index([customerId])
   @@index([status])
   @@index([clientSecret])
+  @@index([paymentProviderAccountId])
 }
 
 model PaymentAttempt {
-  id              String        @id @default(cuid())
-  paymentIntentId String
-  transactionId   String?
-  amount          Decimal       @db.Decimal(18, 4)
-  currency        CurrencyType  @default(USD)
-  status          PaymentStatus @default(PENDING)
-  gatewayResponse Json?
-  errorMessage    String?
-  attemptedAt     DateTime      @default(now())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  paymentIntent   PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  transaction     Transaction?  @relation(fields: [transactionId], references: [id])
+  id                           String        @id @default(cuid())
+  paymentIntentId              String
+  transactionId                String?
+  paymentProviderAccountId     String?
+  amount                       Decimal       @db.Decimal(18, 4)
+  currency                     CurrencyType  @default(USD)
+  status                       PaymentStatus @default(PENDING)
+  gatewayResponse              Json?
+  errorMessage                 String?
+  attemptedAt                  DateTime      @default(now())
+  createdAt                    DateTime      @default(now())
+  updatedAt                    DateTime      @updatedAt
+  paymentIntent                PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  paymentProviderAccount       PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
+  transaction                  Transaction?  @relation(fields: [transactionId], references: [id])
 
   @@index([paymentIntentId])
   @@index([transactionId])
   @@index([status])
+  @@index([paymentProviderAccountId])
 }
 
 model PaymentProvider {
@@ -3511,4 +3517,34 @@ enum FeatureFlag {
   DISABLED
   BETA
   DEPRECATED
+}
+
+enum PaymentProviderAccountStatus {
+  ACTIVE
+  NOT_CONFIGURED
+  DISABLED
+  SUSPENDED
+}
+
+model PaymentProviderAccount {
+  id                 String                           @id @default(cuid())
+  name               String                           @unique
+  displayName        String
+  provider           String                           // e.g., "PAYSTACK", "FLUTTERWAVE", "STRIPE"
+  currency           String                           // e.g., "NGN", "USD", "GHS"
+  status             PaymentProviderAccountStatus     @default(NOT_CONFIGURED)
+  secretKeyRef       String?                          // Reference to vault/secret storage (not actual key)
+  publicKey          String?                          // Can be public (Paystack public key is non-sensitive)
+  metadata           Json?                            // Additional config (webhooks URL, etc.)
+  isDefault          Boolean                          @default(false)
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+  deletedAt          DateTime?
+  paymentIntents     PaymentIntent[]
+  paymentAttempts    PaymentAttempt[]
+
+  @@index([provider])
+  @@index([status])
+  @@index([currency])
+  @@index([isDefault])
 }

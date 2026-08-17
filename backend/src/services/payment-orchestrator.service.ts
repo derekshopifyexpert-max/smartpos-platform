@@ -4,7 +4,9 @@ import GatewayService from "./gateway.service.js";
 import ExchangeService from "./exchange.service.js";
 import BlockchainService from "./blockchain.service.js";
 import CryptoSettlementService from "./crypto-settlement.service.js";
+import PaymentProviderAccountService from "./payment-provider-account.service.js";
 import ProviderManager from "../providers/provider.manager.js";
+import ProviderFactory from "../providers/provider.factory.js";
 import SmartGatewaySelector from "../providers/smart-gateway-selector.js";
 import ProviderFailover from "../providers/provider-failover.js";
 import ProviderMetricsService from "../providers/provider-metrics.service.js";
@@ -16,6 +18,8 @@ export default class PaymentOrchestratorService {
   private readonly paymentService: PaymentService;
 
   private readonly gatewayService: GatewayService;
+
+  private readonly paymentProviderAccountService: PaymentProviderAccountService;
 
   private readonly providerManager =
     new ProviderManager();
@@ -43,6 +47,9 @@ export default class PaymentOrchestratorService {
 
     this.gatewayService =
       new GatewayService(app);
+
+    this.paymentProviderAccountService =
+      new PaymentProviderAccountService(app);
 
     this.exchangeService =
       new ExchangeService(app);
@@ -974,6 +981,8 @@ export default class PaymentOrchestratorService {
 
     paymentMethodId?: string;
 
+    paymentProviderAccountId?: string;
+
     amount: Prisma.Decimal;
 
     currency: any;
@@ -988,6 +997,71 @@ export default class PaymentOrchestratorService {
 
   }) {
 
+    // Resolve the payment provider account
+    let accountId = data.paymentProviderAccountId;
+    let selectedAccount: any = null;
+    let providerToUse: any = null;
+
+    if (accountId) {
+      // Validate that the account exists and belongs to this merchant
+      selectedAccount = await this.app.prisma.paymentProviderAccount.findUnique({
+        where: { id: accountId }
+      });
+
+      if (!selectedAccount) {
+        throw new Error(
+          "Payment account is not available for this merchant."
+        );
+      }
+
+      if (selectedAccount.deletedAt) {
+        throw new Error(
+          "Payment account is not available for this merchant."
+        );
+      }
+
+      // Validate account status
+      if (selectedAccount.status !== "ACTIVE") {
+        throw new Error(
+          `Payment account is ${selectedAccount.status.toLowerCase()}. Payment cannot proceed.`
+        );
+      }
+
+      // Check if provider is Paystack (currently only supporting Paystack for multi-account)
+      if (selectedAccount.provider !== "PAYSTACK") {
+        throw new Error(
+          "Currently only Paystack accounts support multi-account selection."
+        );
+      }
+
+      // Resolve credentials from the account
+      try {
+        const credentials = await this.paymentProviderAccountService.resolveCredentials(accountId);
+
+        // Create provider with resolved credentials
+        providerToUse = ProviderFactory.createWithSecret(
+          selectedAccount.provider.toLowerCase(),
+          { secretKey: credentials.secretKey }
+        );
+      } catch (err) {
+        this.app.log.error(
+          { err, accountId },
+          "Failed to resolve credentials for payment provider account"
+        );
+
+        throw new Error(
+          "Paystack account credentials are not configured. Payment cannot proceed."
+        );
+      }
+    } else {
+      // No account specified - use default selection logic (existing behavior)
+      // For now, if no account is specified, we require one for proper routing
+      throw new Error(
+        "Payment account is required."
+      );
+    }
+
+    // Create payment intent with the selected account
     const paymentIntent =
       await this.paymentService.createPaymentIntent({
 
@@ -996,6 +1070,8 @@ export default class PaymentOrchestratorService {
         customerId: data.customerId,
 
         paymentMethodId: data.paymentMethodId,
+
+        paymentProviderAccountId: accountId,
 
         amount: data.amount,
 
@@ -1007,37 +1083,10 @@ export default class PaymentOrchestratorService {
 
       });
 
-    const providers =
-      await this.gatewayService.activeProviders();
-
-    const providerNames =
-      providers
-        .filter(provider => provider.isActive)
-        .sort((a, b) => a.priority - b.priority)
-        .map(provider => provider.name);
-
-    const providerRecord =
-      this.selector.select(providers, {
-
-        merchantId: data.merchantId,
-
-        currency: String(data.currency),
-
-        amount: Number(data.amount),
-
-        paymentMethod: data.paymentMethod
-
-      });
-
-    const provider =
-      this.providerManager.getProvider(
-        providerRecord.name
-      );
-
     const providerResponse =
       await this.failover.execute(
-        providerNames,
-        async () => provider.createPayment({
+        [selectedAccount.provider.toLowerCase()],
+        async () => providerToUse.createPayment({
           amount: Number(data.amount),
           currency: String(data.currency),
           reference: data.idempotencyKey ?? `pi:${paymentIntent.id}`,

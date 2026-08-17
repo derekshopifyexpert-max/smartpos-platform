@@ -14,6 +14,7 @@ export const createPaymentIntentSchema = z.object({
   merchantId: z.string().min(1),
   amount: z.coerce.number().positive(),
   currency: z.string().min(3).max(10),
+  paymentProviderAccountId: z.string().min(1).optional(),
   customerId: z.string().optional(),
   paymentMethodId: z.string().optional(),
   description: z.string().optional(),

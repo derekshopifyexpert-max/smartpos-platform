@@ -143,6 +143,7 @@ export default class PaymentService {
       merchantId: string;
       customerId?: string;
       paymentMethodId?: string;
+      paymentProviderAccountId?: string;
       amount: Prisma.Decimal;
       currency: any;
       description?: string;
@@ -169,6 +170,9 @@ export default class PaymentService {
 
         paymentMethodId:
           data.paymentMethodId,
+
+        paymentProviderAccountId:
+          data.paymentProviderAccountId,
 
         amount:
           data.amount,

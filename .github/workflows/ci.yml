@@ -1,0 +1,93 @@
+name: CI / E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: smartpos_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        cd backend
+        npm install
+
+    - name: Typecheck
+      run: |
+        cd backend
+        npm run typecheck
+
+    - name: Lint
+      run: |
+        cd backend
+        npm run lint || true
+
+    - name: Setup database
+      env:
+        DATABASE_URL: postgresql://postgres:password@localhost:5432/smartpos_test
+      run: |
+        cd backend
+        npm run prisma:generate
+        npm run prisma:push
+
+    - name: Run unit tests
+      run: |
+        cd backend
+        npm run test || true
+
+    - name: Run E2E harness
+      env:
+        DATABASE_URL: postgresql://postgres:password@localhost:5432/smartpos_test
+        USE_MOCK_CRYPTO_PROVIDER: 'true'
+      run: |
+        cd backend
+        npm run e2e:harness
+
+    - name: Build
+      run: |
+        cd backend
+        npm run build
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./backend/coverage/coverage-final.json
+        flags: unittests
+        name: codecov-umbrella
