@@ -113,6 +113,26 @@ export default class ExchangeService {
       );
 
     if (!rate) {
+      // If running in mock mode, create a fallback 1:1 rate to allow local e2e testing
+      if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
+        const fallback = new Prisma.Decimal(1);
+        await this.createExchangeRate({
+          fromCurrency,
+          toCurrency,
+          rate: fallback,
+          source: "mock-fallback",
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+        });
+
+        return {
+          fromCurrency,
+          toCurrency,
+          rate: fallback,
+          amount,
+          convertedAmount: amount,
+          expiresAt: null,
+        };
+      }
 
       throw new Error(
         "Exchange rate unavailable."
@@ -232,10 +252,22 @@ export default class ExchangeService {
   }) {
     const ttl = data.ttlSeconds ?? 30;
 
-    const rate = await this.latestRate(data.fromCurrency, data.toCurrency);
+    let rate = await this.latestRate(data.fromCurrency, data.toCurrency);
 
     if (!rate) {
-      throw new Error("Exchange rate unavailable for quote.");
+      if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
+        // create a mock 1:1 rate for local testing
+        const fallback = new Prisma.Decimal(1);
+        rate = await this.createExchangeRate({
+          fromCurrency: data.fromCurrency,
+          toCurrency: data.toCurrency,
+          rate: fallback,
+          source: "mock-fallback",
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+        }) as any;
+      } else {
+        throw new Error("Exchange rate unavailable for quote.");
+      }
     }
 
     const quoteAmount = data.amount.mul(rate.rate);

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import buildApp from "./app.js";
 import createConfirmationWorker from "./workers/confirmation.worker.js";
+import createReconciliationWorker from "./workers/reconciliation.worker.js";
 
 async function start() {
   const app =
@@ -17,6 +18,7 @@ async function start() {
 
   let shuttingDown = false;
   let confirmationWorker: { stop: () => Promise<void> } | null = null;
+  let reconciliationWorker: { stop: () => Promise<void> } | null = null;
 
   const shutdown = async (
     signal: NodeJS.Signals
@@ -39,6 +41,14 @@ async function start() {
           await confirmationWorker.stop();
         } catch (err) {
           console.error('Error stopping confirmation worker', err);
+        }
+      }
+
+      if (reconciliationWorker) {
+        try {
+          await reconciliationWorker.stop();
+        } catch (err) {
+          console.error('Error stopping reconciliation worker', err);
         }
       }
 
@@ -97,6 +107,16 @@ async function start() {
         app.log.info('Confirmation worker started');
       } catch (err) {
         app.log.error({ err }, 'Failed to start confirmation worker');
+      }
+    }
+
+    // start reconciliation worker if enabled
+    if (process.env.ENABLE_RECONCILIATION_WORKER !== 'false') {
+      try {
+        reconciliationWorker = createReconciliationWorker(app);
+        app.log.info('Reconciliation worker started');
+      } catch (err) {
+        app.log.error({ err }, 'Failed to start reconciliation worker');
       }
     }
   } catch (error) {

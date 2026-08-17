@@ -12,6 +12,7 @@ import settlementRoutes from "./settlement.routes.js";
 import authRoutes from "./auth.routes.js";
 import terminalRoutes from "./terminal.routes.js";
 import healthRoutes from "./health.routes.js";
+import reconciliationRoutes from "./reconciliation.routes.js";
 
 export default async function registerRoutes(
   app: FastifyInstance
@@ -60,6 +61,10 @@ export default async function registerRoutes(
   });
 
   app.register(terminalRoutes, {
+    prefix: "/api/v1"
+  });
+
+  app.register(reconciliationRoutes, {
     prefix: "/api/v1"
   });
 
