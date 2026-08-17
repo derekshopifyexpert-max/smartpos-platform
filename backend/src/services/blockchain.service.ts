@@ -5,6 +5,7 @@ import {
 import { FastifyInstance } from "fastify";
 
 import crypto from "crypto";
+import { ethers } from "ethers";
 
 export default class BlockchainService {
 
@@ -58,40 +59,58 @@ export default class BlockchainService {
 
   }) {
 
-    return this.app.prisma.blockchainTransaction.create({
+    // allow caller to provide txHash when provider returns it (provider-managed broadcast)
+    const providedTxHash = (data as any).txHash ?? null;
 
+    // create DB record first
+    const record = await this.app.prisma.blockchainTransaction.create({
       data: {
-
-        txHash: this.generateTxHash(),
-
+        txHash: providedTxHash ?? this.generateTxHash(),
         blockchainId: data.blockchain,
-
         walletId: data.walletId,
-
         fromAddress: data.fromAddress,
-
         toAddress: data.toAddress,
-
         amount: data.amount,
-
         currency: data.currency,
-
-        fee: data.fee ??
-          new Prisma.Decimal(0),
-
+        fee: data.fee ?? new Prisma.Decimal(0),
         gasPrice: data.gasPrice,
-
         nonce: data.nonce,
-
         metadata: data.metadata ?? Prisma.JsonNull,
-
         data: data.payload ?? Prisma.JsonNull,
-
-        status: "pending"
-
-      }
-
+        status: "pending",
+      },
     });
+
+    // If provider already returned a tx hash, just return the record.
+    if (providedTxHash) return record;
+
+    // If environment provides an RPC URL and a PRIVATE_KEY, attempt to broadcast
+    const rpcUrl = process.env.RPC_URL;
+    const privateKey = process.env.BROADCAST_PRIVATE_KEY;
+
+    const supportedNative = new Set(["ETH", "MATIC", "BNB"]);
+
+    if (rpcUrl && privateKey && supportedNative.has(String(data.currency).toUpperCase())) {
+      try {
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const wallet = new ethers.Wallet(privateKey, provider);
+
+        const value = ethers.parseEther(String(data.amount));
+
+        const tx = await wallet.sendTransaction({ to: data.toAddress, value });
+
+        // update record with real txHash
+        const updated = await this.app.prisma.blockchainTransaction.update({ where: { id: record.id }, data: { txHash: tx.hash, metadata: { ...(record.metadata as any), broadcastedBy: 'local-signer' } } });
+
+        return updated;
+      } catch (err) {
+        // on error, leave the record as pending and attach metadata
+        await this.app.prisma.blockchainTransaction.update({ where: { id: record.id }, data: { metadata: { ...(record.metadata as any), broadcastError: String(err) } } });
+        return record;
+      }
+    }
+
+    return record;
 
   }
 

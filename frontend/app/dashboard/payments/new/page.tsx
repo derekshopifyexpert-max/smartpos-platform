@@ -925,6 +925,7 @@ export default function NewPaymentPage() {
 
                 <select
                   id="payment-currency"
+                  suppressHydrationWarning={true}
                   value={currency}
                   onChange={(event) => {
                     setCurrency(

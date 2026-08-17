@@ -31,9 +31,9 @@ export default async function walletRoutes(
   };
 
   // Allow creating wallets without an authenticated merchant; controller will
-  // fallback to an admin-owned merchant when needed.
+  // Require authentication to create wallets; controller will fallback to an admin-owned merchant when needed.
   app.post("/wallets", {
-    preHandler: [validateBody(createWalletSchema)],
+    preHandler: [authMiddleware, validateBody(createWalletSchema)],
     handler: walletController.create,
   });
 

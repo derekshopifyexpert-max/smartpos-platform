@@ -218,6 +218,44 @@ export default class ExchangeService {
 
   }
 
+  /**
+   * Persist a live crypto quote (CryptoQuote) using the latest stored rate.
+   * ttlSeconds controls quote validity; default 30 seconds.
+   */
+  async createQuote(data: {
+    fromCurrency: any;
+    toCurrency: any;
+    amount: Prisma.Decimal;
+    provider?: string;
+    ttlSeconds?: number;
+    metadata?: Prisma.JsonValue;
+  }) {
+    const ttl = data.ttlSeconds ?? 30;
+
+    const rate = await this.latestRate(data.fromCurrency, data.toCurrency);
+
+    if (!rate) {
+      throw new Error("Exchange rate unavailable for quote.");
+    }
+
+    const quoteAmount = data.amount.mul(rate.rate);
+
+    const expiresAt = new Date(Date.now() + ttl * 1000);
+
+    return this.app.prisma.cryptoQuote.create({
+      data: {
+        fromCurrency: data.fromCurrency,
+        toCurrency: data.toCurrency,
+        amount: data.amount,
+        quoteAmount,
+        rate: rate.rate,
+        expiresAt,
+        provider: data.provider ?? "",
+        metadata: data.metadata ?? Prisma.JsonNull,
+      },
+    });
+  }
+
   async completeConversion(
 
     conversionId: string
