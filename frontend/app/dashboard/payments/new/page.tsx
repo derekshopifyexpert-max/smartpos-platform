@@ -27,6 +27,8 @@ import {
   getMerchantWallets,
 } from "@/features/wallets/services/wallet.service";
 
+import { PaymentProviderAccountSelector } from "@/features/payment/components/payment-provider-account-selector";
+
 import type {
   WalletRecord,
 } from "@/features/wallets/types/wallet";
@@ -319,6 +321,10 @@ export default function NewPaymentPage() {
     setCurrency,
   ] = useState("NGN");
 
+  const [
+    paymentProviderAccountId,
+    setPaymentProviderAccountId,
+  ] = useState<string | null>(null);
 
   const [
     asset,
@@ -626,6 +632,13 @@ export default function NewPaymentPage() {
       return;
     }
 
+    if (!paymentProviderAccountId) {
+      setError(
+        "Select a payment account before continuing."
+      );
+      return;
+    }
+
     if (!selectedWallet) {
       setError(
         `Select a saved ${asset} wallet on ${network} before continuing.`
@@ -698,6 +711,9 @@ export default function NewPaymentPage() {
 
         currency:
           currency.toUpperCase(),
+
+        paymentProviderAccountId:
+          paymentProviderAccountId,
 
         description:
           `SmartPOS payment for ${currency.toUpperCase()} ${numericAmount}`,
@@ -943,7 +959,17 @@ export default function NewPaymentPage() {
                   Payments are processed in Naira (NGN) for Paystack-supported merchants.
                 </p>
               </div>
+            </div>
 
+            <div>
+              <PaymentProviderAccountSelector
+                provider="PAYSTACK"
+                selectedAccountId={paymentProviderAccountId}
+                onAccountSelect={setPaymentProviderAccountId}
+              />
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
               <div>
                 <label
                   htmlFor="payment-asset"

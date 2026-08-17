@@ -1020,6 +1020,18 @@ export default class PaymentOrchestratorService {
         );
       }
 
+      // Validate merchant ownership: if account is merchant-specific, it must match the request merchant
+      if (selectedAccount.merchantId && selectedAccount.merchantId !== data.merchantId) {
+        this.app.log.warn(
+          { accountId, requestMerchantId: data.merchantId, accountMerchantId: selectedAccount.merchantId },
+          "Payment provider account does not belong to authenticated merchant"
+        );
+
+        throw new Error(
+          "Payment account is not available for this merchant."
+        );
+      }
+
       // Validate account status
       if (selectedAccount.status !== "ACTIVE") {
         throw new Error(

@@ -3532,6 +3532,7 @@ model PaymentProviderAccount {
   displayName        String
   provider           String                           // e.g., "PAYSTACK", "FLUTTERWAVE", "STRIPE"
   currency           String                           // e.g., "NGN", "USD", "GHS"
+  merchantId         String?                          // Optional: if set, account is merchant-specific; if null, system-wide
   status             PaymentProviderAccountStatus     @default(NOT_CONFIGURED)
   secretKeyRef       String?                          // Reference to vault/secret storage (not actual key)
   publicKey          String?                          // Can be public (Paystack public key is non-sensitive)
@@ -3540,6 +3541,7 @@ model PaymentProviderAccount {
   createdAt          DateTime                         @default(now())
   updatedAt          DateTime                         @updatedAt
   deletedAt          DateTime?
+  merchant           Merchant?                        @relation(fields: [merchantId], references: [id], onDelete: SetNull)
   paymentIntents     PaymentIntent[]
   paymentAttempts    PaymentAttempt[]
 
@@ -3547,4 +3549,5 @@ model PaymentProviderAccount {
   @@index([status])
   @@index([currency])
   @@index([isDefault])
+  @@index([merchantId])
 }
