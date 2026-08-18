@@ -18,15 +18,15 @@ export interface ExchangeQuote {
 // Exchange Order - Real provider order
 export interface ExchangeOrder {
   id: string;
-  orderId: string; // Provider's order ID
+  orderId?: string | null; // Provider's order ID
   symbol: string;
   side: "BUY" | "SELL";
   amount: string; // Requested amount
   filledAmount: string; // Actual filled amount
-  avgPrice: string;
+  avgPrice?: string | null;
   status: "PENDING" | "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED" | "REJECTED" | "EXPIRED" | "FAILED";
   fee?: string;
-  provider: string;
+  provider?: string;
   createdAt: string;
   updatedAt: string;
   metadata?: {

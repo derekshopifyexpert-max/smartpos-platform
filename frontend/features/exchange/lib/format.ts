@@ -53,6 +53,21 @@ export function calculateEstimatedCrypto(
   return amount / price;
 }
 
+export function validateDecimalAmount(value: string): string | null {
+  const normalized = value.trim();
+
+  if (!normalized) return "Enter an amount greater than zero.";
+  if (!/^\d+(\.\d+)?$/.test(normalized)) return "Enter a valid decimal amount.";
+
+  const [whole, fraction = ""] = normalized.split(".");
+  if (fraction.length > 8) return "Use no more than 8 decimal places.";
+  if (/^0+$/.test(whole) && /^0*$/.test(fraction)) {
+    return "Enter an amount greater than zero.";
+  }
+
+  return null;
+}
+
 /**
  * Calculate estimated fiat from crypto amount
  */
