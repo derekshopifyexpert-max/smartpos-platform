@@ -143,9 +143,26 @@ export const env = {
     "",
 
   // ========== BLOCKCHAIN & SETTLEMENT ==========
+  BLOCKCHAIN_NETWORK:
+    (process.env.BLOCKCHAIN_NETWORK || process.env.BLOCKCHAIN_NETWORK_NAME || "ETHEREUM").trim().toUpperCase(),
+
+  BLOCKCHAIN_RPC_URL:
+    process.env.BLOCKCHAIN_RPC_URL || process.env.RPC_URL || "",
+
   RPC_URL:
-    process.env.RPC_URL ||
-    "",
+    process.env.BLOCKCHAIN_RPC_URL || process.env.RPC_URL || "",
+
+  BLOCKCHAIN_CHAIN_ID:
+    Number(process.env.BLOCKCHAIN_CHAIN_ID || process.env.CHAIN_ID || 1),
+
+  BLOCKCHAIN_CONFIRMATIONS_REQUIRED:
+    Number(process.env.BLOCKCHAIN_CONFIRMATIONS_REQUIRED || 1),
+
+  BLOCKCHAIN_USDT_CONTRACT_ADDRESS:
+    process.env.BLOCKCHAIN_USDT_CONTRACT_ADDRESS || "",
+
+  BLOCKCHAIN_USDT_DECIMALS:
+    Number(process.env.BLOCKCHAIN_USDT_DECIMALS || 6),
 
   BROADCAST_PRIVATE_KEY:
     process.env.BROADCAST_PRIVATE_KEY ||

@@ -3,6 +3,7 @@ import prisma from "../helpers/test-db";
 import PaymentService from "../../src/services/payment.service";
 import PaymentOrchestratorService from "../../src/services/payment-orchestrator.service";
 import WalletService from "../../src/services/wallet.service";
+import BlockchainService from "../../src/services/blockchain.service";
 import { NotConfiguredCryptoTransferProvider } from "../../src/providers/crypto-transfer.provider";
 
 describe(
@@ -77,6 +78,27 @@ describe(
 
       expect(result.status).toBe("NOT_CONFIGURED");
       expect(result.success).toBe(false);
+    });
+
+    it("should reject fake blockchain transaction creation when no real signer is configured", async () => {
+      const blockchainService = new BlockchainService({
+        prisma: {
+          blockchainTransaction: {
+            create: jest.fn(),
+            update: jest.fn(),
+          },
+        },
+      } as any);
+
+      await expect(
+        blockchainService.createTransaction({
+          blockchain: "network-1",
+          fromAddress: "0x1111111111111111111111111111111111111111",
+          toAddress: "0x2222222222222222222222222222222222222222",
+          amount: new (require("@prisma/client").Prisma.Decimal)(1),
+          currency: "USDT",
+        })
+      ).rejects.toThrow(/real blockchain broadcast|RPC_URL|BROADCAST_PRIVATE_KEY/i);
     });
 
     it("should create a wallet using the real wallet service contract", async () => {

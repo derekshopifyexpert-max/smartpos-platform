@@ -2,8 +2,7 @@ import { Prisma } from "@prisma/client";
 import PaymentService from "./payment.service.js";
 import ExchangeService from "./exchange.service.js";
 import BlockchainService from "./blockchain.service.js";
-import { NotConfiguredCryptoTransferProvider, GenericHttpCryptoProvider } from "../providers/crypto-transfer.provider.js";
-import MockCryptoProvider from "../providers/mock-crypto.provider.js";
+import { GenericHttpCryptoProvider, NotConfiguredCryptoTransferProvider } from "../providers/crypto-transfer.provider.js";
 
 export default class CryptoSettlementService {
   private readonly paymentService: PaymentService;
@@ -16,13 +15,10 @@ export default class CryptoSettlementService {
     this.exchangeService = new ExchangeService(app);
     this.blockchainService = new BlockchainService(app);
 
-    // Default provider is a not-configured shim; replace via DI where available
-    // Allow a mock provider for local testing via env flag
-    if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
-      this.cryptoTransferProvider = new MockCryptoProvider();
-    } else {
-      this.cryptoTransferProvider = new NotConfiguredCryptoTransferProvider();
-    }
+    // Real settlement is never allowed to run through a fake/mock blockchain path.
+    // Keep the explicit not-configured provider as the default to surface a clear
+    // production failure rather than silently succeeding with fabricated hashes.
+    this.cryptoTransferProvider = new NotConfiguredCryptoTransferProvider();
   }
 
   /**
@@ -43,6 +39,67 @@ export default class CryptoSettlementService {
    * configured `cryptoTransferProvider`, and records metadata on the
    * originating transaction.
    */
+  async resolveSettlementDestination(
+    paymentIntent: any,
+    options: {
+      walletId?: string;
+      destinationAddress?: string;
+      network?: string;
+      asset?: string;
+    }
+  ) {
+    const walletId = (options.walletId ?? "").trim();
+    const inputAddress = (options.destinationAddress ?? "").trim();
+    const network = String(options.network ?? "ETHEREUM").toUpperCase();
+    const asset = String(options.asset ?? "USDT").toUpperCase();
+
+    if (walletId) {
+      const wallet = await this.app.prisma.wallet.findFirst({
+        where: {
+          id: walletId,
+          merchantId: paymentIntent.merchantId,
+        },
+        include: {
+          blockchain: true,
+          walletAddresses: true,
+        },
+      });
+
+      if (!wallet) {
+        throw new Error("The destination wallet does not belong to the merchant or does not exist.");
+      }
+
+      const walletNetwork = String(wallet.blockchain?.name ?? wallet.metadata?.network ?? "").toUpperCase();
+      if (walletNetwork && walletNetwork !== network) {
+        throw new Error(`Destination wallet network mismatch: wallet is on ${walletNetwork}, settlement requested for ${network}.`);
+      }
+
+      const walletAsset = String(wallet.currency ?? wallet.metadata?.asset ?? "").toUpperCase();
+      if (walletAsset && walletAsset !== asset) {
+        throw new Error(`Destination wallet asset mismatch: wallet holds ${walletAsset}, settlement requested for ${asset}.`);
+      }
+
+      const walletAddress = wallet.address || wallet.walletAddresses?.[0]?.address || "";
+      const resolved = walletAddress.trim();
+
+      if (!resolved) {
+        throw new Error("Selected merchant wallet does not have a valid settlement address.");
+      }
+
+      if (inputAddress && inputAddress !== resolved) {
+        throw new Error("Destination address does not match the selected merchant wallet address.");
+      }
+
+      return { destination: resolved, wallet };
+    }
+
+    if (!inputAddress) {
+      throw new Error("Destination address is required for crypto settlement.");
+    }
+
+    return { destination: inputAddress, wallet: null };
+  }
+
   async executeSettlement(
     paymentIntentId: string,
     options: {
@@ -50,6 +107,7 @@ export default class CryptoSettlementService {
       asset?: string;
       network?: string;
       destinationAddress?: string;
+      walletId?: string;
     }
   ) {
     const paymentIntent = await this.paymentService.getPaymentIntent(
@@ -58,44 +116,50 @@ export default class CryptoSettlementService {
 
     if (!paymentIntent) throw new Error("Payment Intent not found.");
 
-    const asset = String(options.asset ?? "USDT").toUpperCase();
-    const network = String(options.network ?? "TRON").toUpperCase();
-    const destination = options.destinationAddress ?? "";
-
-    if (!destination.trim()) {
-      throw new Error("Destination address is required for crypto settlement.");
+    if (!options.transactionId) {
+      throw new Error("Transaction ID is required for crypto settlement.");
     }
 
-    // ensure transaction exists
+    const asset = String(options.asset ?? "USDT").toUpperCase();
+    const network = String(options.network ?? "ETHEREUM").toUpperCase();
     const transaction = await this.paymentService.findTransactionById(
       options.transactionId
     );
 
     if (!transaction) throw new Error("Transaction not found.");
 
+    const destinationResolution = await this.resolveSettlementDestination(paymentIntent, {
+      walletId: options.walletId,
+      destinationAddress: options.destinationAddress,
+      network,
+      asset,
+    });
 
-    // Select provider: prefer an active ExchangeProvider from the DB.
-    let providerInstance: any;
-    let dbProvider: any = null;
+    const destination = destinationResolution.destination;
+    const wallet = destinationResolution.wallet;
 
     if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
-      providerInstance = new MockCryptoProvider();
-    } else {
-      dbProvider = await this.app.prisma.exchangeProvider.findFirst({ where: { isActive: true }, orderBy: { createdAt: "asc" } });
-
-      if (!dbProvider) {
-        throw new Error("No active exchange provider is configured for crypto settlement.");
-      }
-
-      providerInstance = new GenericHttpCryptoProvider({
-        baseUrl: dbProvider.baseUrl ?? "",
-        apiKey: dbProvider.apiKey ?? undefined,
-        apiSecret: dbProvider.apiSecret ?? undefined,
-        metadata: dbProvider.metadata ?? undefined,
-      });
+      throw new Error("Mock crypto settlement is disabled. Set USE_MOCK_CRYPTO_PROVIDER=false and configure a real crypto transfer provider or RPC signer.");
     }
 
-    // Create a persisted live quote (reservation) and enforce expiry
+    const dbProvider = await this.app.prisma.exchangeProvider.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    if (!dbProvider) {
+      throw new Error("No active exchange provider is configured for crypto settlement.");
+    }
+
+    const providerInstance = new GenericHttpCryptoProvider({
+      baseUrl: dbProvider.baseUrl ?? "",
+      apiKey: dbProvider.apiKey ?? undefined,
+      apiSecret: dbProvider.apiSecret ?? undefined,
+      metadata: dbProvider.metadata ?? undefined,
+    });
+
+    const settlementReference = `USDT-${paymentIntent.id}-${transaction.id}`;
+
     const quoteRecord = await this.exchangeService.createQuote({
       fromCurrency: paymentIntent.currency as any,
       toCurrency: asset as any,
@@ -114,7 +178,6 @@ export default class CryptoSettlementService {
       throw new Error("Quote expired immediately after creation.");
     }
 
-    // Create conversion record referencing the quote
     const conversion = await this.exchangeService.createConversion({
       merchantId: paymentIntent.merchantId,
       transactionId: transaction.id,
@@ -131,26 +194,16 @@ export default class CryptoSettlementService {
       } as unknown as Prisma.JsonValue,
     });
 
-    // Validate address if provider supports it
     if (typeof providerInstance.validateAddress === "function") {
       const addressValid = await providerInstance.validateAddress({ asset, network, address: destination });
-
       if (!addressValid) {
         await this.exchangeService.failConversion(conversion.id);
-
-        return {
-          success: false,
-          message: "Destination address invalid",
-          conversion,
-        } as const;
+        return { success: false, message: "Destination address invalid", conversion } as const;
       }
     }
 
-    // If provider supports OTC flow (quote + execute), use that. Otherwise fall back to sendTransaction.
     let sendResult: any;
-
     if (typeof (providerInstance as any).requestQuote === "function" && typeof (providerInstance as any).executeSwap === "function") {
-      // If provider supports server-side quote execution, prefer it.
       try {
         const providerQuote = await (providerInstance as any).requestQuote({
           fiatAmount: Number(paymentIntent.amount),
@@ -160,8 +213,10 @@ export default class CryptoSettlementService {
           reference: transaction.reference ?? paymentIntent.id,
         });
 
-        // update conversion metadata with providerQuote
-        await this.app.prisma.cryptoConversion.update({ where: { id: conversion.id }, data: { metadata: { ...(conversion.metadata as any), providerQuote } } });
+        await this.app.prisma.cryptoConversion.update({
+          where: { id: conversion.id },
+          data: { metadata: { ...(conversion.metadata as any), providerQuote } },
+        });
 
         const exec = await (providerInstance as any).executeSwap({
           providerQuoteId: providerQuote.providerQuoteId,
@@ -174,30 +229,8 @@ export default class CryptoSettlementService {
         });
 
         sendResult = exec;
-
-        // if provider returned a providerTxId/txHash, persist a blockchainTransaction record
-        if (exec && (exec.transactionHash || exec.providerTxId)) {
-          const blockchain = await this.app.prisma.blockchainNetwork.findFirst({ where: { name: network } });
-
-          const bc = await this.blockchainService.createTransaction({
-            blockchain: blockchain?.id ?? "unknown",
-            fromAddress: dbProvider?.metadata?.fromAddress ?? "",
-            toAddress: destination,
-            amount: new Prisma.Decimal(exec.cryptoAmount ?? providerQuote.cryptoAmount ?? 0),
-            currency: asset,
-            fee: new Prisma.Decimal(0),
-            payload: exec.raw ?? Prisma.JsonNull,
-            metadata: { providerTxId: exec.providerTxId } as unknown as Prisma.JsonValue,
-            // provide txHash when available
-            txHash: exec.transactionHash ?? exec.providerTxId,
-          } as any);
-
-          // link blockchain transaction to conversion
-          await this.app.prisma.cryptoConversion.update({ where: { id: conversion.id }, data: { blockchainTransactionId: bc.id } });
-        }
       } catch (err) {
         await this.exchangeService.failConversion(conversion.id);
-
         return {
           success: false,
           message: err instanceof Error ? err.message : "provider execution failed",
@@ -206,7 +239,6 @@ export default class CryptoSettlementService {
         } as const;
       }
     } else {
-      // Send crypto transaction using selected provider
       sendResult = await providerInstance.sendTransaction({
         asset,
         network,
@@ -218,7 +250,6 @@ export default class CryptoSettlementService {
 
     if (!sendResult.success) {
       await this.exchangeService.failConversion(conversion.id);
-
       return {
         success: false,
         message: sendResult.message,
@@ -227,30 +258,39 @@ export default class CryptoSettlementService {
       } as const;
     }
 
-    // Update conversion and ledger references. The blockchain tx/hash is
-    // provider-dependent; we persist in metadata and leave richer
-    // wallet-transfer bookkeeping to BlockchainService if available.
+    const blockchainTransfer = await this.blockchainService.sendUsdtTransfer({
+      merchantId: paymentIntent.merchantId,
+      walletId: wallet?.id,
+      network,
+      asset,
+      amount: new Prisma.Decimal(String(quoteRecord.quoteAmount)),
+      destinationAddress: destination,
+      reference: settlementReference,
+      metadata: {
+        paymentIntentId: paymentIntent.id,
+        transactionId: transaction.id,
+        conversionId: conversion.id,
+        quoteId: quoteRecord.id,
+      },
+    });
+
     await this.exchangeService.completeConversion(conversion.id);
 
-    // record on transaction metadata
-    const existingMeta =
-      transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
-        ? transaction.metadata
-        : {};
+    const existingMeta = transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+      ? transaction.metadata
+      : {};
 
-    const updatedMeta = JSON.parse(
-      JSON.stringify({
-        ...(existingMeta as Record<string, unknown>),
-        cryptoSettlement: {
-          asset,
-          network,
-          destination,
-          status: sendResult.status,
-          transactionHash: sendResult.transactionHash,
-          raw: sendResult.raw,
-        },
-      })
-    );
+    const updatedMeta = JSON.parse(JSON.stringify({
+      ...(existingMeta as Record<string, unknown>),
+      cryptoSettlement: {
+        asset,
+        network,
+        destination,
+        status: blockchainTransfer.result.status,
+        transactionHash: blockchainTransfer.txHash,
+        raw: blockchainTransfer.result.raw,
+      },
+    }));
 
     await this.app.prisma.transaction.update({
       where: { id: transaction.id },
@@ -258,14 +298,19 @@ export default class CryptoSettlementService {
         metadata: updatedMeta,
         cryptoCurrency: asset as any,
         cryptoAmount: new Prisma.Decimal(quoteRecord.quoteAmount.toString()),
+        blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
       },
     });
 
     return {
       success: true,
-      message: "Crypto transfer initiated",
+      message: "USDT transfer broadcast and awaiting confirmations",
       conversion,
-      sendResult,
+      sendResult: blockchainTransfer.result,
+      transactionHash: blockchainTransfer.txHash,
+      blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
+      confirmations: blockchainTransfer.confirmations,
+      requiredConfirmations: blockchainTransfer.requiredConfirmations,
     } as const;
   }
 }

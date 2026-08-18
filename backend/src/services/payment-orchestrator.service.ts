@@ -119,6 +119,7 @@ export default class PaymentOrchestratorService {
       asset: payload.asset,
       network: payload.network,
       destinationAddress: payload.destinationAddress,
+      walletId: payload.walletId,
     });
   }
 
