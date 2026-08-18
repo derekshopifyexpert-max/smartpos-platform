@@ -115,19 +115,21 @@ export default class CryptoSettlementService {
     );
 
     if (!paymentIntent) throw new Error("Payment Intent not found.");
-
-    if (!options.transactionId) {
-      throw new Error("Transaction ID is required for crypto settlement.");
-    }
+    if (!options.transactionId) throw new Error("Transaction ID is required for crypto settlement.");
 
     const asset = String(options.asset ?? "USDT").toUpperCase();
     const network = String(options.network ?? "ETHEREUM").toUpperCase();
-    const transaction = await this.paymentService.findTransactionById(
-      options.transactionId
-    );
-
+    const fiatCurrency = paymentIntent.currency;
+    
+    const transaction = await this.paymentService.findTransactionById(options.transactionId);
     if (!transaction) throw new Error("Transaction not found.");
 
+    // Validate settlement requirements
+    if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
+      throw new Error("Mock crypto settlement is disabled. Set USE_MOCK_CRYPTO_PROVIDER=false and configure EXCHANGE_PROVIDER_* environment variables.");
+    }
+
+    // STEP 1: Resolve destination wallet
     const destinationResolution = await this.resolveSettlementDestination(paymentIntent, {
       walletId: options.walletId,
       destinationAddress: options.destinationAddress,
@@ -136,181 +138,190 @@ export default class CryptoSettlementService {
     });
 
     const destination = destinationResolution.destination;
-    const wallet = destinationResolution.wallet;
+    const merchantWallet = destinationResolution.wallet;
 
-    if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
-      throw new Error("Mock crypto settlement is disabled. Set USE_MOCK_CRYPTO_PROVIDER=false and configure a real crypto transfer provider or RPC signer.");
-    }
-
-    const dbProvider = await this.app.prisma.exchangeProvider.findFirst({
-      where: { isActive: true },
-      orderBy: { createdAt: "asc" },
-    });
-
-    if (!dbProvider) {
-      throw new Error("No active exchange provider is configured for crypto settlement.");
-    }
-
-    const providerInstance = new GenericHttpCryptoProvider({
-      baseUrl: dbProvider.baseUrl ?? "",
-      apiKey: dbProvider.apiKey ?? undefined,
-      apiSecret: dbProvider.apiSecret ?? undefined,
-      metadata: dbProvider.metadata ?? undefined,
-    });
-
-    const settlementReference = `USDT-${paymentIntent.id}-${transaction.id}`;
-
-    const quoteRecord = await this.exchangeService.createQuote({
-      fromCurrency: paymentIntent.currency as any,
-      toCurrency: asset as any,
-      amount: new Prisma.Decimal(Number(paymentIntent.amount)),
-      provider: dbProvider?.name ?? "smartpos",
-      ttlSeconds: 30,
-      metadata: {
-        paymentIntentId: paymentIntent.id,
-        destinationAddress: destination,
-        network,
-        asset,
-      } as unknown as Prisma.JsonValue,
-    });
-
-    if (quoteRecord.expiresAt && new Date(quoteRecord.expiresAt) <= new Date()) {
-      throw new Error("Quote expired immediately after creation.");
-    }
-
-    const conversion = await this.exchangeService.createConversion({
-      merchantId: paymentIntent.merchantId,
-      transactionId: transaction.id,
-      fromCurrency: paymentIntent.currency as any,
-      toCurrency: asset as any,
-      fromAmount: new Prisma.Decimal(Number(paymentIntent.amount)),
-      exchangeProvider: dbProvider?.name ?? "smartpos",
-      metadata: {
-        paymentIntentId: paymentIntent.id,
-        destinationAddress: destination,
-        network,
-        asset,
-        quoteId: quoteRecord.id,
-      } as unknown as Prisma.JsonValue,
-    });
-
-    if (typeof providerInstance.validateAddress === "function") {
-      const addressValid = await providerInstance.validateAddress({ asset, network, address: destination });
-      if (!addressValid) {
-        await this.exchangeService.failConversion(conversion.id);
-        return { success: false, message: "Destination address invalid", conversion } as const;
-      }
-    }
-
-    let sendResult: any;
-    if (typeof (providerInstance as any).requestQuote === "function" && typeof (providerInstance as any).executeSwap === "function") {
-      try {
-        const providerQuote = await (providerInstance as any).requestQuote({
-          fiatAmount: Number(paymentIntent.amount),
-          fiatCurrency: String(paymentIntent.currency),
-          asset,
-          network,
-          reference: transaction.reference ?? paymentIntent.id,
-        });
-
-        await this.app.prisma.cryptoConversion.update({
-          where: { id: conversion.id },
-          data: { metadata: { ...(conversion.metadata as any), providerQuote } },
-        });
-
-        const exec = await (providerInstance as any).executeSwap({
-          providerQuoteId: providerQuote.providerQuoteId,
-          fiatAmount: Number(paymentIntent.amount),
-          fiatCurrency: String(paymentIntent.currency),
-          asset,
-          network,
-          destination,
-          reference: transaction.reference ?? paymentIntent.id,
-        });
-
-        sendResult = exec;
-      } catch (err) {
-        await this.exchangeService.failConversion(conversion.id);
-        return {
-          success: false,
-          message: err instanceof Error ? err.message : "provider execution failed",
-          conversion,
-          raw: err,
-        } as const;
-      }
-    } else {
-      sendResult = await providerInstance.sendTransaction({
-        asset,
-        network,
-        toAddress: destination,
-        amount: quoteRecord.quoteAmount,
-        reference: transaction.reference ?? paymentIntent.id,
-      });
-    }
-
-    if (!sendResult.success) {
-      await this.exchangeService.failConversion(conversion.id);
-      return {
-        success: false,
-        message: sendResult.message,
-        conversion,
-        raw: sendResult.raw,
-      } as const;
-    }
-
-    const blockchainTransfer = await this.blockchainService.sendUsdtTransfer({
-      merchantId: paymentIntent.merchantId,
-      walletId: wallet?.id,
-      network,
-      asset,
-      amount: new Prisma.Decimal(String(quoteRecord.quoteAmount)),
-      destinationAddress: destination,
-      reference: settlementReference,
-      metadata: {
-        paymentIntentId: paymentIntent.id,
-        transactionId: transaction.id,
-        conversionId: conversion.id,
-        quoteId: quoteRecord.id,
-      },
-    });
-
-    await this.exchangeService.completeConversion(conversion.id);
-
-    const existingMeta = transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
-      ? transaction.metadata
-      : {};
-
-    const updatedMeta = JSON.parse(JSON.stringify({
-      ...(existingMeta as Record<string, unknown>),
-      cryptoSettlement: {
-        asset,
-        network,
-        destination,
-        status: blockchainTransfer.result.status,
-        transactionHash: blockchainTransfer.txHash,
-        raw: blockchainTransfer.result.raw,
-      },
-    }));
-
-    await this.app.prisma.transaction.update({
-      where: { id: transaction.id },
+    // STEP 2: Create crypto conversion record for tracking
+    const conversion = await this.app.prisma.cryptoConversion.create({
       data: {
-        metadata: updatedMeta,
-        cryptoCurrency: asset as any,
-        cryptoAmount: new Prisma.Decimal(quoteRecord.quoteAmount.toString()),
-        blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
+        merchantId: paymentIntent.merchantId,
+        fromCurrency: fiatCurrency as any,
+        toCurrency: asset as any,
+        fromAmount: new Prisma.Decimal(String(paymentIntent.amount)),
+        toAmount: new Prisma.Decimal("0"), // Will be updated with actual fill
+        rate: new Prisma.Decimal("0"), // Will be updated from quote
+        status: "pending",
+        exchangeProvider: process.env.EXCHANGE_PROVIDER_NAME || "unknown",
+        transactionId: transaction.id,
+        metadata: {
+          paymentIntentId: paymentIntent.id,
+          destinationAddress: destination,
+          network,
+          asset,
+          stage: "initiated",
+        } as unknown as Prisma.JsonValue,
       },
     });
 
-    return {
-      success: true,
-      message: "USDT transfer broadcast and awaiting confirmations",
-      conversion,
-      sendResult: blockchainTransfer.result,
-      transactionHash: blockchainTransfer.txHash,
-      blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
-      confirmations: blockchainTransfer.confirmations,
-      requiredConfirmations: blockchainTransfer.requiredConfirmations,
-    } as const;
+    try {
+      // STEP 3: Get real live quote from provider
+      const quoteResponse = await this.exchangeService.getRealQuote({
+        baseAsset: asset,
+        quoteAsset: fiatCurrency as any,
+        side: "BUY",
+        amount: new Prisma.Decimal(String(paymentIntent.amount)),
+        ttlSeconds: 30,
+      });
+
+      // Store quote ID for reference
+      const quoteId = quoteResponse.id;
+
+      // Update conversion with quote info
+      await this.app.prisma.cryptoConversion.update({
+        where: { id: conversion.id },
+        data: {
+          rate: quoteResponse.rate,
+          metadata: {
+            ...(conversion.metadata as Record<string, unknown>),
+            quoteId,
+            stage: "quote_obtained",
+            quoteExpiresAt: quoteResponse.expiresAt.toISOString(),
+            expectedOutputAmount: quoteResponse.quoteAmount.toString(),
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      // STEP 4: Create idempotent order key
+      const clientOrderId = `${paymentIntent.id}:BUY:${Date.now()}`;
+
+      // STEP 5: Execute BUY order with actual provider
+      const order = await this.exchangeService.executeBuyOrder({
+        baseAsset: asset,
+        quoteAsset: fiatCurrency as any,
+        amount: new Prisma.Decimal(String(paymentIntent.amount)),
+        quoteId,
+        clientOrderId,
+      });
+
+      if (!order) {
+        throw new Error("Failed to execute buy order on exchange provider.");
+      }
+
+      // Update conversion with order info
+      const orderMetadata = order.metadata && typeof order.metadata === "object" ? order.metadata : {};
+      const actualExecutedAmount = new Prisma.Decimal(
+        orderMetadata.order?.executedAmount?.toString() || order.filledAmount?.toString() || "0"
+      );
+
+      if (actualExecutedAmount.lte(new Prisma.Decimal("0"))) {
+        throw new Error(`Exchange order did not fill any amount. Order status: ${order.status}`);
+      }
+
+      await this.app.prisma.cryptoConversion.update({
+        where: { id: conversion.id },
+        data: {
+          toAmount: actualExecutedAmount,
+          exchangeOrderId: order.id,
+          status: "exchange_completed",
+          metadata: {
+            ...(conversion.metadata as Record<string, unknown>),
+            exchangeOrderId: order.id,
+            orderId: orderMetadata.order?.orderId,
+            actualExecutedAmount: actualExecutedAmount.toString(),
+            requestedAmount: String(paymentIntent.amount),
+            stage: "exchange_filled",
+            orderStatus: order.status,
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      // STEP 6: Execute blockchain transfer with ACTUAL filled amount (not requested)
+      const blockchainTransfer = await this.blockchainService.sendUsdtTransfer({
+        merchantId: paymentIntent.merchantId,
+        walletId: merchantWallet?.id,
+        network,
+        asset,
+        amount: actualExecutedAmount, // Use actual acquired, not requested
+        destinationAddress: destination,
+        reference: `${paymentIntent.id}:${conversion.id}`,
+        metadata: {
+          paymentIntentId: paymentIntent.id,
+          transactionId: transaction.id,
+          conversionId: conversion.id,
+          exchangeOrderId: order.id,
+          quoteId,
+        } as unknown as Prisma.JsonValue,
+      });
+
+      // STEP 7: Update conversion as complete
+      await this.app.prisma.cryptoConversion.update({
+        where: { id: conversion.id },
+        data: {
+          status: "completed",
+          completedAt: new Date(),
+          metadata: {
+            ...(conversion.metadata as Record<string, unknown>),
+            blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
+            txHash: blockchainTransfer.txHash,
+            stage: "blockchain_broadcast",
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      // STEP 8: Update transaction with settlement details
+      const existingMeta = transaction.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+        ? transaction.metadata
+        : {};
+
+      await this.app.prisma.transaction.update({
+        where: { id: transaction.id },
+        data: {
+          metadata: {
+            ...(existingMeta as Record<string, unknown>),
+            cryptoSettlement: {
+              status: blockchainTransfer.result.status,
+              asset,
+              network,
+              destination,
+              transactionHash: blockchainTransfer.txHash,
+              requiredConfirmations: blockchainTransfer.requiredConfirmations,
+              conversionId: conversion.id,
+              exchangeOrderId: order.id,
+              requestedAmount: paymentIntent.amount.toString(),
+              actualAcquiredAmount: actualExecutedAmount.toString(),
+            },
+          } as unknown as Prisma.JsonValue,
+          cryptoCurrency: asset as any,
+          cryptoAmount: actualExecutedAmount,
+          blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
+        },
+      });
+
+      return {
+        success: true,
+        message: "Crypto settlement complete: exchange order filled and USDT transfer broadcast",
+        conversion,
+        blockchainTransactionId: blockchainTransfer.blockchainTransactionId,
+        transactionHash: blockchainTransfer.txHash,
+        confirmations: blockchainTransfer.confirmations,
+        requiredConfirmations: blockchainTransfer.requiredConfirmations,
+      } as const;
+    } catch (error) {
+      // Handle settlement failure
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      await this.app.prisma.cryptoConversion.update({
+        where: { id: conversion.id },
+        data: {
+          status: "failed",
+          metadata: {
+            ...(conversion.metadata as Record<string, unknown>),
+            failureReason: errorMessage,
+            failedAt: new Date().toISOString(),
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      throw error;
+    }
   }
 }

@@ -4,6 +4,7 @@ import {
   ReceiptText,
   Settings,
   Wallet,
+  TrendingUp,
 } from "lucide-react";
 
 export interface NavigationItem {
@@ -23,6 +24,11 @@ export const navigation: NavigationItem[] = [
     title: "Payments",
     href: "/dashboard/payments",
     icon: CreditCard,
+  },
+  {
+    title: "Crypto Trading",
+    href: "/dashboard/crypto",
+    icon: TrendingUp,
   },
   {
     title: "Wallets",

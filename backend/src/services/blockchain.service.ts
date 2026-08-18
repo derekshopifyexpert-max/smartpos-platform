@@ -326,6 +326,171 @@ export default class BlockchainService {
     };
   }
 
+  async verifyUsdtTransfer(data: {
+    network: string;
+    txHash: string;
+    tokenContractAddress: string;
+    fromAddress: string;
+    toAddress: string;
+    expectedAmount: Prisma.Decimal | string | number;
+    tokenDecimals?: number;
+  }) {
+    const { provider, config } = await this.getRpcContext(data.network);
+    const txHash = this.validateRealTxHash(data.txHash);
+    const tx = await provider.getTransaction(txHash);
+
+    if (!tx) {
+      return {
+        found: false,
+        mined: false,
+        status: "pending",
+        receipt: null,
+      };
+    }
+
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (!receipt) {
+      return {
+        found: true,
+        mined: false,
+        status: "pending",
+        receipt: null,
+      };
+    }
+
+    const normalizedContract = data.tokenContractAddress.toLowerCase();
+    const normalizedFrom = data.fromAddress.toLowerCase();
+    const normalizedTo = data.toAddress.toLowerCase();
+    const expectedAmountUnits = ethers.parseUnits(String(data.expectedAmount), data.tokenDecimals ?? config.decimals);
+
+    const transferEventSignature = ethers.id("Transfer(address,address,uint256)");
+    const transferLogs = receipt.logs.filter((log) => {
+      return log.address.toLowerCase() === normalizedContract && log.topics[0] === transferEventSignature;
+    });
+
+    const matchedTransfer = transferLogs.find((log) => {
+      if (log.topics.length < 3) {
+        return false;
+      }
+
+      const from = ethers.getAddress(`0x${log.topics[1].slice(26)}`);
+      const to = ethers.getAddress(`0x${log.topics[2].slice(26)}`);
+      const [value] = ethers.AbiCoder.defaultAbiCoder().decode(["uint256"], log.data);
+      const fromMatch = from.toLowerCase() === normalizedFrom;
+      const toMatch = to.toLowerCase() === normalizedTo;
+      const valueMatch = value === expectedAmountUnits;
+      return fromMatch && toMatch && valueMatch;
+    });
+
+    const latestBlock = await provider.getBlockNumber();
+    const confirmations = receipt.blockNumber ? latestBlock - receipt.blockNumber + 1 : 0;
+    const actualFee = receipt.gasUsed && receipt.effectiveGasPrice ? receipt.gasUsed * receipt.effectiveGasPrice : null;
+
+    return {
+      found: true,
+      mined: true,
+      status: receipt.status === 0 ? "reverted" : confirmations >= config.requiredConfirmations ? "confirmed" : "confirming",
+      receipt,
+      confirmations,
+      actualFee: actualFee !== null ? ethers.formatEther(actualFee) : null,
+      transferEventFound: Boolean(matchedTransfer),
+      transferEventMatch: Boolean(matchedTransfer),
+      blockNumber: receipt.blockNumber,
+      blockHash: receipt.blockHash,
+    };
+  }
+
+  async syncTransactionStatus(txId: string) {
+    const record = await this.app.prisma.blockchainTransaction.findUnique({
+      where: { id: txId },
+      include: {
+        blockchain: true,
+      },
+    });
+
+    if (!record) {
+      throw new Error(`Blockchain transaction record not found: ${txId}`);
+    }
+
+    const networkName = String(record.blockchain?.name ?? process.env.BLOCKCHAIN_NETWORK ?? "ETHEREUM").toUpperCase();
+    const metadata = record.metadata && typeof record.metadata === "object" ? record.metadata as Record<string, unknown> : {};
+    const tokenContractAddress = String((metadata.contractAddress as string | undefined) ?? process.env.BLOCKCHAIN_USDT_CONTRACT_ADDRESS ?? "").trim();
+
+    if (!record.txHash) {
+      throw new Error(`Transaction ${txId} has no real tx hash for blockchain verification.`);
+    }
+
+    const verification = await this.verifyUsdtTransfer({
+      network: networkName,
+      txHash: record.txHash,
+      tokenContractAddress: tokenContractAddress || "0x0000000000000000000000000000000000000000",
+      fromAddress: String(metadata.senderAddress ?? record.fromAddress ?? ""),
+      toAddress: record.toAddress,
+      expectedAmount: record.amount,
+      tokenDecimals: Number(metadata.tokenDecimals ?? 6),
+    });
+
+    if (!verification.found) {
+      await this.app.prisma.blockchainTransaction.update({
+        where: { id: txId },
+        data: {
+          confirmations: 0,
+          status: "pending",
+          metadata: {
+            ...(metadata as Record<string, unknown>),
+            lastCheckedAt: new Date().toISOString(),
+            rpcLookup: "not found",
+          },
+        },
+      });
+      return verification;
+    }
+
+    if (verification.mined && verification.receipt && verification.receipt.status === 0) {
+      await this.app.prisma.blockchainTransaction.update({
+        where: { id: txId },
+        data: {
+          blockNumber: verification.blockNumber,
+          blockHash: verification.blockHash,
+          confirmations: verification.confirmations,
+          status: "reverted",
+          metadata: {
+            ...(metadata as Record<string, unknown>),
+            lastCheckedAt: new Date().toISOString(),
+            actualFee: verification.actualFee,
+            receiptStatus: 0,
+          },
+        },
+      });
+      return verification;
+    }
+
+    if (verification.mined && verification.receipt) {
+      const nextStatus = verification.confirmations >= Number(metadata.requiredConfirmations ?? record.metadata?.requiredConfirmations ?? 1)
+        ? "confirmed"
+        : "confirming";
+
+      await this.app.prisma.blockchainTransaction.update({
+        where: { id: txId },
+        data: {
+          blockNumber: verification.blockNumber,
+          blockHash: verification.blockHash,
+          confirmations: verification.confirmations,
+          status: nextStatus,
+          metadata: {
+            ...(metadata as Record<string, unknown>),
+            lastCheckedAt: new Date().toISOString(),
+            actualFee: verification.actualFee,
+            receiptStatus: verification.receipt.status,
+            transferEventFound: verification.transferEventFound,
+          },
+        },
+      });
+    }
+
+    return verification;
+  }
+
   async markConfirmed(
 
     txId: string,

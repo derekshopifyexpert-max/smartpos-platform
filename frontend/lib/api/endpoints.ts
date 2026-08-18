@@ -61,6 +61,9 @@ export const ENDPOINTS = {
       authorizationId: string
     ) =>
       `/payment-intents/${id}/authorizations/${authorizationId}/charge`,
+
+    cryptoSettlement: (id: string) =>
+      `/payment-intents/${id}/crypto-settlement`,
   },
 
   paymentMethods: {
@@ -74,5 +77,13 @@ export const ENDPOINTS = {
       id: string
     ) =>
       `/payment-methods/${id}/charge`,
+  },
+
+  exchange: {
+    realQuote: "/exchange/real-quote",
+    buy: "/exchange/buy",
+    sell: "/exchange/sell",
+    order: (orderId: string) => `/exchange/orders/${orderId}`,
+    balance: (asset: string) => `/exchange/balance/${asset}`,
   },
 } as const;

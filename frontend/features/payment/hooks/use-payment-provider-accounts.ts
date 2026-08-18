@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/services/api-client";
+import { api } from "@/lib/api/client";
 
 export interface PaymentProviderAccount {
   id: string;
@@ -22,7 +22,9 @@ export function usePaymentProviderAccounts() {
   return useQuery<PaymentProviderAccount[]>({
     queryKey: ["payment-provider-accounts"],
     queryFn: async () => {
-      const response = await apiClient.get("/payment-provider-accounts");
+      const response = await api.get<{ success: boolean; data?: PaymentProviderAccount[] }>(
+        "/payment-provider-accounts"
+      );
       return response.data?.data || [];
     },
   });
@@ -35,7 +37,7 @@ export function usePaymentProviderAccountsByProvider(provider: string) {
   return useQuery<PaymentProviderAccount[]>({
     queryKey: ["payment-provider-accounts", "by-provider", provider],
     queryFn: async () => {
-      const response = await apiClient.get(
+      const response = await api.get<{ success: boolean; data?: PaymentProviderAccount[] }>(
         `/payment-provider-accounts/by-provider/${provider}`
       );
       return response.data?.data || [];
@@ -51,8 +53,10 @@ export function usePaymentProviderAccount(id: string) {
   return useQuery<PaymentProviderAccount>({
     queryKey: ["payment-provider-accounts", id],
     queryFn: async () => {
-      const response = await apiClient.get(`/payment-provider-accounts/${id}`);
-      return response.data?.data;
+      const response = await api.get<{ success: boolean; data?: PaymentProviderAccount }>(
+        `/payment-provider-accounts/${id}`
+      );
+      return response.data?.data as PaymentProviderAccount;
     },
     enabled: !!id,
   });
