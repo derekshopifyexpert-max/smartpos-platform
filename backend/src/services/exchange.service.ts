@@ -1,11 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { FastifyInstance } from "fastify";
+import QuoteValidatorService from "./quote-validator.service.js";
 
 export default class ExchangeService {
 
+  private readonly quoteValidator: QuoteValidatorService;
+
   constructor(
     private readonly app: FastifyInstance
-  ) {}
+  ) {
+    this.quoteValidator = new QuoteValidatorService(app);
+  }
 
   /*
   |--------------------------------------------------------------------------
@@ -113,31 +118,11 @@ export default class ExchangeService {
       );
 
     if (!rate) {
-      // If running in mock mode, create a fallback 1:1 rate to allow local e2e testing
-      if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
-        const fallback = new Prisma.Decimal(1);
-        await this.createExchangeRate({
-          fromCurrency,
-          toCurrency,
-          rate: fallback,
-          source: "mock-fallback",
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
-        });
-
-        return {
-          fromCurrency,
-          toCurrency,
-          rate: fallback,
-          amount,
-          convertedAmount: amount,
-          expiresAt: null,
-        };
-      }
-
+      // In production, throw a clear error - don't create fake rates
       throw new Error(
-        "Exchange rate unavailable."
+        `Exchange rate unavailable for ${fromCurrency}/${toCurrency}. ` +
+        `Please configure a real exchange provider or request an updated rate.`
       );
-
     }
 
     const convertedAmount =
@@ -255,19 +240,11 @@ export default class ExchangeService {
     let rate = await this.latestRate(data.fromCurrency, data.toCurrency);
 
     if (!rate) {
-      if (process.env.USE_MOCK_CRYPTO_PROVIDER === "true") {
-        // create a mock 1:1 rate for local testing
-        const fallback = new Prisma.Decimal(1);
-        rate = await this.createExchangeRate({
-          fromCurrency: data.fromCurrency,
-          toCurrency: data.toCurrency,
-          rate: fallback,
-          source: "mock-fallback",
-          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
-        }) as any;
-      } else {
-        throw new Error("Exchange rate unavailable for quote.");
-      }
+      // In production, require real rate from provider
+      throw new Error(
+        `Exchange rate unavailable for ${data.fromCurrency}/${data.toCurrency}. ` +
+        `Please configure a real exchange provider or request an updated rate.`
+      );
     }
 
     const quoteAmount = data.amount.mul(rate.rate);
@@ -396,4 +373,418 @@ export default class ExchangeService {
 
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Real Exchange Provider Integration
+  |--------------------------------------------------------------------------
+  */
+
+  /**
+   * Get or create a real exchange provider instance.
+   * Configured via ExchangeProvider database model or environment variables.
+   */
+  async getExchangeProvider() {
+    // Try to get configured provider from database first
+    const dbProvider = await this.app.prisma.exchangeProvider.findFirst({
+      where: { isActive: true }
+    });
+
+    if (dbProvider && dbProvider.baseUrl && dbProvider.apiKey) {
+      // Use database-configured provider
+      const { RealExchangeProvider } = await import("../providers/real-exchange.provider.js");
+      return new RealExchangeProvider({
+        provider: dbProvider.name,
+        baseUrl: dbProvider.baseUrl,
+        apiKey: dbProvider.apiKey,
+        apiSecret: dbProvider.apiSecret ?? undefined,
+        metadata: dbProvider.metadata as any,
+      });
+    }
+
+    // Try environment variables
+    const { EXCHANGE_PROVIDER_NAME, EXCHANGE_PROVIDER_BASE_URL, EXCHANGE_PROVIDER_API_KEY, EXCHANGE_PROVIDER_API_SECRET } = await import("../config/env.js").then(m => m.default);
+
+    if (!EXCHANGE_PROVIDER_NAME || !EXCHANGE_PROVIDER_BASE_URL) {
+      throw new Error(
+        "No exchange provider configured. " +
+        "Set EXCHANGE_PROVIDER_NAME and EXCHANGE_PROVIDER_BASE_URL in environment variables " +
+        "or configure an active ExchangeProvider in the database."
+      );
+    }
+
+    const { RealExchangeProvider } = await import("../providers/real-exchange.provider.js");
+    return new RealExchangeProvider({
+      provider: EXCHANGE_PROVIDER_NAME,
+      baseUrl: EXCHANGE_PROVIDER_BASE_URL,
+      apiKey: EXCHANGE_PROVIDER_API_KEY,
+      apiSecret: EXCHANGE_PROVIDER_API_SECRET,
+    });
+  }
+
+  /**
+   * Get a live quote from the real exchange provider.
+   * Quote expires after ttlSeconds (default 30 seconds).
+   */
+  async getRealQuote(request: {
+    baseAsset: string;      // e.g., "USDT"
+    quoteAsset: string;     // e.g., "USD", "NGN"
+    side: "BUY" | "SELL";
+    amount: Prisma.Decimal;
+    ttlSeconds?: number;
+  }) {
+    try {
+      const provider = await this.getExchangeProvider();
+
+      // Get quote from provider
+      const providerQuote = await provider.getQuote({
+        baseAsset: request.baseAsset,
+        quoteAsset: request.quoteAsset,
+        side: request.side,
+        amount: request.amount,
+      });
+
+      // Persist quote in database
+      const quote = await this.app.prisma.exchangeQuote.create({
+        data: {
+          exchangeProviderId: (await this.getOrCreateProviderRecord(provider.constructor.name)).id,
+          fromCurrency: request.side === "BUY" ? request.quoteAsset : request.baseAsset,
+          toCurrency: request.side === "BUY" ? request.baseAsset : request.quoteAsset,
+          fromAmount: request.side === "BUY" ? request.amount : providerQuote.inputAmount,
+          toAmount: request.side === "BUY" ? providerQuote.outputAmount : request.amount,
+          rate: providerQuote.price,
+          expiresAt: providerQuote.expiresAt,
+          metadata: {
+            providerQuote,
+            quoteId: providerQuote.quoteId,
+            feePercentage: providerQuote.feePercentage.toString(),
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      return quote;
+    } catch (error) {
+      this.app.log.error({ error }, "Failed to get real exchange quote");
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a real BUY order on the exchange provider.
+   * 
+   * Features:
+   * - Quote validation if quoteId provided
+   * - Idempotent: returns existing order if clientOrderId was already used
+   * - Validates provider balance before execution
+   */
+  async executeBuyOrder(request: {
+    baseAsset: string;
+    quoteAsset: string;
+    amount: Prisma.Decimal;
+    quoteId?: string;
+    clientOrderId?: string;
+    limitPrice?: Prisma.Decimal;
+  }) {
+    try {
+      // Idempotency: Check if order already exists
+      if (request.clientOrderId) {
+        const existingOrder = await this.quoteValidator.getOrderByClientOrderId(
+          request.clientOrderId
+        );
+        if (existingOrder) {
+          this.app.log.info(
+            { clientOrderId: request.clientOrderId },
+            "Idempotent order retrieval: returning existing order"
+          );
+          return existingOrder;
+        }
+      }
+
+      // Quote validation: If quote provided, validate it
+      if (request.quoteId) {
+        const quote = await this.app.prisma.exchangeQuote.findUnique({
+          where: { id: request.quoteId },
+        });
+
+        if (!quote) {
+          throw new Error(`Quote not found: ${request.quoteId}`);
+        }
+
+        const validation = await this.quoteValidator.validateQuote(quote, {
+          baseAsset: request.baseAsset,
+          quoteAsset: request.quoteAsset,
+          requestedAmount: request.amount,
+          allowedVariancePercent: 2, // Allow 2% variance
+        });
+
+        if (!validation.valid) {
+          throw new Error(`Quote validation failed: ${validation.error}`);
+        }
+
+        // Mark quote as used
+        if (!quote.metadata || typeof quote.metadata !== "object") {
+          quote.metadata = {};
+        }
+        await this.app.prisma.exchangeQuote.update({
+          where: { id: request.quoteId },
+          data: {
+            metadata: {
+              ...quote.metadata,
+              usedAt: new Date().toISOString(),
+            } as unknown as Prisma.JsonValue,
+          },
+        });
+      }
+
+      const provider = await this.getExchangeProvider();
+
+      const order = await provider.buy({
+        baseAsset: request.baseAsset,
+        quoteAsset: request.quoteAsset,
+        side: "BUY",
+        amount: request.amount,
+        quoteId: request.quoteId,
+        clientOrderId: request.clientOrderId,
+        limitPrice: request.limitPrice,
+      });
+
+      // Persist order in database
+      const providerRecord = await this.getOrCreateProviderRecord(provider.constructor.name);
+      const dbOrder = await this.app.prisma.exchangeOrder.create({
+        data: {
+          exchangeProviderId: providerRecord.id,
+          orderId: order.orderId,
+          symbol: order.symbol,
+          side: "BUY",
+          type: request.limitPrice ? "LIMIT" : "MARKET",
+          price: order.averagePrice,
+          amount: order.requestedAmount,
+          filledAmount: order.executedAmount,
+          avgPrice: order.averagePrice,
+          status: order.status,
+          metadata: {
+            order,
+            clientOrderId: request.clientOrderId,
+            quoteId: request.quoteId,
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      // Record the trade/fill if provider returned executed amounts
+      if (order.executedAmount.gt(new Prisma.Decimal("0"))) {
+        await this.app.prisma.exchangeTrade.create({
+          data: {
+            orderId: dbOrder.id,
+            tradeId: order.orderId,
+            price: order.averagePrice,
+            amount: order.executedAmount,
+            total: order.executedAmount.mul(order.averagePrice),
+            fee: order.totalFee,
+            feeCurrency: "USD" as any,
+            metadata: order.metadata as unknown as Prisma.JsonValue,
+          },
+        });
+      }
+
+      return dbOrder;
+    } catch (error) {
+      this.app.log.error({ error, request }, "Failed to execute buy order");
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a real SELL order on the exchange provider.
+   * 
+   * Features:
+   * - Quote validation if quoteId provided
+   * - Idempotent: returns existing order if clientOrderId was already used
+   * - Validates provider balance before execution
+   */
+  async executeSellOrder(request: {
+    baseAsset: string;
+    quoteAsset: string;
+    amount: Prisma.Decimal;
+    quoteId?: string;
+    clientOrderId?: string;
+    limitPrice?: Prisma.Decimal;
+  }) {
+    try {
+      // Idempotency: Check if order already exists
+      if (request.clientOrderId) {
+        const existingOrder = await this.quoteValidator.getOrderByClientOrderId(
+          request.clientOrderId
+        );
+        if (existingOrder) {
+          this.app.log.info(
+            { clientOrderId: request.clientOrderId },
+            "Idempotent order retrieval: returning existing order"
+          );
+          return existingOrder;
+        }
+      }
+
+      // Quote validation: If quote provided, validate it
+      if (request.quoteId) {
+        const quote = await this.app.prisma.exchangeQuote.findUnique({
+          where: { id: request.quoteId },
+        });
+
+        if (!quote) {
+          throw new Error(`Quote not found: ${request.quoteId}`);
+        }
+
+        const validation = await this.quoteValidator.validateQuote(quote, {
+          baseAsset: request.baseAsset,
+          quoteAsset: request.quoteAsset,
+          requestedAmount: request.amount,
+          allowedVariancePercent: 2, // Allow 2% variance
+        });
+
+        if (!validation.valid) {
+          throw new Error(`Quote validation failed: ${validation.error}`);
+        }
+
+        // Mark quote as used
+        if (!quote.metadata || typeof quote.metadata !== "object") {
+          quote.metadata = {};
+        }
+        await this.app.prisma.exchangeQuote.update({
+          where: { id: request.quoteId },
+          data: {
+            metadata: {
+              ...quote.metadata,
+              usedAt: new Date().toISOString(),
+            } as unknown as Prisma.JsonValue,
+          },
+        });
+      }
+
+      const provider = await this.getExchangeProvider();
+
+      const order = await provider.sell({
+        baseAsset: request.baseAsset,
+        quoteAsset: request.quoteAsset,
+        side: "SELL",
+        amount: request.amount,
+        quoteId: request.quoteId,
+        clientOrderId: request.clientOrderId,
+        limitPrice: request.limitPrice,
+      });
+
+      // Persist order in database
+      const providerRecord = await this.getOrCreateProviderRecord(provider.constructor.name);
+      const dbOrder = await this.app.prisma.exchangeOrder.create({
+        data: {
+          exchangeProviderId: providerRecord.id,
+          orderId: order.orderId,
+          symbol: order.symbol,
+          side: "SELL",
+          type: request.limitPrice ? "LIMIT" : "MARKET",
+          price: order.averagePrice,
+          amount: order.requestedAmount,
+          filledAmount: order.executedAmount,
+          avgPrice: order.averagePrice,
+          status: order.status,
+          metadata: {
+            order,
+            clientOrderId: request.clientOrderId,
+            quoteId: request.quoteId,
+          } as unknown as Prisma.JsonValue,
+        },
+      });
+
+      // Record the trade/fill if provider returned executed amounts
+      if (order.executedAmount.gt(new Prisma.Decimal("0"))) {
+        await this.app.prisma.exchangeTrade.create({
+          data: {
+            orderId: dbOrder.id,
+            tradeId: order.orderId,
+            price: order.averagePrice,
+            amount: order.executedAmount,
+            total: order.executedAmount.mul(order.averagePrice),
+            fee: order.totalFee,
+            feeCurrency: "USD" as any,
+            metadata: order.metadata as unknown as Prisma.JsonValue,
+          },
+        });
+      }
+
+      return dbOrder;
+    } catch (error) {
+      this.app.log.error({ error, request }, "Failed to execute sell order");
+      throw error;
+    }
+  }
+
+  /**
+   * Get order status from provider
+   */
+  async getOrderStatus(orderId: string) {
+    try {
+      const provider = await this.getExchangeProvider();
+      const order = await provider.getOrder(orderId);
+
+      // Update database record if it exists
+      const dbOrder = await this.app.prisma.exchangeOrder.findUnique({
+        where: { orderId }
+      });
+
+      if (dbOrder) {
+        await this.app.prisma.exchangeOrder.update({
+          where: { id: dbOrder.id },
+          data: {
+            status: order.status,
+            filledAmount: order.executedAmount,
+            avgPrice: order.averagePrice,
+            metadata: {
+              ...(dbOrder.metadata as any),
+              lastStatusUpdate: new Date(),
+              order,
+            } as unknown as Prisma.JsonValue,
+          },
+        });
+      }
+
+      return order;
+    } catch (error) {
+      this.app.log.error({ error, orderId }, "Failed to get order status");
+      throw error;
+    }
+  }
+
+  /**
+   * Get provider account balance for an asset
+   */
+  async getProviderBalance(asset: string) {
+    try {
+      const provider = await this.getExchangeProvider();
+      const balance = await provider.getBalance(asset);
+      return balance;
+    } catch (error) {
+      this.app.log.error({ error, asset }, "Failed to get provider balance");
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Get or create ExchangeProvider record
+   */
+  private async getOrCreateProviderRecord(providerName: string) {
+    let provider = await this.app.prisma.exchangeProvider.findUnique({
+      where: { name: providerName }
+    });
+
+    if (!provider) {
+      provider = await this.app.prisma.exchangeProvider.create({
+        data: {
+          name: providerName,
+          isActive: true,
+        }
+      });
+    }
+
+    return provider;
+  }
+
 }
+

@@ -13,6 +13,7 @@ export default async function exchangeRoutes(
   const controller =
     new ExchangeController(service);
 
+  // Legacy endpoints
   app.post(
     "/exchange/rates",
     controller.createRate
@@ -21,6 +22,32 @@ export default async function exchangeRoutes(
   app.post(
     "/exchange/quote",
     controller.quote
+  );
+
+  // Real exchange provider endpoints
+  app.post(
+    "/exchange/real-quote",
+    controller.getRealQuote
+  );
+
+  app.post(
+    "/exchange/buy",
+    controller.buyOrder
+  );
+
+  app.post(
+    "/exchange/sell",
+    controller.sellOrder
+  );
+
+  app.get(
+    "/exchange/orders/:orderId",
+    controller.getOrderStatus
+  );
+
+  app.get(
+    "/exchange/balance/:asset",
+    controller.getBalance
   );
 
 }

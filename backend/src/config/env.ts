@@ -124,6 +124,48 @@ export const env = {
   S3_BUCKET:
     process.env.S3_BUCKET ||
     "",
+
+  // ========== EXCHANGE PROVIDER (Crypto Liquidity) ==========
+  EXCHANGE_PROVIDER_NAME:
+    process.env.EXCHANGE_PROVIDER_NAME ||
+    "",
+
+  EXCHANGE_PROVIDER_BASE_URL:
+    process.env.EXCHANGE_PROVIDER_BASE_URL ||
+    "",
+
+  EXCHANGE_PROVIDER_API_KEY:
+    process.env.EXCHANGE_PROVIDER_API_KEY ||
+    "",
+
+  EXCHANGE_PROVIDER_API_SECRET:
+    process.env.EXCHANGE_PROVIDER_API_SECRET ||
+    "",
+
+  // ========== BLOCKCHAIN & SETTLEMENT ==========
+  RPC_URL:
+    process.env.RPC_URL ||
+    "",
+
+  BROADCAST_PRIVATE_KEY:
+    process.env.BROADCAST_PRIVATE_KEY ||
+    "",
+
+  // ========== FEATURE FLAGS ==========
+  USE_MOCK_CRYPTO_PROVIDER:
+    process.env.USE_MOCK_CRYPTO_PROVIDER === "true",
+
+  ENABLE_CONFIRMATION_WORKER:
+    process.env.ENABLE_CONFIRMATION_WORKER !== "false",
+
+  ENABLE_RECONCILIATION_WORKER:
+    process.env.ENABLE_RECONCILIATION_WORKER !== "false",
+
+  CONFIRMATION_POLL_INTERVAL_MS:
+    Number(process.env.CONFIRMATION_POLL_INTERVAL_MS || 30000),
+
+  RECONCILIATION_POLL_INTERVAL_MS:
+    Number(process.env.RECONCILIATION_POLL_INTERVAL_MS || 60000),
 };
 
 export default env;
