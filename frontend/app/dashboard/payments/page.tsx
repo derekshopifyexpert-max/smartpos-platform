@@ -7,8 +7,12 @@ import {
   Plus,
   Wallet,
 } from "lucide-react";
+import { useSettlements } from "@/features/exchange/hooks/use-settlements";
+import { SettlementStatusBadge } from "@/components/settlements/settlement-status-badge";
 
 export default function PaymentsPage() {
+  const { data: settlements, isLoading: settlementsLoading } = useSettlements();
+
   return (
     <div className="space-y-6 bg-slate-50">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -116,6 +120,40 @@ export default function PaymentsPage() {
             Saved wallet required
           </div>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Crypto settlement operations</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Payments with real crypto settlement records appear here with their current backend status.
+            </p>
+          </div>
+          <Link href="/dashboard/settlements" className="text-sm font-medium text-blue-700 hover:text-blue-800">
+            Open all settlements
+          </Link>
+        </div>
+
+        {settlementsLoading && <p className="mt-5 text-sm text-slate-500">Loading settlement status...</p>}
+        {!settlementsLoading && settlements?.length === 0 && <p className="mt-5 text-sm text-slate-500">No crypto settlement records for these payments.</p>}
+        {!settlementsLoading && settlements && settlements.length > 0 && (
+          <div className="mt-5 grid gap-3">
+            {settlements.slice(0, 5).map((settlement) => (
+              <Link key={settlement.id} href={`/dashboard/settlements/${settlement.id}`} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-4 hover:border-blue-300 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Payment {settlement.payment.id}</p>
+                  <p className="mt-1 text-xs text-slate-500">Payment status: {settlement.payment.status}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">Settlement</span>
+                  <SettlementStatusBadge status={settlement.settlement.status} />
+                  <ArrowRight className="h-4 w-4 text-slate-400" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

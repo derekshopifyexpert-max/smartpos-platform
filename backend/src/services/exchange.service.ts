@@ -480,6 +480,7 @@ export default class ExchangeService {
     baseAsset: string;
     quoteAsset: string;
     amount: Prisma.Decimal;
+    merchantId?: string;
     quoteId?: string;
     clientOrderId?: string;
     limitPrice?: Prisma.Decimal;
@@ -552,6 +553,7 @@ export default class ExchangeService {
       const dbOrder = await this.app.prisma.exchangeOrder.create({
         data: {
           exchangeProviderId: providerRecord.id,
+          merchantId: request.merchantId,
           orderId: order.orderId,
           symbol: order.symbol,
           side: "BUY",
@@ -604,6 +606,7 @@ export default class ExchangeService {
     baseAsset: string;
     quoteAsset: string;
     amount: Prisma.Decimal;
+    merchantId?: string;
     quoteId?: string;
     clientOrderId?: string;
     limitPrice?: Prisma.Decimal;
@@ -676,6 +679,7 @@ export default class ExchangeService {
       const dbOrder = await this.app.prisma.exchangeOrder.create({
         data: {
           exchangeProviderId: providerRecord.id,
+          merchantId: request.merchantId,
           orderId: order.orderId,
           symbol: order.symbol,
           side: "SELL",
@@ -719,8 +723,16 @@ export default class ExchangeService {
   /**
    * Get order status from provider
    */
-  async getOrderStatus(orderId: string) {
+  async getOrderStatus(orderId: string, merchantId?: string) {
     try {
+      if (merchantId) {
+        const ownedOrder = await this.app.prisma.exchangeOrder.findFirst({
+          where: { orderId, merchantId },
+          select: { id: true },
+        });
+        if (!ownedOrder) throw new Error("Exchange order not found.");
+      }
+
       const provider = await this.getExchangeProvider();
       const order = await provider.getOrder(orderId);
 
@@ -764,6 +776,48 @@ export default class ExchangeService {
       this.app.log.error({ error, asset }, "Failed to get provider balance");
       throw error;
     }
+  }
+
+  async listMerchantOrders(merchantId: string, page = 1, limit = 10) {
+    const skip = Math.max(0, page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.app.prisma.exchangeOrder.findMany({
+        where: { merchantId },
+        include: { exchangeProvider: true, trades: true },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      this.app.prisma.exchangeOrder.count({ where: { merchantId } }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
+  }
+
+  async getMerchantOrderDetails(merchantId: string, orderId: string) {
+    const order = await this.app.prisma.exchangeOrder.findFirst({
+      where: { merchantId, OR: [{ id: orderId }, { orderId }] },
+      include: { exchangeProvider: true, trades: true },
+    });
+
+    if (!order) return null;
+
+    const conversion = await this.app.prisma.cryptoConversion.findFirst({
+      where: { exchangeOrderId: order.id },
+      include: {
+        transaction: {
+          include: { blockchainTransaction: true, wallet: true },
+        },
+      },
+    });
+
+    return { order, conversion };
   }
 
   /**

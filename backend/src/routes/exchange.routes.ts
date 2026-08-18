@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 
 import ExchangeService from "../services/exchange.service.js";
 import ExchangeController from "../controllers/exchange.controller.js";
+import { authMiddleware } from "../middleware/auth.middleware.js";
 
 export default async function exchangeRoutes(
   app: FastifyInstance
@@ -27,26 +28,43 @@ export default async function exchangeRoutes(
   // Real exchange provider endpoints
   app.post(
     "/exchange/real-quote",
+    { preHandler: authMiddleware },
     controller.getRealQuote
   );
 
   app.post(
     "/exchange/buy",
+    { preHandler: authMiddleware },
     controller.buyOrder
   );
 
   app.post(
     "/exchange/sell",
+    { preHandler: authMiddleware },
     controller.sellOrder
   );
 
   app.get(
     "/exchange/orders/:orderId",
+    { preHandler: authMiddleware },
     controller.getOrderStatus
   );
 
   app.get(
+    "/exchange/orders",
+    { preHandler: authMiddleware },
+    controller.listOrders
+  );
+
+  app.get(
+    "/exchange/orders/:orderId/details",
+    { preHandler: authMiddleware },
+    controller.getOrderDetails
+  );
+
+  app.get(
     "/exchange/balance/:asset",
+    { preHandler: authMiddleware },
     controller.getBalance
   );
 

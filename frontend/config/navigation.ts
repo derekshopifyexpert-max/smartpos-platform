@@ -2,6 +2,7 @@ import {
   CreditCard,
   LayoutDashboard,
   ReceiptText,
+  ListChecks,
   Settings,
   Wallet,
   TrendingUp,
@@ -29,6 +30,11 @@ export const navigation: NavigationItem[] = [
     title: "Crypto Trading",
     href: "/dashboard/crypto",
     icon: TrendingUp,
+  },
+  {
+    title: "Settlements",
+    href: "/dashboard/settlements",
+    icon: ListChecks,
   },
   {
     title: "Wallets",

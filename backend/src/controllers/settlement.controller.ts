@@ -108,4 +108,35 @@ export default class SettlementController {
 
   };
 
+  cryptoSettlements = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    const merchantId = (request.user as { merchantId?: string } | undefined)?.merchantId;
+    if (!merchantId) {
+      return reply.code(403).send({ success: false, error: "Authenticated merchant account is required." });
+    }
+
+    const settlements = await this.settlementService.listCryptoSettlements(merchantId);
+    return reply.send({ success: true, data: settlements });
+  };
+
+  cryptoSettlement = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    const merchantId = (request.user as { merchantId?: string } | undefined)?.merchantId;
+    const { id } = request.params as { id?: string };
+    if (!merchantId || !id) {
+      return reply.code(400).send({ success: false, error: "Authenticated merchant and payment ID are required." });
+    }
+
+    const settlement = await this.settlementService.getCryptoSettlement(merchantId, id);
+    if (!settlement) {
+      return reply.code(404).send({ success: false, error: "Crypto settlement not found." });
+    }
+
+    return reply.send({ success: true, data: settlement });
+  };
+
 }

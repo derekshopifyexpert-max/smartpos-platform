@@ -241,7 +241,7 @@ export function CryptoTradingWorkflow() {
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-600">Live quote · {quote.provider}</p>
                 <p className="mt-1 text-lg font-semibold text-slate-900">{formatCrypto(quote.rate, 8)} USD / USDT</p>
-                <p className="mt-1 text-sm text-slate-600">Input {formatFiat(quote.amount, 2, "USD")} · Estimated output {formatCrypto(quote.quoteAmount, 8)} {side === "BUY" ? "USDT" : "USD"}</p>
+                <p className="mt-1 text-sm text-slate-600">Input {formatFiat(quote.amount, "USD")} · Estimated output {formatCrypto(quote.quoteAmount, 8)} {side === "BUY" ? "USDT" : "USD"}</p>
                 {quote.fee && <p className="mt-1 text-sm text-slate-600">Provider fee: {formatCrypto(quote.fee, 8)} </p>}
               </div>
               <div className="flex items-center gap-2 text-sm font-medium text-slate-700"><Clock3 className="h-4 w-4" />{quoteExpired ? "Quote expired" : `Expires in ${formatTimeRemaining(quoteRemaining)}`}</div>

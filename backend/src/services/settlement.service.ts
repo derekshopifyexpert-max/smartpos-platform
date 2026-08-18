@@ -188,6 +188,160 @@ export default class SettlementService {
 
   }
 
+  async listCryptoSettlements(merchantId: string) {
+    const paymentIntents = await this.app.prisma.paymentIntent.findMany({
+      where: {
+        merchantId,
+        transactions: {
+          some: {
+            OR: [
+              { cryptoConversionId: { not: null } },
+              { blockchainTransactionId: { not: null } },
+            ],
+          },
+        },
+      },
+      include: {
+        paymentProviderAccount: {
+          select: { id: true, displayName: true, provider: true, currency: true, status: true },
+        },
+        customer: { select: { email: true } },
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: {
+            cryptoConversion: true,
+            blockchainTransaction: {
+              include: { blockchain: { select: { name: true, explorerUrl: true } } },
+            },
+            wallet: { select: { id: true, name: true, currency: true, status: true, address: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return Promise.all(paymentIntents.map((paymentIntent) => this.normalizeCryptoSettlement(paymentIntent)));
+  }
+
+  async getCryptoSettlement(merchantId: string, paymentIntentId: string) {
+    const paymentIntent = await this.app.prisma.paymentIntent.findFirst({
+      where: {
+        id: paymentIntentId,
+        merchantId,
+        transactions: {
+          some: {
+            OR: [
+              { cryptoConversionId: { not: null } },
+              { blockchainTransactionId: { not: null } },
+            ],
+          },
+        },
+      },
+      include: {
+        paymentProviderAccount: {
+          select: { id: true, displayName: true, provider: true, currency: true, status: true },
+        },
+        customer: { select: { email: true } },
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: {
+            cryptoConversion: true,
+            blockchainTransaction: {
+              include: { blockchain: { select: { name: true, explorerUrl: true } } },
+            },
+            wallet: { select: { id: true, name: true, currency: true, status: true, address: true } },
+          },
+        },
+      },
+    });
+
+    if (!paymentIntent) return null;
+    return this.normalizeCryptoSettlement(paymentIntent);
+  }
+
+  private async normalizeCryptoSettlement(paymentIntent: any) {
+    const transaction = paymentIntent.transactions[0];
+    const conversion = transaction?.cryptoConversion;
+    const order = conversion?.exchangeOrderId
+      ? await this.app.prisma.exchangeOrder.findFirst({
+          where: { id: conversion.exchangeOrderId, merchantId: paymentIntent.merchantId },
+          include: { exchangeProvider: { select: { name: true } }, trades: true },
+        })
+      : null;
+    const blockchain = transaction?.blockchainTransaction;
+    const metadata = conversion?.metadata && typeof conversion.metadata === "object"
+      ? conversion.metadata as Record<string, unknown>
+      : {};
+    const settlementMetadata = transaction?.metadata && typeof transaction.metadata === "object"
+      ? (transaction.metadata as Record<string, unknown>).cryptoSettlement as Record<string, unknown> | undefined
+      : undefined;
+
+    return {
+      id: paymentIntent.id,
+      payment: {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        customerEmail: paymentIntent.customer?.email,
+        createdAt: paymentIntent.createdAt,
+        updatedAt: paymentIntent.updatedAt,
+      },
+      paymentProviderAccount: paymentIntent.paymentProviderAccount,
+      conversion: conversion ? {
+        id: conversion.id,
+        fromCurrency: conversion.fromCurrency,
+        toCurrency: conversion.toCurrency,
+        requestedAmount: conversion.fromAmount,
+        quotedAmount: metadata.quoteAmount,
+        acquiredAmount: conversion.toAmount,
+        rate: conversion.rate,
+        fee: conversion.fee,
+        status: conversion.status,
+        quoteId: metadata.quoteId,
+        quoteExpiresAt: metadata.quoteExpiresAt,
+        createdAt: conversion.createdAt,
+        updatedAt: conversion.updatedAt,
+      } : null,
+      order: order ? {
+        id: order.id,
+        providerOrderId: order.orderId,
+        provider: order.exchangeProvider.name,
+        symbol: order.symbol,
+        side: order.side,
+        requestedAmount: order.amount,
+        filledAmount: order.filledAmount,
+        averagePrice: order.avgPrice,
+        status: order.status,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        clientOrderId: (order.metadata as Record<string, unknown> | null)?.clientOrderId,
+        quoteId: (order.metadata as Record<string, unknown> | null)?.quoteId,
+        fills: order.trades,
+      } : null,
+      wallet: transaction?.wallet,
+      blockchain: blockchain ? {
+        id: blockchain.id,
+        txHash: blockchain.txHash,
+        network: blockchain.blockchain.name,
+        explorerUrl: blockchain.blockchain.explorerUrl,
+        fromAddress: blockchain.fromAddress,
+        toAddress: blockchain.toAddress,
+        amount: blockchain.amount,
+        currency: blockchain.currency,
+        fee: blockchain.fee,
+        blockNumber: blockchain.blockNumber,
+        confirmations: blockchain.confirmations,
+        status: blockchain.status,
+        createdAt: blockchain.createdAt,
+        updatedAt: blockchain.updatedAt,
+      } : null,
+      settlement: settlementMetadata ?? { status: conversion?.status ?? "PENDING" },
+    };
+  }
+
   /*
   |--------------------------------------------------------------------------
   | Batch

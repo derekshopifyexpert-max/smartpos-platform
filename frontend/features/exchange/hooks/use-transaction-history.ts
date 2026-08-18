@@ -30,9 +30,23 @@ export interface TransactionHistoryItem {
 }
 
 async function getTransactionHistory(page = 1, limit = 10) {
+  type ExchangeOrderHistoryRecord = {
+    id: string;
+    orderId?: string | null;
+    symbol: string;
+    side: "BUY" | "SELL";
+    amount: string;
+    filledAmount: string;
+    avgPrice?: string | null;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+    exchangeProvider?: { name?: string };
+  };
+
   const response = await api.get<
     ApiResponse<{
-      items: TransactionHistoryItem[];
+      items: ExchangeOrderHistoryRecord[];
       total: number;
       page: number;
       limit: number;
@@ -44,7 +58,24 @@ async function getTransactionHistory(page = 1, limit = 10) {
     throw new Error(response.data.error || "Failed to fetch transaction history");
   }
 
-  return response.data.data;
+  return {
+    ...response.data.data,
+    items: response.data.data.items.map((item) => ({
+      id: item.id,
+      orderId: item.orderId || item.id,
+      type: item.side,
+      baseAsset: item.symbol,
+      quoteAsset: "USD",
+      requestedAmount: item.amount,
+      executedAmount: item.filledAmount,
+      avgPrice: item.avgPrice || "0",
+      fee: undefined,
+      provider: item.exchangeProvider?.name,
+      status: item.status,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    })),
+  };
 }
 
 export function useTransactionHistory(page = 1, limit = 10) {

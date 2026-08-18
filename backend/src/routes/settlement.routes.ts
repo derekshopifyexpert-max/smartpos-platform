@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 
 import SettlementService from "../services/settlement.service.js";
 import SettlementController from "../controllers/settlement.controller.js";
+import { authMiddleware } from "../middleware/auth.middleware.js";
 
 export default async function settlementRoutes(
   app: FastifyInstance
@@ -12,6 +13,18 @@ export default async function settlementRoutes(
 
   const controller =
     new SettlementController(service);
+
+  app.get(
+    "/crypto-settlements",
+    { preHandler: authMiddleware },
+    controller.cryptoSettlements
+  );
+
+  app.get(
+    "/crypto-settlements/:id",
+    { preHandler: authMiddleware },
+    controller.cryptoSettlement
+  );
 
   app.post(
     "/settlements",
