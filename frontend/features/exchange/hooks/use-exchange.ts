@@ -77,3 +77,71 @@ export function useProviderBalance(asset?: string) {
     enabled: !!asset,
   });
 }
+
+/**
+ * Get detailed order information including fills
+ */
+export function useOrderDetails(orderId?: string) {
+  return useQuery({
+    queryKey: ["exchange-order-details", orderId],
+    queryFn: () => {
+      if (!orderId) throw new Error("orderId is required");
+      return exchangeService.getOrderDetails(orderId);
+    },
+    enabled: !!orderId,
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      // Keep refetching while order is not in terminal state
+      if (data?.status === "FILLED" || data?.status === "CANCELED" || data?.status === "REJECTED" || data?.status === "EXPIRED" || data?.status === "FAILED") {
+        return false;
+      }
+      return 3000; // Poll every 3 seconds
+    },
+  });
+}
+
+/**
+ * Get settlement status for a BUY order
+ */
+export function useSettlementStatus(orderId?: string) {
+  return useQuery({
+    queryKey: ["exchange-settlement", orderId],
+    queryFn: () => {
+      if (!orderId) throw new Error("orderId is required");
+      return exchangeService.getSettlementStatus(orderId);
+    },
+    enabled: !!orderId,
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      // Keep polling settlement until confirmed
+      if (!data) return false;
+      if (data?.status === "SETTLED" || data?.status === "CONFIRMED" || data?.status === "FAILED") {
+        return false;
+      }
+      return 5000; // Poll every 5 seconds
+    },
+  });
+}
+
+/**
+ * Get blockchain transaction details
+ */
+export function useBlockchainTransaction(orderId?: string) {
+  return useQuery({
+    queryKey: ["exchange-blockchain", orderId],
+    queryFn: () => {
+      if (!orderId) throw new Error("orderId is required");
+      return exchangeService.getBlockchainTransaction(orderId);
+    },
+    enabled: !!orderId,
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      // Poll blockchain until confirmed or failed
+      if (!data) return false;
+      if (data?.status === "CONFIRMED" || data?.status === "FAILED" || data?.status === "SETTLED") {
+        return false;
+      }
+      return 4000; // Poll every 4 seconds
+    },
+  });
+}

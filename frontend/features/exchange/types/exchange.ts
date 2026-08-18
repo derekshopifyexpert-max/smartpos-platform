@@ -73,6 +73,45 @@ export interface ExecuteOrderRequest {
   limitPrice?: string;
 }
 
+// Blockchain Transaction - Settlement on-chain
+export interface BlockchainTransaction {
+  id: string;
+  txHash: string;
+  fromAddress: string;
+  toAddress: string;
+  amount: string;
+  currency: string;
+  fee?: string;
+  gasPrice?: string;
+  blockNumber?: number;
+  confirmations: number;
+  status: "PENDING" | "BROADCASTED" | "CONFIRMING" | "CONFIRMED" | "REVERTED" | "FAILED" | "SETTLED";
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, any>;
+}
+
+// Settlement Status
+export interface SettlementStatus {
+  id: string;
+  exchangeOrderId: string;
+  blockchainTxId?: string;
+  status: "PENDING" | "BROADCASTED" | "CONFIRMING" | "CONFIRMED" | "FAILED" | "SETTLED";
+  destinationWallet?: {
+    id: string;
+    name: string;
+    address: string;
+    network: string;
+    asset: string;
+  };
+  amount: string;
+  blockchainConfirmations?: number;
+  requiredConfirmations?: number;
+  transactionHash?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // API Response Wrapper
 export interface ApiResponse<T> {
   success: boolean;

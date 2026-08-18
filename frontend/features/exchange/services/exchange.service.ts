@@ -139,6 +139,59 @@ class ExchangeService {
 
     return response.data.data;
   }
+
+  /**
+   * Get order details with fills
+   * GET /exchange/orders/:orderId/details
+   */
+  async getOrderDetails(orderId: string): Promise<any> {
+    const response = await api.get<ApiResponse<any>>(
+      `/exchange/orders/${orderId}/details`
+    );
+
+    if (!response.data.success || !response.data.data) {
+      throw new Error(
+        response.data.error ||
+          response.data.message ||
+          "Failed to get order details"
+      );
+    }
+
+    return response.data.data;
+  }
+
+  /**
+   * Get settlement status for a BUY order
+   * GET /exchange/orders/:orderId/settlement
+   */
+  async getSettlementStatus(orderId: string): Promise<any> {
+    const response = await api.get<ApiResponse<any>>(
+      `/exchange/orders/${orderId}/settlement`
+    );
+
+    if (!response.data.success || !response.data.data) {
+      // Settlement may not exist yet, return null instead of throwing
+      return null;
+    }
+
+    return response.data.data;
+  }
+
+  /**
+   * Get blockchain transaction details
+   * GET /exchange/orders/:orderId/blockchain
+   */
+  async getBlockchainTransaction(orderId: string): Promise<any> {
+    const response = await api.get<ApiResponse<any>>(
+      `/exchange/orders/${orderId}/blockchain`
+    );
+
+    if (!response.data.success || !response.data.data) {
+      return null;
+    }
+
+    return response.data.data;
+  }
 }
 
 export const exchangeService = new ExchangeService();

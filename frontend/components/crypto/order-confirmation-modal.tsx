@@ -1,0 +1,191 @@
+"use client";
+
+import { X, ArrowRight, AlertCircle } from "lucide-react";
+import { formatCrypto, formatFiat } from "@/features/exchange/lib/format";
+
+export interface OrderConfirmationModalProps {
+  isOpen: boolean;
+  isLoading: boolean;
+  order: {
+    side: "BUY" | "SELL";
+    amount: string;
+    quotePrice: string;
+    estimatedCrypto?: string;
+    estimatedFiat?: string;
+    fee?: string;
+    currency: string;
+    walletAddress?: string;
+    walletName?: string;
+    paystackAccount?: string;
+    network?: string;
+    quoteExpiration?: string;
+  };
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function OrderConfirmationModal({
+  isOpen,
+  isLoading,
+  order,
+  onConfirm,
+  onCancel,
+}: OrderConfirmationModalProps) {
+  if (!isOpen) return null;
+
+  const displayAmount = order.side === "BUY" ? order.amount : order.estimatedCrypto || "0";
+  const displayCurrency = order.side === "BUY" ? order.currency : "USDT";
+  const displayLabel = order.side === "BUY" ? "You pay" : "You send";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-200">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Confirm {order.side} Order
+          </h2>
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-6">
+          {/* Trade Direction */}
+          <div className="bg-slate-50 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-center">
+                <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">
+                  {displayLabel}
+                </p>
+                <p className="text-lg font-bold text-slate-900">
+                  {formatFiat(displayAmount, 2)} {displayCurrency}
+                </p>
+              </div>
+
+              <ArrowRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+
+              <div className="text-center">
+                <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">
+                  You receive
+                </p>
+                <p className="text-lg font-bold text-slate-900">
+                  {order.side === "BUY"
+                    ? formatCrypto(order.estimatedCrypto || "0", 2)
+                    : formatFiat(order.estimatedFiat || "0", 2)}{" "}
+                  {order.side === "BUY" ? "USDT" : order.currency}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Trade Details */}
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-600">Side</span>
+              <span className="font-medium text-slate-900">{order.side}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-600">Price</span>
+              <span className="font-medium text-slate-900">
+                {formatCrypto(order.quotePrice, 6)} {order.currency}/USDT
+              </span>
+            </div>
+            {order.fee && (
+              <div className="flex justify-between">
+                <span className="text-slate-600">Provider Fee</span>
+                <span className="font-medium text-slate-900">
+                  {formatCrypto(order.fee, 6)} USDT
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Destination/Account */}
+          {(order.walletAddress || order.paystackAccount) && (
+            <div className="border-t border-slate-200 pt-4 space-y-3 text-sm">
+              {order.side === "BUY" && order.walletAddress && (
+                <>
+                  <div>
+                    <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">
+                      Destination Wallet
+                    </p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {order.walletName}
+                    </p>
+                    <p className="text-xs text-slate-500 font-mono mt-1 break-all">
+                      {order.walletAddress}
+                    </p>
+                  </div>
+                  {order.network && (
+                    <div>
+                      <p className="text-xs text-slate-600 uppercase tracking-wide">
+                        Network
+                      </p>
+                      <p className="text-sm font-medium text-slate-900">
+                        {order.network}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {order.side === "SELL" && order.paystackAccount && (
+                <div>
+                  <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">
+                    Destination Account
+                  </p>
+                  <p className="text-sm font-medium text-slate-900">
+                    {order.paystackAccount}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quote Expiration Warning */}
+          {order.quoteExpiration && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex gap-2">
+              <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-yellow-700">
+                This quote expires soon. Confirm quickly to avoid quote expiration.
+              </p>
+            </div>
+          )}
+
+          {/* Info Note */}
+          {order.side === "SELL" && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-xs text-blue-700">
+                Note: Only the exchange SELL order is executed. Fiat proceeds will be held by the exchange provider.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 p-6 border-t border-slate-200 bg-slate-50">
+          <button
+            onClick={onCancel}
+            disabled={isLoading}
+            className="flex-1 px-4 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-sm hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white font-medium text-sm hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
+          >
+            {isLoading ? "Processing..." : `Confirm ${order.side}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
