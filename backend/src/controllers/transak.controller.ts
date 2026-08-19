@@ -3,10 +3,6 @@ import { TransakConfigurationError, TransakProviderError } from "../integrations
 import { transakProvider } from "../integrations/transak/transak.provider.js";
 import TransakTransactionService from "../services/transak-transaction.service.js";
 
-interface AuthenticatedRequest extends FastifyRequest {
-  user?: { merchantId?: string; sub?: string };
-}
-
 function clientIp(request: FastifyRequest): string {
   const ip = request.ip?.trim();
   if (!ip || ip === "127.0.0.1" || ip === "::1" || ip === "0.0.0.0") {
@@ -32,7 +28,7 @@ function errorResponse(reply: FastifyReply, error: unknown) {
   return reply.code(502).send({ success: false, error: "Transak request failed safely." });
 }
 
-function requireMerchant(request: AuthenticatedRequest) {
+function requireMerchant(request: FastifyRequest) {
   const merchantId = request.user?.merchantId;
   if (!merchantId) throw new Error("Authenticated merchant account is required.");
   return merchantId;
@@ -41,7 +37,7 @@ function requireMerchant(request: AuthenticatedRequest) {
 export default class TransakController {
   constructor(private readonly transactionService: TransakTransactionService) {}
 
-  capabilities = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  capabilities = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireMerchant(request);
       return reply.send({ success: true, data: await transakProvider.getCapabilities() });
@@ -53,7 +49,7 @@ export default class TransakController {
     }
   };
 
-  quote = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  quote = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireMerchant(request);
       const body = request.body as Record<string, unknown>;
@@ -75,7 +71,7 @@ export default class TransakController {
     }
   };
 
-  verifyWallet = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  verifyWallet = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireMerchant(request);
       const body = request.body as Record<string, unknown>;
@@ -102,7 +98,7 @@ export default class TransakController {
     }
   };
 
-  paymentSession = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  paymentSession = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const merchantId = requireMerchant(request);
       const body = request.body as Record<string, unknown>;
@@ -146,7 +142,7 @@ export default class TransakController {
     }
   };
 
-  order = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  order = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireMerchant(request);
       const { id } = request.params as { id?: string };
@@ -157,7 +153,7 @@ export default class TransakController {
     }
   };
 
-  history = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  history = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       return reply.send({ success: true, data: await this.transactionService.list(requireMerchant(request)) });
     } catch (error) {
@@ -166,7 +162,7 @@ export default class TransakController {
     }
   };
 
-  detail = async (request: AuthenticatedRequest, reply: FastifyReply) => {
+  detail = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const id = (request.params as { id?: string }).id;
       if (!id) return reply.code(400).send({ success: false, error: "Transaction ID is required." });
@@ -177,5 +173,25 @@ export default class TransakController {
       if (error instanceof Error && error.message === "Authenticated merchant account is required.") return reply.code(403).send({ success: false, error: error.message });
       return errorResponse(reply, error);
     }
+  };
+
+  webhook = async (request: FastifyRequest, reply: FastifyReply) => {
+    const secret = process.env.TRANSAK_WEBHOOK_SECRET?.trim();
+    if (!secret) {
+      return reply.code(503).send({ success: false, error: "Transak webhook verification is not configured." });
+    }
+
+    const signature = request.headers["x-transak-signature"];
+    if (typeof signature !== "string") {
+      return reply.code(401).send({ success: false, error: "Missing Transak webhook signature." });
+    }
+
+    const payload = request.body as Record<string, unknown>;
+    const eventId = typeof payload.eventId === "string" ? payload.eventId : typeof payload.id === "string" ? payload.id : undefined;
+    const eventType = typeof payload.eventType === "string" ? payload.eventType : typeof payload.eventName === "string" ? payload.eventName : undefined;
+    if (!eventId || !eventType) return reply.code(400).send({ success: false, error: "Invalid Transak webhook event." });
+
+    // The exact provider signature contract must be configured and verified before enabling this route.
+    return reply.code(503).send({ success: false, error: "Transak webhook signature verification contract is not configured." });
   };
 }

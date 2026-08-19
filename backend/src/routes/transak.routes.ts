@@ -14,4 +14,5 @@ export default async function transakRoutes(app: FastifyInstance) {
   app.get("/transak/orders/:id", protectedRoute, controller.order);
   app.get("/transak/transactions", protectedRoute, controller.history);
   app.get("/transak/transactions/:id", protectedRoute, controller.detail);
+  app.post("/webhooks/transak", controller.webhook);
 }

@@ -76,6 +76,82 @@ export default class TransakTransactionService {
     return this.app.prisma.transakTransaction.findFirst({ where: { merchantId, id } });
   }
 
+  async applyWebhook(event: {
+    eventId: string;
+    eventType: string;
+    providerOrderId?: string;
+    payload: Record<string, unknown>;
+  }) {
+    const payloadHash = crypto.createHash("sha256").update(JSON.stringify(event.payload)).digest("hex");
+    const existingEvent = await this.app.prisma.transakWebhookEvent.findUnique({
+      where: { eventId: event.eventId },
+    });
+    if (existingEvent) return { duplicate: true, transactionId: existingEvent.transactionId };
+
+    const providerOrderId = event.providerOrderId || this.readString(event.payload, ["orderId", "providerOrderId", "id"]);
+    const transaction = providerOrderId
+      ? await this.app.prisma.transakTransaction.findUnique({ where: { transakOrderId: providerOrderId } })
+      : null;
+
+    const webhookEvent = await this.app.prisma.transakWebhookEvent.create({
+      data: {
+        eventId: event.eventId,
+        eventType: event.eventType,
+        transakOrderId: providerOrderId,
+        transactionId: transaction?.id,
+        payloadHash,
+        processingStatus: transaction ? "PROCESSING" : "UNMATCHED",
+        safePayload: this.safePayload(event.payload),
+      },
+    });
+
+    if (!transaction) {
+      await this.app.prisma.transakWebhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { processedAt: new Date() },
+      });
+      return { duplicate: false, transactionId: null };
+    }
+
+    const status = this.normalizeStatus(
+      this.readString(event.payload, ["status", "orderStatus"]) || event.eventType
+    );
+    await this.app.prisma.transakTransaction.update({
+      where: { id: transaction.id },
+      data: {
+        status,
+        providerStatus: this.readString(event.payload, ["status", "orderStatus"]) || event.eventType,
+        amountPaid: this.decimalOrUndefined(this.readString(event.payload, ["amountPaid", "fiatAmount"])),
+        cryptoAmount: this.decimalOrUndefined(this.readString(event.payload, ["cryptoAmount", "amount"])),
+        transactionHash: this.readString(event.payload, ["transactionHash", "txHash"]),
+        transactionLink: this.readString(event.payload, ["transactionLink", "txLink"]),
+        failureReason: this.readString(event.payload, ["failureReason", "error"]),
+        completedAt: status === "COMPLETED" ? new Date() : undefined,
+        failedAt: status === "FAILED" ? new Date() : undefined,
+      },
+    });
+    await this.app.prisma.transakWebhookEvent.update({
+      where: { id: webhookEvent.id },
+      data: { processingStatus: "PROCESSED", processedAt: new Date() },
+    });
+    return { duplicate: false, transactionId: transaction.id };
+  }
+
+  private readString(payload: Record<string, unknown>, keys: string[]) {
+    for (const key of keys) if (typeof payload[key] === "string" && payload[key].trim()) return payload[key].trim();
+    return undefined;
+  }
+
+  private decimalOrUndefined(value?: string) {
+    return value ? new Prisma.Decimal(value) : undefined;
+  }
+
+  private safePayload(payload: Record<string, unknown>) {
+    const safe = { ...payload };
+    for (const key of ["apiKey", "apiSecret", "accessToken", "authorization", "cardNumber", "cvv", "pan"]) delete safe[key];
+    return safe as Prisma.InputJsonValue;
+  }
+
   async applyProviderOrder(merchantId: string, order: {
     providerOrderId: string;
     status: string;
