@@ -6,7 +6,8 @@ import registerRoutes from "./routes/index.js";
 import { loadSecrets } from "./utils/secrets.js";
 
 const app = Fastify({
-  logger: true
+  logger: true,
+  trustProxy: process.env.TRUST_PROXY === "true",
 });
 
 async function buildApp() {

@@ -6,6 +6,7 @@ import {
   Settings,
   Wallet,
   TrendingUp,
+  Coins,
 } from "lucide-react";
 
 export interface NavigationItem {
@@ -30,6 +31,11 @@ export const navigation: NavigationItem[] = [
     title: "Crypto Trading",
     href: "/dashboard/crypto",
     icon: TrendingUp,
+  },
+  {
+    title: "Buy Crypto",
+    href: "/dashboard/buy-crypto",
+    icon: Coins,
   },
   {
     title: "Settlements",

@@ -331,6 +331,7 @@ model Merchant {
   terminals                    Terminal[]
   terminalGroups               TerminalGroup[]
   transactions                 Transaction[]
+  transakTransactions          TransakTransaction[]
   users                        User[]
   wallets                      Wallet[]
   walletTransfers              WalletTransfer[]
@@ -1990,6 +1991,65 @@ model CryptoConversion {
   @@index([transactionId])
   @@index([walletTransferId])
   @@index([status])
+}
+
+model TransakTransaction {
+  id                 String                @id @default(cuid())
+  merchantId         String
+  customerId         String?
+  paymentIntentId    String?
+  transakOrderId     String?               @unique
+  transakQuoteId     String?
+  partnerOrderId     String?               @unique
+  direction          String                @default("BUY")
+  fiatCurrency       String
+  fiatAmount         Decimal               @db.Decimal(36, 18)
+  amountPaid         Decimal?              @db.Decimal(36, 18)
+  cryptoCurrency     String
+  cryptoAmount       Decimal?              @db.Decimal(36, 18)
+  network            String
+  walletAddress      String
+  paymentMethod      String?
+  provider           String                @default("TRANSAK")
+  status             String
+  providerStatus     String?
+  transactionHash    String?
+  transactionLink    String?
+  feeAmount          Decimal?              @db.Decimal(36, 18)
+  feeCurrency        String?
+  quoteRate          Decimal?              @db.Decimal(36, 18)
+  failureReason      String?
+  completedAt        DateTime?
+  failedAt           DateTime?
+  metadata           Json?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  merchant           Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  webhookEvents      TransakWebhookEvent[]
+
+  @@index([merchantId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([transakOrderId])
+  @@index([paymentIntentId])
+}
+
+model TransakWebhookEvent {
+  id                 String              @id @default(cuid())
+  eventId            String              @unique
+  eventType          String
+  transakOrderId     String?
+  transactionId      String?
+  receivedAt         DateTime            @default(now())
+  processedAt        DateTime?
+  processingStatus   String
+  payloadHash        String
+  safePayload        Json
+  error              String?
+  transaction        TransakTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([transakOrderId])
+  @@index([processingStatus])
+  @@index([receivedAt(sort: Desc)])
 }
 
 model CryptoQuote {
