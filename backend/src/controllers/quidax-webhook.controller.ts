@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import QuidaxWebhookService from "../services/quidax-webhook.service.js";
 
 function safeString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -17,6 +18,12 @@ function hashPayload(value: unknown): string {
 }
 
 export default class QuidaxWebhookController {
+  private readonly quidaxWebhookService: QuidaxWebhookService;
+
+  constructor(private readonly app?: any) {
+    this.quidaxWebhookService = new QuidaxWebhookService(app || {});
+  }
+
   receive = async (request: FastifyRequest, reply: FastifyReply) => {
     const configuredSecret = process.env.SMARTPOS_WEBHOOK_SECRET?.trim();
     const authorization = safeString(request.headers.authorization);
@@ -84,6 +91,9 @@ export default class QuidaxWebhookController {
           ${new Date()}, ${new Date()}
         )
       `);
+
+      request.server.log.info({ eventName, providerEventId }, "Quidax webhook event persisted; scheduling re-query");
+      this.scheduleReQuery({ eventId, eventName, providerReference }, request.server);
     } catch (error: unknown) {
       if (error && typeof error === "object" && "code" in error && (error.code === "P2002" || error.code === "23505")) {
         return reply.code(200).send({ success: true, duplicate: true });
@@ -94,4 +104,21 @@ export default class QuidaxWebhookController {
 
     return reply.code(200).send({ success: true, accepted: true });
   };
+
+  private scheduleReQuery(input: { eventId: string; eventName: string; providerReference: string | undefined }, server: any) {
+    setImmediate(async () => {
+      try {
+        if (input.providerReference) {
+          await this.quidaxWebhookService.processEvent({
+            eventName: input.eventName,
+            providerReference: input.providerReference,
+            eventId: input.eventId,
+          });
+          server.log.info({ eventId: input.eventId }, "Quidax webhook re-query processing complete");
+        }
+      } catch (error: unknown) {
+        server.log.error({ eventId: input.eventId, error: error instanceof Error ? error.message : "Unknown error" }, "Quidax webhook re-query failed");
+      }
+    });
+  }
 }

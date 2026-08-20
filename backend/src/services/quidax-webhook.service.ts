@@ -7,8 +7,10 @@ function isOrderEvent(eventName: string): boolean {
 
 export default class QuidaxWebhookService {
   private readonly exchangeService: ExchangeService;
+  private readonly app: any;
 
-  constructor(private readonly app: any) {
+  constructor(app: any) {
+    this.app = app;
     this.exchangeService = new ExchangeService(app);
   }
 
