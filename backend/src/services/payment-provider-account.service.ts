@@ -3,7 +3,7 @@ import { PaymentProviderAccount } from "@prisma/client";
 
 /**
  * PaymentProviderAccountService
- * Manages multiple payment provider accounts (Paystack, Flutterwave, etc.)
+ * Manages multiple fiat payment provider accounts.
  * Provides credential resolution and account listing with safety checks.
  */
 export default class PaymentProviderAccountService {
@@ -79,7 +79,7 @@ export default class PaymentProviderAccountService {
 
     if (account.status !== 'ACTIVE') {
       throw new Error(
-        `Paystack account is not configured. Account: ${account.displayName}`
+        `Payment provider account is not configured. Account: ${account.displayName}`
       );
     }
 

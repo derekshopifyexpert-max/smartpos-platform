@@ -30,6 +30,14 @@ export default class QuidaxWebhookController {
       return reply.code(400).send({ success: false, error: "Unsupported webhook provider." });
     }
 
+    if (String(request.headers["x-smartpos-webhook-version"] || "") !== "1") {
+      return reply.code(400).send({ success: false, error: "Unsupported webhook envelope version." });
+    }
+
+    if (!String(request.headers["content-type"] || "").toLowerCase().startsWith("application/json")) {
+      return reply.code(415).send({ success: false, error: "Webhook content type must be application/json." });
+    }
+
     const webhookId = safeString(request.headers["x-smartpos-webhook-id"]);
     const body = request.body as Record<string, unknown> | undefined;
     if (body?.signatureVerified !== true) {
@@ -48,7 +56,7 @@ export default class QuidaxWebhookController {
       return reply.code(400).send({ success: false, error: "Incomplete normalized Quidax webhook envelope." });
     }
 
-    const eventId = `quidax:${providerEventId}`;
+    const eventId = `quidax:${eventName}:${providerEventId}`;
     const payload = body ?? {};
     const payloadHash = hashPayload(payload);
 

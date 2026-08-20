@@ -111,10 +111,34 @@ export default class PaymentOrchestratorService {
       walletId?: string;
     }
   ) {
-    void paymentIntentId;
-    void payload;
+    const paymentIntent = await this.paymentService.getPaymentIntent(paymentIntentId);
+    if (!paymentIntent) throw new Error("Payment Intent not found.");
+    if (!payload.transactionId) throw new Error("Transaction ID is required for crypto settlement.");
+
+    const transaction = await this.paymentService.findTransactionById(payload.transactionId);
+    if (!transaction || transaction.paymentIntentId !== paymentIntent.id) {
+      throw new Error("Transaction does not belong to the payment intent.");
+    }
+
+    const existingConversion = await this.app.prisma.cryptoConversion.findFirst({
+      where: { transactionId: transaction.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existingConversion && ["pending", "exchange_pending", "completed"].includes(existingConversion.status)) {
+      return { conversion: existingConversion, duplicate: true };
+    }
+
+    const provider = await this.exchangeService.getExchangeProvider();
+    await provider.getQuote({
+      baseAsset: String(payload.asset ?? "USDT").toUpperCase(),
+      quoteAsset: String(paymentIntent.currency),
+      side: "BUY",
+      amount: new Prisma.Decimal(String(paymentIntent.amount)),
+    });
+
     throw new Error(
-      "QUIDAX_CONTRACT_NOT_VERIFIED: the legacy internal exchange-to-SmartPOS blockchain settlement path is disabled until Quidax order and withdrawal contracts are verified."
+      "QUIDAX_CONTRACT_NOT_VERIFIED: Quidax quote/order contract is not verified, so no fiat-to-crypto order or transfer was created."
     );
   }
 
@@ -397,41 +421,8 @@ export default class PaymentOrchestratorService {
   );
 }
 
-    // Prepare provider payload. For Paystack, Paystack only accepts NGN in this account —
-    // convert amounts to NGN and record original currency/amount in metadata.
-    let providerAmount = Number(paymentIntent.amount);
-    let providerCurrency = String(paymentIntent.currency);
-
-    if (selectedProvider.name === "paystack" && providerCurrency.toUpperCase() !== "NGN") {
-      const quote = await this.exchangeService.calculateQuote(
-        paymentIntent.currency as any,
-        "NGN" as any,
-        new Prisma.Decimal(Number(paymentIntent.amount))
-      );
-
-      providerAmount = Number(quote.convertedAmount.toString());
-      providerCurrency = "NGN";
-
-      // update the saved gatewayRequest to reflect the actual payload sent to the provider
-      const providerPayload = {
-        amount: providerAmount.toString(),
-        currency: providerCurrency,
-        reference: transaction.reference,
-        customerEmail: email,
-        originalAmount: paymentIntent.amount,
-        originalCurrency: String(paymentIntent.currency)
-      };
-
-      try {
-        await this.app.prisma.gatewayRequest.update({
-          where: { id: gatewayRequest.id },
-          data: { requestBody: providerPayload }
-        });
-      } catch (e) {
-        // non-fatal: continue even if updating logging record fails
-        console.error('Failed to update gatewayRequest with provider payload', e);
-      }
-    }
+    const providerAmount = Number(paymentIntent.amount);
+    const providerCurrency = String(paymentIntent.currency);
 
     try {
       const execution = await this.failover.execute(
@@ -531,71 +522,6 @@ export default class PaymentOrchestratorService {
           providerResponse
       };
     } catch (error) {
-      const anyErr = error as any;
-      const providerMessage = anyErr?.response?.data?.message ?? anyErr?.message ?? "";
-
-      if (typeof providerMessage === "string" && providerMessage.toLowerCase().includes("currency not supported")) {
-        try {
-          const quote = await this.exchangeService.calculateQuote(
-            paymentIntent.currency as any,
-            "NGN" as any,
-            new Prisma.Decimal(Number(paymentIntent.amount))
-          );
-
-          const convertedAmount = Number(quote.convertedAmount.toString());
-
-          const execution2 = await this.failover.execute(
-            providerNames,
-            async provider =>
-              provider.createPayment({
-                amount: convertedAmount,
-                currency: "NGN",
-                reference: transaction.reference!,
-                description: paymentIntent.description ?? undefined,
-                customer: {
-                  email,
-                  firstName: customer.firstName ?? paymentIntent.customer?.firstName ?? undefined,
-                  lastName: customer.lastName ?? paymentIntent.customer?.lastName ?? undefined,
-                  phone: customer.phone ?? paymentIntent.customer?.phone ?? undefined
-                },
-                metadata: {
-                  paymentIntentId: paymentIntent.id,
-                  transactionId: transaction.id,
-                  paymentAttemptId: paymentAttempt.id,
-                  originalCurrency: paymentIntent.currency,
-                  originalAmount: paymentIntent.amount
-                }
-              })
-          );
-
-          const providerResponse = execution2.result;
-
-          await this.gatewayService.createGatewayResponse({
-            gatewayRequestId: gatewayRequest.id,
-            statusCode: 200,
-            responseBody: providerResponse.raw ?? {},
-            responseHeaders: {},
-            responseTime: 0
-          });
-
-          return {
-            paymentIntent,
-            transaction,
-            paymentAttempt,
-            provider: execution2.providerName,
-            gateway: {
-              transactionId: providerResponse.transactionId ?? providerResponse.reference ?? null,
-              paymentUrl: providerResponse.paymentUrl ?? null,
-              accessCode: providerResponse.accessCode ?? null,
-              authorizationCode: providerResponse.authorizationCode ?? null
-            },
-            response: providerResponse
-          };
-        } catch (e) {
-          Object.assign(anyErr, { inner: e });
-        }
-      }
-
       await this.gatewayService.createGatewayResponse({
         gatewayRequestId:
           gatewayRequest.id,
@@ -1035,13 +961,6 @@ export default class PaymentOrchestratorService {
         );
       }
 
-      // Check if provider is Paystack (currently only supporting Paystack for multi-account)
-      if (selectedAccount.provider !== "PAYSTACK") {
-        throw new Error(
-          "Currently only Paystack accounts support multi-account selection."
-        );
-      }
-
       // Resolve credentials from the account
       try {
         const credentials = await this.paymentProviderAccountService.resolveCredentials(accountId);
@@ -1058,7 +977,7 @@ export default class PaymentOrchestratorService {
         );
 
         throw new Error(
-          "Paystack account credentials are not configured. Payment cannot proceed."
+          "Selected fiat payment provider credentials are not configured. Payment cannot proceed."
         );
       }
     } else {

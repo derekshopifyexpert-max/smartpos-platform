@@ -28,9 +28,4 @@ export default async function gatewayRoutes(
       controller.gatewayStatistics
     );
 
-    app.get(
-      "/gateway/check/paystack",
-      controller.checkPaystackChannels
-    );
-
 }

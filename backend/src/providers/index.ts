@@ -18,18 +18,6 @@ export {
 
 export {
 
-  default as StripeProvider
-
-} from "./stripe.provider.js";
-
-export {
-
-  default as PaystackProvider
-
-} from "./paystack.provider.js";
-
-export {
-
   default as FlutterwaveProvider
 
 } from "./flutterwave.provider.js";

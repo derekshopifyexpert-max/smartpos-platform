@@ -41,9 +41,6 @@ data: payment
   ) => {
 
     const body = request.body as any;
-    // Force payment intents to NGN so Paystack (configured for NGN) can process them.
-    body.currency = 'NGN';
-
     const payment =
       await this.paymentService.createPaymentIntent(
         body

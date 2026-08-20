@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "smartpos-quidax-webhook",
+  "main": "quidax-webhook-worker.ts",
+  "compatibility_date": "2026-08-20",
+  "workers_dev": true,
+
+  "vars": {
+    "MAX_WEBHOOK_BODY_BYTES": "262144",
+    "INTERNAL_TIMEOUT_MS": "10000",
+    "WORKER_ENVIRONMENT": "production"
+  },
+
+  "kv_namespaces": [
+    {
+      "binding": "WEBHOOK_DEDUPE",
+      "id": "7067af6caa31422c92c3d70c072f92a5"
+    }
+  ]
+}

@@ -15,7 +15,6 @@ import healthRoutes from "./health.routes.js";
 import reconciliationRoutes from "./reconciliation.routes.js";
 import observabilityRoutes from "./observability.routes.js";
 import paymentProviderAccountRoutes from "./payment-provider-account.routes.js";
-import transakRoutes from "./transak.routes.js";
 import quidaxWebhookRoutes from "./quidax-webhook.routes.js";
 
 export default async function registerRoutes(
@@ -77,10 +76,6 @@ export default async function registerRoutes(
   });
 
   app.register(paymentProviderAccountRoutes, {
-    prefix: "/api/v1"
-  });
-
-  app.register(transakRoutes, {
     prefix: "/api/v1"
   });
 

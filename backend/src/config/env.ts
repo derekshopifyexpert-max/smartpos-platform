@@ -62,61 +62,6 @@ export const env = {
       "REDIS_URL"
     ),
 
-  STRIPE_SECRET_KEY:
-    process.env.STRIPE_SECRET_KEY ||
-    "",
-
-  PAYSTACK_SECRET_KEY:
-    process.env.PAYSTACK_SECRET_KEY ||
-    "",
-
-  TRANSAK_ENV:
-    process.env.TRANSAK_ENV === "production" ? "production" as const : process.env.TRANSAK_ENV === "staging" ? "staging" as const : undefined,
-
-  TRANSAK_API_KEY:
-    process.env.TRANSAK_API_KEY ||
-    "",
-
-  TRANSAK_API_SECRET:
-    process.env.TRANSAK_API_SECRET ||
-    "",
-
-  TRANSAK_ACCESS_TOKEN:
-    process.env.TRANSAK_ACCESS_TOKEN ||
-    "",
-
-  TRANSAK_API_BASE_URL:
-    process.env.TRANSAK_API_BASE_URL ||
-    "",
-
-  TRANSAK_API_GATEWAY_BASE_URL:
-    process.env.TRANSAK_API_GATEWAY_BASE_URL ||
-    "",
-
-  TRANSAK_REFERRER_DOMAIN:
-    process.env.TRANSAK_REFERRER_DOMAIN ||
-    "",
-
-  TRANSAK_WEBHOOK_SECRET:
-    process.env.TRANSAK_WEBHOOK_SECRET ||
-    "",
-
-  TRANSAK_WIDGET_SESSION_PATH:
-    process.env.TRANSAK_WIDGET_SESSION_PATH ||
-    "",
-
-  TRANSAK_QUOTE_PATH:
-    process.env.TRANSAK_QUOTE_PATH ||
-    "",
-
-  TRANSAK_WALLET_VERIFICATION_PATH:
-    process.env.TRANSAK_WALLET_VERIFICATION_PATH ||
-    "",
-
-  TRANSAK_ORDER_PATH:
-    process.env.TRANSAK_ORDER_PATH ||
-    "",
-
   FLUTTERWAVE_SECRET_KEY:
     process.env.FLUTTERWAVE_SECRET_KEY ||
     "",
