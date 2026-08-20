@@ -1,4 +1,4 @@
-interface WebhookDedupeBinding {
+interface KVNamespace {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
   delete(key: string): Promise<void>;
@@ -11,7 +11,7 @@ export interface Env {
   MAX_WEBHOOK_BODY_BYTES?: string;
   INTERNAL_TIMEOUT_MS?: string;
   WORKER_ENVIRONMENT?: string;
-  WEBHOOK_DEDUPE?: WebhookDedupeBinding;
+  WEBHOOK_DEDUPE?: KVNamespace;
 }
 
 const SERVICE_NAME = "smartpos-quidax-webhook";
@@ -343,7 +343,7 @@ export default {
     if (
       url.pathname === "/health" ||
       (
-        url.pathname === "/webhooks/quidax" &&
+        (url.pathname === "/api/quidax/webhook" || url.pathname === "/webhooks/quidax") &&
         request.method === "GET"
       )
     ) {
@@ -355,7 +355,7 @@ export default {
       });
     }
 
-    if (url.pathname !== "/webhooks/quidax") {
+    if (url.pathname !== "/api/quidax/webhook" && url.pathname !== "/webhooks/quidax") {
       return json(
         {
           error: "Not found",
