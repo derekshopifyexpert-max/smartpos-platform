@@ -9,7 +9,6 @@ export class QuidaxClient {
   constructor(config: QuidaxConfig) {
     if (!config.apiKey) throw new QuidaxConfigurationError("QUIDAX_API_KEY is not configured.");
     if (!config.baseUrl) throw new QuidaxConfigurationError("QUIDAX_BASE_URL is not configured.");
-    throw new QuidaxConfigurationError("Quidax authentication contract is not verified. No provider request is enabled until the official authentication method is confirmed.");
 
     this.config = config;
     this.http = axios.create({
@@ -18,6 +17,7 @@ export class QuidaxClient {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
       },
     });
   }

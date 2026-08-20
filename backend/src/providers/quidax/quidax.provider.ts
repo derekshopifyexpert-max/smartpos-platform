@@ -27,6 +27,18 @@ function list(value: unknown): unknown[] {
   return [];
 }
 
+function apiData(value: unknown): unknown {
+  const body = record(value);
+  if (body.status === "error") {
+    const details = record(body.data);
+    throw new QuidaxProviderError(
+      String(details.message ?? body.message ?? "Quidax request failed."),
+      { code: String(details.code ?? "QUIDAX_API_ERROR") },
+    );
+  }
+  return body.data ?? value;
+}
+
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new QuidaxProviderError(`Quidax response did not include ${field}.`, { code: "QUIDAX_INVALID_RESPONSE" });
@@ -67,72 +79,127 @@ export class QuidaxProviderAdapter implements QuidaxProvider {
   }
 
   async getBalances(): Promise<QuidaxBalanceRecord[]> {
-    throw this.notVerified("provider balances");
+    const response = await this.client.request<unknown>({ method: "GET", url: "/users/me/wallets" });
+    const data = apiData(response);
+    if (!Array.isArray(data)) throw new QuidaxProviderError("Quidax wallets response was malformed.", { code: "QUIDAX_INVALID_RESPONSE" });
+    return data.map((item) => {
+      const value = record(item);
+      return {
+        asset: requiredString(value.currency, "wallet currency"),
+        available: requiredString(value.balance, "wallet balance"),
+        locked: typeof value.locked === "string" ? value.locked : undefined,
+        total: typeof value.balance === "string" ? value.balance : undefined,
+        updatedAt: typeof value.updated_at === "string" ? value.updated_at : undefined,
+      };
+    });
   }
 
   async getBalance(asset: string): Promise<ProviderBalance> {
-    throw this.notVerified(`balance for ${asset}`);
+    const balances = await this.getBalances();
+    const balance = balances.find((item) => item.asset.toUpperCase() === asset.toUpperCase());
+    if (!balance) throw new QuidaxProviderError(`Quidax wallet for ${asset} was not found.`, { code: "ASSET_UNSUPPORTED" });
+    return this.toBalance(balance);
   }
 
   async getQuote(_request: CryptoQuoteRequest): Promise<CryptoQuoteResponse> {
-    throw this.notVerified("quotes/market pricing");
+    throw new QuidaxProviderError(
+      "The documented fiat-to-crypto quote uses Quidax Ramp Merchant API, which requires a separate ramp merchant credential. The exchange API key cannot be assumed to authorize that flow.",
+      { code: "QUIDAX_RAMP_CONFIGURATION_REQUIRED", category: "CAPABILITY_NOT_CONFIGURED" },
+    );
   }
 
   async buy(request: CryptoOrderRequest): Promise<CryptoOrderResponse> {
-    throw this.notVerified("BUY orders");
+    return this.createOrder({ ...request, side: "BUY" });
   }
 
   async sell(request: CryptoOrderRequest): Promise<CryptoOrderResponse> {
-    throw this.notVerified("SELL orders");
+    return this.createOrder({ ...request, side: "SELL" });
   }
 
   private async createOrder(request: CryptoOrderRequest): Promise<CryptoOrderResponse> {
-    throw this.notVerified(`${request.side} order request body`);
+    const response = await this.client.request<unknown>({
+      method: "POST",
+      url: "/users/me/orders",
+      data: {
+        market: `${request.baseAsset}${request.quoteAsset}`.toLowerCase(),
+        side: request.side.toLowerCase(),
+        ord_type: request.limitPrice ? "limit" : "market",
+        price: request.limitPrice?.toString(),
+        volume: request.amount.toString(),
+      },
+    });
+    return this.normalizeOrder(record(apiData(response)), request);
   }
 
   async getOrder(orderId: string): Promise<CryptoOrderResponse> {
-    throw this.notVerified(`order status for ${orderId}`);
+    const response = await this.client.request<unknown>({ method: "GET", url: `/users/me/orders/${encodeURIComponent(orderId)}` });
+    return this.normalizeOrder(record(apiData(response)));
   }
 
   async getTrades(orderId: string): Promise<unknown[]> {
-    throw this.notVerified(`order fills for ${orderId}`);
+    const order = await this.getOrder(orderId);
+    const trades = order.metadata?.trades;
+    return Array.isArray(trades) ? trades : [];
   }
 
   async getAssets(): Promise<unknown[]> {
-    throw this.notVerified("supported assets");
+    const markets = await this.getMarkets();
+    const assets = new Map<string, { symbol: string; markets: string[] }>();
+    for (const market of markets) {
+      const value = record(market);
+      const base = typeof value.base_unit === "string" ? value.base_unit : undefined;
+      if (!base) continue;
+      const existing = assets.get(base) ?? { symbol: base, markets: [] };
+      if (typeof value.id === "string") existing.markets.push(value.id);
+      assets.set(base, existing);
+    }
+    return [...assets.values()];
   }
 
   async getMarkets(): Promise<unknown[]> {
-    throw this.notVerified("supported markets");
+    const response = await this.client.request<unknown>({ method: "GET", url: "/markets" });
+    const data = apiData(response);
+    if (!Array.isArray(data)) throw new QuidaxProviderError("Quidax markets response was malformed.", { code: "QUIDAX_INVALID_RESPONSE" });
+    return data;
   }
 
   async getWithdrawalFee(asset: string, network: string) {
-    throw this.notVerified(`withdrawal fee for ${asset} on ${network}`);
+    const response = await this.client.request<unknown>({
+      method: "GET",
+      url: `/users/me/fee_rule?currency=${encodeURIComponent(asset.toLowerCase())}&amount=0&network=${encodeURIComponent(network.toLowerCase())}`,
+    });
+    const value = record(apiData(response));
+    return { asset, network, fee: String(value.fee), minimum: undefined };
   }
 
   async createWithdrawal(request: QuidaxWithdrawalRequest): Promise<QuidaxWithdrawal> {
-    throw this.notVerified(`withdrawal request for ${request.asset}`);
+    const response = await this.client.request<unknown>({
+      method: "POST",
+      url: "/users/me/withdraws",
+      data: {
+        currency: request.asset.toLowerCase(),
+        amount: request.amount,
+        fund_uid: request.address,
+        network: request.network,
+        reference: request.idempotencyKey,
+      },
+    });
+    return this.normalizeWithdrawal(record(apiData(response)));
   }
 
   async getWithdrawal(withdrawalId: string): Promise<QuidaxWithdrawal> {
-    throw this.notVerified(`withdrawal status for ${withdrawalId}`);
-  }
-
-  private notVerified(operation: string): QuidaxProviderError {
-    return new QuidaxProviderError(
-      `Quidax ${operation} is not enabled because its official endpoint, authentication, request, and response contract is not verified in this environment.`,
-      { code: "QUIDAX_CONTRACT_NOT_VERIFIED", category: "CAPABILITY_NOT_VERIFIED" }
-    );
+    const response = await this.client.request<unknown>({ method: "GET", url: `/users/me/withdraws/${encodeURIComponent(withdrawalId)}` });
+    return this.normalizeWithdrawal(record(apiData(response)));
   }
 
   private normalizeWithdrawal(value: Record<string, unknown>): QuidaxWithdrawal {
     return {
-      id: requiredString(value.id ?? value.withdrawal_id, "withdrawal ID"),
+      id: requiredString(value.id, "withdrawal ID"),
       status: requiredString(value.status, "withdrawal status"),
-      txHash: typeof value.tx_hash === "string" ? value.tx_hash : typeof value.txHash === "string" ? value.txHash : undefined,
+      txHash: typeof value.txId === "string" ? value.txId : undefined,
       fee: typeof value.fee === "string" || typeof value.fee === "number" ? String(value.fee) : undefined,
       amount: requiredString(value.amount, "withdrawal amount"),
-      asset: requiredString(value.currency ?? value.asset, "withdrawal asset"),
+      asset: requiredString(value.currency, "withdrawal asset"),
       network: typeof value.network === "string" ? value.network : undefined,
       createdAt: typeof value.created_at === "string" ? value.created_at : undefined,
       updatedAt: typeof value.updated_at === "string" ? value.updated_at : undefined,
@@ -140,23 +207,28 @@ export class QuidaxProviderAdapter implements QuidaxProvider {
   }
 
   private normalizeOrder(value: Record<string, unknown>, request?: CryptoOrderRequest): CryptoOrderResponse {
-    const orderId = requiredString(value.id ?? value.order_id, "order ID");
+    const orderId = requiredString(value.id, "order ID");
     const side = String(value.side ?? request?.side ?? "").toUpperCase() as "BUY" | "SELL";
     if (side !== "BUY" && side !== "SELL") throw new QuidaxProviderError("Quidax response did not include a valid order side.", { code: "QUIDAX_INVALID_RESPONSE" });
-    const requestedAmount = decimal(value.volume ?? value.amount ?? request?.amount?.toString(), "requested amount");
-    const executedRaw = value.executed_volume ?? value.filled_volume ?? value.filled_amount;
+    const volume = record(value.volume);
+    const originVolume = record(value.origin_volume);
+    const executedVolume = record(value.executed_volume);
+    const price = record(value.price);
+    const avgPrice = record(value.avg_price);
+    const requestedAmount = decimal(originVolume.amount ?? volume.amount ?? request?.amount?.toString(), "requested amount");
+    const executedRaw = executedVolume.amount;
     const executedAmount = executedRaw === undefined ? new Prisma.Decimal("0") : decimal(executedRaw, "executed amount");
     const status = normalizeOrderStatus(String(value.status ?? ""), executedAmount, requestedAmount);
-    const priceRaw = value.average_price ?? value.avg_price ?? value.price;
+    const priceRaw = avgPrice.amount ?? price.amount;
     const feeRaw = value.fee ?? value.total_fee;
     const market = value.market ?? value.symbol ?? (request ? `${request.baseAsset}_${request.quoteAsset}` : undefined);
 
     return {
       orderId,
       provider: "QUIDAX",
-      symbol: requiredString(market, "market"),
-      baseAsset: request?.baseAsset ?? String(value.base_asset ?? ""),
-      quoteAsset: request?.quoteAsset ?? String(value.quote_asset ?? ""),
+      symbol: requiredString(typeof market === "object" ? record(market).id : market, "market"),
+      baseAsset: request?.baseAsset ?? String(record(market).base_unit ?? ""),
+      quoteAsset: request?.quoteAsset ?? String(record(market).quote_unit ?? ""),
       side,
       status,
       requestedAmount,
@@ -166,7 +238,7 @@ export class QuidaxProviderAdapter implements QuidaxProvider {
       feeCurrency: String(value.fee_currency ?? request?.quoteAsset ?? ""),
       createdAt: value.created_at ? new Date(String(value.created_at)) : new Date(),
       updatedAt: value.updated_at ? new Date(String(value.updated_at)) : new Date(),
-      metadata: { rawStatus: value.status, unavailableFields: [priceRaw === undefined ? "averagePrice" : undefined, feeRaw === undefined ? "fee" : undefined].filter(Boolean) },
+      metadata: { rawStatus: value.status, trades: value.trades },
     };
   }
 
