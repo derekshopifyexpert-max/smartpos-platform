@@ -120,26 +120,114 @@ export default class PaymentOrchestratorService {
       throw new Error("Transaction does not belong to the payment intent.");
     }
 
+    // Check if payment was captured (required before crypto settlement)
+    if (transaction.status !== "CAPTURED") {
+      throw new Error(`Cannot settle crypto: transaction status is ${transaction.status}. Payment must be CAPTURED first.`);
+    }
+
+    // Idempotency: Check for existing conversion in non-failed state
     const existingConversion = await this.app.prisma.cryptoConversion.findFirst({
       where: { transactionId: transaction.id },
       orderBy: { createdAt: "desc" },
     });
 
-    if (existingConversion && ["pending", "exchange_pending", "completed"].includes(existingConversion.status)) {
+    if (existingConversion && ["exchange_pending", "exchange_completed", "crypto_settled"].includes(existingConversion.status)) {
       return { conversion: existingConversion, duplicate: true };
     }
 
-    const provider = await this.exchangeService.getExchangeProvider();
-    await provider.getQuote({
-      baseAsset: String(payload.asset ?? "USDT").toUpperCase(),
-      quoteAsset: String(paymentIntent.currency),
-      side: "BUY",
-      amount: new Prisma.Decimal(String(paymentIntent.amount)),
+    // Validate crypto asset and destination
+    const cryptoAsset = String(payload.asset ?? "USDT").toUpperCase();
+    if (!["USDT", "BUSD", "USDC"].includes(cryptoAsset)) {
+      throw new Error(`Unsupported crypto asset: ${cryptoAsset}. Supported: USDT, BUSD, USDC`);
+    }
+
+    if (!payload.destinationAddress) {
+      throw new Error("Destination blockchain address is required.");
+    }
+
+    // Create new conversion record
+    const conversion = await this.app.prisma.cryptoConversion.create({
+      data: {
+        transactionId: transaction.id,
+        status: "exchange_pending",
+        fromCurrency: paymentIntent.currency,
+        fromAmount: new Prisma.Decimal(String(paymentIntent.amount)),
+        toCurrency: cryptoAsset,
+        toAmount: new Prisma.Decimal("0"), // Will be updated on order execution
+        rate: new Prisma.Decimal("0"), // Will be set from provider order
+        network: payload.network || "ERC20",
+        destinationAddress: payload.destinationAddress,
+        metadata: {
+          paymentIntentId,
+          provider: "QUIDAX",
+          createdAt: new Date().toISOString(),
+        } as Prisma.JsonValue,
+      },
     });
 
-    throw new Error(
-      "QUIDAX_CONTRACT_NOT_VERIFIED: Quidax quote/order contract is not verified, so no fiat-to-crypto order or transfer was created."
-    );
+    try {
+      // Call Quidax exchange API to create order
+      const provider = await this.exchangeService.getExchangeProvider();
+      const order = await provider.buy({
+        baseAsset: cryptoAsset,
+        quoteAsset: paymentIntent.currency,
+        amount: new Prisma.Decimal(String(paymentIntent.amount)),
+        limitPrice: undefined, // Market order
+      });
+
+      // Persist the order ID and status from provider
+      const exchangeOrder = await this.app.prisma.exchangeOrder.create({
+        data: {
+          orderId: order.id,
+          status: order.status,
+          market: `${cryptoAsset}${paymentIntent.currency}`.toLowerCase(),
+          side: "BUY",
+          amount: new Prisma.Decimal(String(paymentIntent.amount)),
+          filledAmount: new Prisma.Decimal(order.executedAmount?.toString() || "0"),
+          price: new Prisma.Decimal(order.averagePrice?.toString() || "0"),
+          avgPrice: new Prisma.Decimal(order.averagePrice?.toString() || "0"),
+          provider: "QUIDAX",
+          metadata: {
+            createdAt: new Date().toISOString(),
+            quidaxOrderId: order.id,
+            quidaxStatus: order.status,
+            paymentIntentId,
+          } as Prisma.JsonValue,
+        },
+      });
+
+      // Link exchange order to conversion
+      await this.app.prisma.cryptoConversion.update({
+        where: { id: conversion.id },
+        data: {
+          exchangeOrderId: exchangeOrder.id,
+          toAmount: new Prisma.Decimal(order.executedAmount?.toString() || "0"),
+          rate: new Prisma.Decimal(order.averagePrice?.toString() || "0"),
+          metadata: {
+            ...(conversion.metadata && typeof conversion.metadata === "object" && !Array.isArray(conversion.metadata) ? conversion.metadata : {}),
+            exchangeOrderId: exchangeOrder.id,
+            orderId: order.id,
+            initialStatus: order.status,
+          } as Prisma.JsonValue,
+        },
+      });
+
+      return { conversion: { ...conversion, exchangeOrderId: exchangeOrder.id }, duplicate: false };
+    } catch (error: unknown) {
+      // Mark conversion as failed if order creation fails
+      await this.app.prisma.cryptoConversion.update({
+        where: { id: conversion.id },
+        data: {
+          status: "failed",
+          metadata: {
+            ...(conversion.metadata && typeof conversion.metadata === "object" && !Array.isArray(conversion.metadata) ? conversion.metadata : {}),
+            errorMessage: error instanceof Error ? error.message : String(error),
+            failedAt: new Date().toISOString(),
+          } as Prisma.JsonValue,
+        },
+      });
+      throw error;
+    }
   }
 
   async checkoutPaymentIntent(
