@@ -68,4 +68,28 @@ export default async function exchangeRoutes(
     controller.getBalance
   );
 
+  app.get(
+    "/crypto/assets",
+    { preHandler: authMiddleware },
+    controller.getAssets
+  );
+
+  app.get(
+    "/crypto/markets",
+    { preHandler: authMiddleware },
+    controller.getMarkets
+  );
+
+  app.get(
+    "/crypto/balances",
+    { preHandler: authMiddleware },
+    controller.getBalances
+  );
+
+  app.get(
+    "/crypto/provider/status",
+    { preHandler: authMiddleware },
+    controller.providerStatus
+  );
+
 }

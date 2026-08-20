@@ -4,18 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, Copy, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { usePaymentProviderAccounts } from "@/features/payment/hooks/use-payment-provider-accounts";
-import { getWallets } from "@/features/wallets/services/wallet.service";
-import type { WalletRecord } from "@/features/wallets/types/wallet";
 import { useBuyUsdt, useGetOrderStatus, useGetQuote, useSellUsdt } from "@/features/exchange/hooks/use-exchange";
 import type { ExchangeOrder, ExchangeQuote } from "@/features/exchange/types/exchange";
 import { formatCrypto, formatFiat, formatTimeRemaining, getTimeRemaining, validateDecimalAmount } from "@/features/exchange/lib/format";
 import { OrderConfirmationModal } from "./order-confirmation-modal";
-
-function walletAddress(wallet: WalletRecord): string {
-  if (wallet.address?.trim()) return wallet.address.trim();
-  return wallet.walletAddresses?.find((item) => item.isActive !== false && item.address.trim())?.address || "";
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The backend did not return a safe error message.";
@@ -34,10 +26,7 @@ export function CryptoTradingWorkflow() {
   const [quote, setQuote] = useState<ExchangeQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteRemaining, setQuoteRemaining] = useState(0);
-  const [selectedWallet, setSelectedWallet] = useState<WalletRecord | null>(null);
-  const [wallets, setWallets] = useState<WalletRecord[]>([]);
-  const [walletError, setWalletError] = useState<string | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState("");
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState<ExchangeOrder | null>(null);
   const [clientOrderId, setClientOrderId] = useState<string | null>(null);
@@ -46,18 +35,6 @@ export function CryptoTradingWorkflow() {
   const buyMutation = useBuyUsdt();
   const sellMutation = useSellUsdt();
   const orderQuery = useGetOrderStatus(submittedOrder?.orderId || undefined);
-  const accountsQuery = usePaymentProviderAccounts();
-
-  useEffect(() => {
-    let active = true;
-    getWallets()
-      .then((items) => active && setWallets(items.filter((wallet) => walletAddress(wallet))))
-      .catch((error) => active && setWalletError(errorMessage(error)));
-    return () => {
-      active = false;
-    };
-  }, []);
-
   useEffect(() => {
     if (!quote?.expiresAt) return;
     const update = () => setQuoteRemaining(getTimeRemaining(quote.expiresAt));
@@ -70,15 +47,13 @@ export function CryptoTradingWorkflow() {
     setQuote(null);
     setQuoteError(null);
     setConfirmationOpen(false);
-  }, [amount, side, selectedWallet?.id, selectedAccountId]);
+  }, [amount, side, destinationAddress]);
 
   const amountError = useMemo(() => validateDecimalAmount(amount), [amount]);
   const quoteExpired = quoteRemaining <= 0;
   const currentOrder = orderQuery.data || submittedOrder;
   const isSubmitting = buyMutation.isPending || sellMutation.isPending;
-  const isWalletCompatible = !selectedWallet ||
-    ((selectedWallet.asset || "USDT").toUpperCase() === "USDT" &&
-      (selectedWallet.network || selectedWallet.blockchain?.name || "").toUpperCase() !== "");
+  const hasDestination = destinationAddress.trim().length > 0;
 
   async function requestQuote() {
     if (amountError) {
@@ -93,50 +68,24 @@ export function CryptoTradingWorkflow() {
         quoteAsset: "USD",
         side,
         amount,
-        ttlSeconds: 30,
-      });
-      setQuote(result);
-    } catch (error) {
-      setQuoteError(errorMessage(error));
-    }
-  }
-
-  async function submitOrder() {
-    if (!quote || quoteExpired || amountError || isSubmitting) return;
-    const stableClientOrderId = clientOrderId || makeClientOrderId(side);
-    setClientOrderId(stableClientOrderId);
-
-    try {
-      const request = {
-        baseAsset: "USDT",
-        quoteAsset: "USD",
-        amount,
-        quoteId: quote.id,
-        clientOrderId: stableClientOrderId,
-      };
+          <div>
+            <p className="mb-2 text-sm font-medium text-slate-700">Provider</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Quidax</div>
+          </div>
       const order = side === "BUY"
         ? await buyMutation.mutateAsync(request)
         : await sellMutation.mutateAsync(request);
-      setSubmittedOrder(order);
-      setConfirmationOpen(false);
+          <label htmlFor="wallet-destination" className="mb-2 block text-sm font-medium text-slate-700">
+            External customer wallet {side === "SELL" && <span className="font-normal text-slate-500">(not used for a sale)</span>}
       toast.success(`${side} order submitted`, { description: order.orderId || order.id });
-    } catch (error) {
+          <input
       toast.error(`${side} order failed`, { description: errorMessage(error) });
-    }
-  }
-
+            value={destinationAddress}
+            onChange={(event) => setDestinationAddress(event.target.value)}
+            placeholder="Enter the wallet that should receive crypto"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm"
   const displayedOrder = currentOrder;
-  const orderError = buyMutation.error || sellMutation.error || orderQuery.error;
-
-  return (
-    <div className="space-y-6">
-      <section className="rounded-lg border border-slate-200 bg-white p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Trade details</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Quotes and execution come from the configured exchange provider. The asset is USDT and the quote currency is USD when supported by the provider.
-            </p>
+          <p className="mt-2 text-xs text-slate-500">Crypto delivery requires a verified Quidax-supported asset and network. SmartPOS does not generate or custody this wallet.</p>
           </div>
           <div className="flex rounded-lg border border-slate-200 p-1" role="group" aria-label="Trading side">
             {(["BUY", "SELL"] as const).map((option) => (
@@ -175,49 +124,23 @@ export function CryptoTradingWorkflow() {
           </div>
 
           <div>
-            <label htmlFor="payment-account" className="mb-2 block text-sm font-medium text-slate-700">
-              {side === "BUY" ? "Payment account" : "Destination account"}
-            </label>
-            <select
-              id="payment-account"
-              value={selectedAccountId}
-              onChange={(event) => setSelectedAccountId(event.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-            >
-              <option value="">Select configured account</option>
-              {(accountsQuery.data || []).map((account) => (
-                <option key={account.id} value={account.id} disabled={!account.configured || account.status !== "ACTIVE"}>
-                  {account.displayName || account.name} · {account.currency} · {account.configured && account.status === "ACTIVE" ? "Active" : "Not configured"}
-                </option>
-              ))}
-            </select>
-            {accountsQuery.isLoading && <p className="mt-2 text-xs text-slate-500">Loading payment accounts...</p>}
-            {accountsQuery.error && <p className="mt-2 text-xs text-red-600">{errorMessage(accountsQuery.error)}</p>}
-            {!accountsQuery.isLoading && !accountsQuery.data?.length && <p className="mt-2 text-xs text-amber-700">No Paystack destination accounts configured.</p>}
+            <p className="mb-2 text-sm font-medium text-slate-700">Provider</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Quidax</div>
           </div>
         </div>
 
         <div className="mt-4">
           <label htmlFor="wallet-destination" className="mb-2 block text-sm font-medium text-slate-700">
-            Merchant wallet destination {side === "SELL" && <span className="font-normal text-slate-500">(not used by the exchange SELL endpoint)</span>}
+            External customer wallet {side === "SELL" && <span className="font-normal text-slate-500">(not used for a sale)</span>}
           </label>
-          <select
+          <input
             id="wallet-destination"
-            value={selectedWallet?.id || ""}
-            onChange={(event) => setSelectedWallet(wallets.find((wallet) => wallet.id === event.target.value) || null)}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="">Select saved merchant wallet</option>
-            {wallets.map((wallet) => (
-              <option key={wallet.id} value={wallet.id}>
-                {wallet.name} · {wallet.asset || "USDT"} · {wallet.network || wallet.blockchain?.name || "Unknown network"}
-              </option>
-            ))}
-          </select>
-          {walletError && <p className="mt-2 text-sm text-red-600">{walletError}</p>}
-          {!walletError && !wallets.length && <p className="mt-2 text-sm text-amber-700">No saved merchant wallets are available.</p>}
-          {selectedWallet && <p className="mt-2 break-all text-xs text-slate-500">Destination: {walletAddress(selectedWallet)}</p>}
-          {!isWalletCompatible && <p className="mt-2 text-sm text-red-600">Selected wallet is not compatible with USDT settlement.</p>}
+            value={destinationAddress}
+            onChange={(event) => setDestinationAddress(event.target.value)}
+            placeholder="Enter the wallet that should receive crypto"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm"
+          />
+          <p className="mt-2 text-xs text-slate-500">SmartPOS does not generate or custody this wallet.</p>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
@@ -247,7 +170,7 @@ export function CryptoTradingWorkflow() {
               <div className="flex items-center gap-2 text-sm font-medium text-slate-700"><Clock3 className="h-4 w-4" />{quoteExpired ? "Quote expired" : `Expires in ${formatTimeRemaining(quoteRemaining)}`}</div>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={() => setConfirmationOpen(true)} disabled={quoteExpired || Boolean(amountError) || !isWalletCompatible} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300">Review {side} trade</button>
+              <button type="button" onClick={() => setConfirmationOpen(true)} disabled={quoteExpired || Boolean(amountError) || (side === "BUY" && !hasDestination)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300">Review {side} trade</button>
               {quoteExpired && <span className="self-center text-sm text-amber-800">Get a new quote before confirming.</span>}
             </div>
           </div>
@@ -285,9 +208,9 @@ export function CryptoTradingWorkflow() {
           estimatedFiat: side === "SELL" ? quote?.quoteAmount : amount,
           fee: quote?.fee,
           currency: "USD",
-          walletAddress: selectedWallet ? walletAddress(selectedWallet) : undefined,
-          walletName: selectedWallet?.name,
-          network: selectedWallet?.network || selectedWallet?.blockchain?.name || undefined,
+          walletAddress: destinationAddress || undefined,
+          walletName: "External customer wallet",
+          network: "Provider-supported network required",
           quoteExpiration: quote?.expiresAt,
         }}
         onConfirm={submitOrder}

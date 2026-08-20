@@ -18,7 +18,7 @@ export function ProviderBalanceDisplay({
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-900">Exchange Balance</h3>
+          <h3 className="text-sm font-semibold text-slate-900">Quidax Balance</h3>
         </div>
         <div className="flex items-center justify-center h-12">
           <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
@@ -33,11 +33,11 @@ export function ProviderBalanceDisplay({
         <div className="flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-slate-900">Exchange Balance</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Quidax Balance</h3>
             <p className="text-sm text-amber-700 mt-1">
               {error instanceof Error
                 ? error.message
-                : "Exchange balance unavailable. Exchange provider is currently unreachable."}
+                : "Quidax balance unavailable. The provider is currently unreachable."}
             </p>
           </div>
         </div>
@@ -47,7 +47,7 @@ export function ProviderBalanceDisplay({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6">
-      <h3 className="text-sm font-semibold text-slate-900 mb-4">Exchange Balance</h3>
+      <h3 className="text-sm font-semibold text-slate-900 mb-4">Quidax Balance</h3>
 
       <div className="space-y-3">
         {/* Available Balance */}

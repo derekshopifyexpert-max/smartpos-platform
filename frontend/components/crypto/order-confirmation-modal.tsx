@@ -16,7 +16,6 @@ export interface OrderConfirmationModalProps {
     currency: string;
     walletAddress?: string;
     walletName?: string;
-    paystackAccount?: string;
     network?: string;
     quoteExpiration?: string;
   };
@@ -107,7 +106,7 @@ export function OrderConfirmationModal({
           </div>
 
           {/* Destination/Account */}
-          {(order.walletAddress || order.paystackAccount) && (
+          {order.walletAddress && (
             <div className="border-t border-slate-200 pt-4 space-y-3 text-sm">
               {order.side === "BUY" && order.walletAddress && (
                 <>
@@ -135,16 +134,6 @@ export function OrderConfirmationModal({
                 </>
               )}
 
-              {order.side === "SELL" && order.paystackAccount && (
-                <div>
-                  <p className="text-xs text-slate-600 uppercase tracking-wide mb-1">
-                    Destination Account
-                  </p>
-                  <p className="text-sm font-medium text-slate-900">
-                    {order.paystackAccount}
-                  </p>
-                </div>
-              )}
             </div>
           )}
 

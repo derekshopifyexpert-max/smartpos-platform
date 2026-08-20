@@ -273,6 +273,57 @@ export default class ExchangeController {
     }
   };
 
+  getAssets = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return reply.send({ success: true, data: await this.exchangeService.getProviderAssets() });
+    } catch (error: any) {
+      return reply.code(error.retryable ? 503 : 400).send({ success: false, error: error.message || "Quidax assets unavailable." });
+    }
+  };
+
+  getMarkets = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return reply.send({ success: true, data: await this.exchangeService.getProviderMarkets() });
+    } catch (error: any) {
+      return reply.code(error.retryable ? 503 : 400).send({ success: false, error: error.message || "Quidax markets unavailable." });
+    }
+  };
+
+  getBalances = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return reply.send({ success: true, data: await this.exchangeService.getProviderBalances() });
+    } catch (error: any) {
+      return reply.code(error.retryable ? 503 : 400).send({ success: false, error: error.message || "Quidax balances unavailable." });
+    }
+  };
+
+  providerStatus = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const configuration = await import("../config/env.js").then((module) => module.default);
+      const provider = await this.exchangeService.getExchangeProvider();
+      const account = await provider.getAccountInfo();
+      return reply.send({
+        success: true,
+        data: {
+          provider: "QUIDAX",
+          environment: configuration.QUIDAX_ENVIRONMENT,
+          connected: true,
+          accountId: account.accountId,
+        },
+      });
+    } catch (error: any) {
+      return reply.code(error.retryable ? 503 : 200).send({
+        success: true,
+        data: {
+          provider: "QUIDAX",
+          environment: (await import("../config/env.js").then((module) => module.default)).QUIDAX_ENVIRONMENT,
+          connected: false,
+          error: error.message || "Quidax unavailable.",
+        },
+      });
+    }
+  };
+
   listOrders = async (
     request: FastifyRequest,
     reply: FastifyReply

@@ -384,41 +384,38 @@ export default class ExchangeService {
    * Configured via ExchangeProvider database model or environment variables.
    */
   async getExchangeProvider() {
-    // Try to get configured provider from database first
-    const dbProvider = await this.app.prisma.exchangeProvider.findFirst({
-      where: { isActive: true }
-    });
+    const configuration = await import("../config/env.js").then((module) => module.default);
 
-    if (dbProvider && dbProvider.baseUrl && dbProvider.apiKey) {
-      // Use database-configured provider
-      const { RealExchangeProvider } = await import("../providers/real-exchange.provider.js");
-      return new RealExchangeProvider({
-        provider: dbProvider.name,
-        baseUrl: dbProvider.baseUrl,
-        apiKey: dbProvider.apiKey,
-        apiSecret: dbProvider.apiSecret ?? undefined,
-        metadata: dbProvider.metadata as any,
-      });
-    }
-
-    // Try environment variables
-    const { EXCHANGE_PROVIDER_NAME, EXCHANGE_PROVIDER_BASE_URL, EXCHANGE_PROVIDER_API_KEY, EXCHANGE_PROVIDER_API_SECRET } = await import("../config/env.js").then(m => m.default);
-
-    if (!EXCHANGE_PROVIDER_NAME || !EXCHANGE_PROVIDER_BASE_URL) {
+    if (!configuration.QUIDAX_API_KEY || !configuration.QUIDAX_BASE_URL) {
       throw new Error(
-        "No exchange provider configured. " +
-        "Set EXCHANGE_PROVIDER_NAME and EXCHANGE_PROVIDER_BASE_URL in environment variables " +
-        "or configure an active ExchangeProvider in the database."
+        "Quidax is not configured. Set QUIDAX_API_KEY and QUIDAX_BASE_URL on the backend."
       );
     }
 
-    const { RealExchangeProvider } = await import("../providers/real-exchange.provider.js");
-    return new RealExchangeProvider({
-      provider: EXCHANGE_PROVIDER_NAME,
-      baseUrl: EXCHANGE_PROVIDER_BASE_URL,
-      apiKey: EXCHANGE_PROVIDER_API_KEY,
-      apiSecret: EXCHANGE_PROVIDER_API_SECRET,
+    const { QuidaxProviderAdapter } = await import("../providers/quidax/quidax.provider.js");
+    return new QuidaxProviderAdapter({
+      apiKey: configuration.QUIDAX_API_KEY,
+      baseUrl: configuration.QUIDAX_BASE_URL,
+      timeoutMs: configuration.QUIDAX_TIMEOUT_MS,
     });
+  }
+
+  async getProviderAssets() {
+    const provider = await this.getExchangeProvider();
+    if (!("getAssets" in provider)) throw new Error("Quidax asset lookup is unavailable.");
+    return provider.getAssets();
+  }
+
+  async getProviderMarkets() {
+    const provider = await this.getExchangeProvider();
+    if (!("getMarkets" in provider)) throw new Error("Quidax market lookup is unavailable.");
+    return provider.getMarkets();
+  }
+
+  async getProviderBalances() {
+    const provider = await this.getExchangeProvider();
+    if (!("getBalances" in provider)) throw new Error("Quidax balance lookup is unavailable.");
+    return provider.getBalances();
   }
 
   /**

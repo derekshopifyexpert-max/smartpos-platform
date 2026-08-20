@@ -3,7 +3,6 @@ import PaymentService from "./payment.service.js";
 import GatewayService from "./gateway.service.js";
 import ExchangeService from "./exchange.service.js";
 import BlockchainService from "./blockchain.service.js";
-import CryptoSettlementService from "./crypto-settlement.service.js";
 import PaymentProviderAccountService from "./payment-provider-account.service.js";
 import ProviderManager from "../providers/provider.manager.js";
 import ProviderFactory from "../providers/provider.factory.js";
@@ -112,15 +111,11 @@ export default class PaymentOrchestratorService {
       walletId?: string;
     }
   ) {
-    const settlementService = new CryptoSettlementService(this.app);
-
-    return settlementService.executeSettlement(paymentIntentId, {
-      transactionId: payload.transactionId ?? undefined,
-      asset: payload.asset,
-      network: payload.network,
-      destinationAddress: payload.destinationAddress,
-      walletId: payload.walletId,
-    });
+    void paymentIntentId;
+    void payload;
+    throw new Error(
+      "QUIDAX_CONTRACT_NOT_VERIFIED: the legacy internal exchange-to-SmartPOS blockchain settlement path is disabled until Quidax order and withdrawal contracts are verified."
+    );
   }
 
   async checkoutPaymentIntent(

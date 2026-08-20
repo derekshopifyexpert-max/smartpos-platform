@@ -192,6 +192,27 @@ export const env = {
     process.env.EXCHANGE_PROVIDER_API_SECRET ||
     "",
 
+  QUIDAX_API_KEY:
+    process.env.QUIDAX_API_KEY ||
+    "",
+
+  QUIDAX_API_SECRET:
+    process.env.QUIDAX_API_SECRET ||
+    "",
+
+  QUIDAX_BASE_URL:
+    process.env.QUIDAX_BASE_URL ||
+    "",
+
+  QUIDAX_ENVIRONMENT:
+    process.env.QUIDAX_ENVIRONMENT ||
+    "sandbox",
+
+  QUIDAX_TIMEOUT_MS:
+    Number(process.env.QUIDAX_TIMEOUT_MS || 15000),
+
+  QUIDAX_WEBHOOK_SECRET: process.env.QUIDAX_WEBHOOK_SECRET || "",
+
   // ========== BLOCKCHAIN & SETTLEMENT ==========
   BLOCKCHAIN_NETWORK:
     (process.env.BLOCKCHAIN_NETWORK || process.env.BLOCKCHAIN_NETWORK_NAME || "ETHEREUM").trim().toUpperCase(),
