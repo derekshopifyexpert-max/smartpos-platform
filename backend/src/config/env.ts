@@ -196,10 +196,6 @@ export const env = {
     process.env.QUIDAX_API_KEY ||
     "",
 
-  QUIDAX_API_SECRET:
-    process.env.QUIDAX_API_SECRET ||
-    "",
-
   QUIDAX_BASE_URL:
     process.env.QUIDAX_BASE_URL ||
     "",
@@ -211,7 +207,10 @@ export const env = {
   QUIDAX_TIMEOUT_MS:
     Number(process.env.QUIDAX_TIMEOUT_MS || 15000),
 
-  QUIDAX_WEBHOOK_SECRET: process.env.QUIDAX_WEBHOOK_SECRET || "",
+  SMARTPOS_WEBHOOK_SECRET:
+    process.env.SMARTPOS_WEBHOOK_SECRET ||
+    "",
+
 
   // ========== BLOCKCHAIN & SETTLEMENT ==========
   BLOCKCHAIN_NETWORK:

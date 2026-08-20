@@ -1928,6 +1928,27 @@ model WebhookEvent {
   @@index([createdAt(sort: Desc)])
 }
 
+model ProviderWebhookEvent {
+  id                  String    @id @default(cuid())
+  provider            String
+  eventId             String    @unique
+  eventName           String
+  providerReference   String?
+  merchantReference   String?
+  payloadHash         String
+  status              String
+  receivedAt          DateTime  @default(now())
+  processedAt         DateTime?
+  error               String?
+  rawPayload          Json
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([provider, eventName])
+  @@index([providerReference])
+  @@index([receivedAt(sort: Desc)])
+}
+
 model WebhookRetry {
   id                String          @id @default(cuid())
   webhookDeliveryId String

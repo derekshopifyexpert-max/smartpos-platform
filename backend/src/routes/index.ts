@@ -16,6 +16,7 @@ import reconciliationRoutes from "./reconciliation.routes.js";
 import observabilityRoutes from "./observability.routes.js";
 import paymentProviderAccountRoutes from "./payment-provider-account.routes.js";
 import transakRoutes from "./transak.routes.js";
+import quidaxWebhookRoutes from "./quidax-webhook.routes.js";
 
 export default async function registerRoutes(
   app: FastifyInstance
@@ -80,6 +81,10 @@ export default async function registerRoutes(
   });
 
   app.register(transakRoutes, {
+    prefix: "/api/v1"
+  });
+
+  app.register(quidaxWebhookRoutes, {
     prefix: "/api/v1"
   });
 }
