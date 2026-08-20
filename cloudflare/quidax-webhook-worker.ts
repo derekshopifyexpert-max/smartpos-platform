@@ -1,9 +1,3 @@
-interface KVNamespace {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
-  delete(key: string): Promise<void>;
-}
-
 export interface Env {
   QUIDAX_WEBHOOK_SECRET?: string;
   SMARTPOS_BACKEND_WEBHOOK_URL?: string;
@@ -11,7 +5,11 @@ export interface Env {
   MAX_WEBHOOK_BODY_BYTES?: string;
   INTERNAL_TIMEOUT_MS?: string;
   WORKER_ENVIRONMENT?: string;
-  WEBHOOK_DEDUPE?: KVNamespace;
+  WEBHOOK_DEDUPE?: {
+    get(key: string): Promise<string | null>;
+    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+    delete(key: string): Promise<void>;
+  };
 }
 
 const SERVICE_NAME = "smartpos-quidax-webhook";
