@@ -16,45 +16,57 @@ export class QuidaxClient {
   private readonly config: QuidaxConfig;
 
   constructor(config: QuidaxConfig) {
-    if (!config.apiKey) {
+    const apiKey = config.apiKey?.trim();
+    const baseUrl = config.baseUrl?.trim();
+
+    if (!apiKey) {
       throw new QuidaxConfigurationError(
         "QUIDAX_API_KEY is not configured."
       );
     }
 
-    if (!config.baseUrl) {
+    if (!baseUrl) {
       throw new QuidaxConfigurationError(
         "QUIDAX_BASE_URL is not configured."
       );
     }
 
-    this.config = config;
+    this.config = {
+      ...config,
+      apiKey,
+      baseUrl,
+    };
 
     this.http = axios.create({
-      baseURL: config.baseUrl.replace(/\/$/, ""),
-      timeout: config.timeoutMs,
+      baseURL: baseUrl.replace(/\/+$/, ""),
+      timeout: config.timeoutMs || 15000,
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
     });
 
-    /**
-     * Quidax Ramp uses a DIFFERENT authentication mechanism:
+    /*
+     * Quidax Ramp uses a separate authentication mechanism.
      *
-     * x-private-key: <Ramp private key>
+     * Exchange API:
+     *   Authorization: Bearer <api-key>
      *
-     * The Exchange API key must not be used for Ramp requests.
+     * Ramp:
+     *   x-private-key: <ramp-private-key>
      */
-    if (config.rampBaseUrl && config.rampPrivateKey) {
+    const rampBaseUrl = config.rampBaseUrl?.trim();
+    const rampPrivateKey = config.rampPrivateKey?.trim();
+
+    if (rampBaseUrl && rampPrivateKey) {
       this.rampHttp = axios.create({
-        baseURL: config.rampBaseUrl.replace(/\/$/, ""),
-        timeout: config.timeoutMs,
+        baseURL: rampBaseUrl.replace(/\/+$/, ""),
+        timeout: config.timeoutMs || 15000,
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          "x-private-key": config.rampPrivateKey,
+          "x-private-key": rampPrivateKey,
         },
       });
     }
@@ -70,47 +82,95 @@ export class QuidaxClient {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const providerBody =
-          error.response?.data as
-            | {
-                message?: string;
-                error?: string;
-                code?: string;
-              }
-            | undefined;
+        const status =
+          error.response?.status;
+
+        const responseData =
+          error.response?.data;
+
+        let providerMessage =
+          "Quidax request failed.";
+
+        if (
+          responseData &&
+          typeof responseData === "object"
+        ) {
+          const body =
+            responseData as Record<string, unknown>;
+
+          if (
+            typeof body.message === "string" &&
+            body.message.trim()
+          ) {
+            providerMessage =
+              body.message;
+          } else if (
+            typeof body.error === "string" &&
+            body.error.trim()
+          ) {
+            providerMessage =
+              body.error;
+          }
+        }
+
+        if (status === 401) {
+          throw new QuidaxProviderError(
+            "Quidax rejected the API credentials (401 Unauthorized). Verify that QUIDAX_API_KEY is the current active Exchange API secret and that its IP restrictions allow this server.",
+            {
+              code: "QUIDAX_AUTHENTICATION_FAILED",
+              status: 401,
+              retryable: false,
+              category:
+                "AUTHENTICATION_FAILED",
+            }
+          );
+        }
+
+        if (status === 403) {
+          throw new QuidaxProviderError(
+            "Quidax denied this request (403 Forbidden). Check the API key permissions and IP restrictions in Quidax API Management.",
+            {
+              code: "QUIDAX_FORBIDDEN",
+              status: 403,
+              retryable: false,
+              category:
+                "AUTHENTICATION_FAILED",
+            }
+          );
+        }
 
         throw new QuidaxProviderError(
-          providerBody?.message ||
-            providerBody?.error ||
-            "Quidax request failed.",
+          providerMessage,
           {
             code:
-              providerBody?.code ||
-              error.code ||
-              "QUIDAX_REQUEST_FAILED",
+              typeof (
+                responseData as any
+              )?.code === "string"
+                ? (responseData as any).code
+                    : error.code ||
+                      "QUIDAX_REQUEST_FAILED",
 
-            status:
-              error.response?.status,
+            status,
 
             retryable:
-              Boolean(
-                !error.response ||
-                  error.response.status === 429 ||
-                  error.response.status >= 500
-              ),
+              !status ||
+              status === 429 ||
+              status >= 500,
           }
         );
       }
 
       throw new QuidaxProviderError(
-        "Quidax request failed."
+        "Quidax request failed.",
+        {
+          code: "QUIDAX_REQUEST_FAILED",
+          category:
+            "QUIDAX_REQUEST_FAILED",
+        }
       );
     }
   }
 
-  /**
-   * Make an authenticated request against Quidax Ramp.
-   */
   async rampRequest<T>(
     request: AxiosRequestConfig
   ): Promise<T> {
@@ -122,44 +182,92 @@ export class QuidaxClient {
 
     try {
       const response =
-        await this.rampHttp.request<T>(request);
+        await this.rampHttp.request<T>(
+          request
+        );
 
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const providerBody =
-          error.response?.data as
-            | {
-                message?: string;
-                error?: string;
-                code?: string;
-              }
-            | undefined;
+        const status =
+          error.response?.status;
+
+        const responseData =
+          error.response?.data;
+
+        let providerMessage =
+          "Quidax Ramp request failed.";
+
+        if (
+          responseData &&
+          typeof responseData === "object"
+        ) {
+          const body =
+            responseData as Record<string, unknown>;
+
+          if (
+            typeof body.message === "string" &&
+            body.message.trim()
+          ) {
+            providerMessage =
+              body.message;
+          } else if (
+            typeof body.error === "string" &&
+            body.error.trim()
+          ) {
+            providerMessage =
+              body.error;
+          }
+        }
+
+        if (status === 401) {
+          throw new QuidaxProviderError(
+            "Quidax Ramp rejected the private key (401 Unauthorized).",
+            {
+              code:
+                "QUIDAX_RAMP_AUTHENTICATION_FAILED",
+              status: 401,
+              retryable: false,
+              category:
+                "AUTHENTICATION_FAILED",
+            }
+          );
+        }
+
+        if (status === 403) {
+          throw new QuidaxProviderError(
+            "Quidax Ramp denied this request (403 Forbidden).",
+            {
+              code:
+                "QUIDAX_RAMP_FORBIDDEN",
+              status: 403,
+              retryable: false,
+              category:
+                "AUTHENTICATION_FAILED",
+            }
+          );
+        }
 
         throw new QuidaxProviderError(
-          providerBody?.message ||
-            providerBody?.error ||
-            "Quidax Ramp request failed.",
+          providerMessage,
           {
             code:
-              providerBody?.code ||
-              error.code ||
-              "QUIDAX_RAMP_REQUEST_FAILED",
+              typeof (
+                responseData as any
+              )?.code === "string"
+                ? (responseData as any).code
+                    : error.code ||
+                      "QUIDAX_RAMP_REQUEST_FAILED",
 
-            status:
-              error.response?.status,
+            status,
 
             retryable:
-              Boolean(
-                !error.response ||
-                  error.response.status === 429 ||
-                  error.response.status >= 500
-              ),
+              !status ||
+              status === 429 ||
+              status >= 500,
 
             category:
-              error.response?.status === 403
-                ? "AUTHENTICATION_FAILED"
-                : "RAMP_REQUEST_FAILED",
+              "RAMP_REQUEST_FAILED",
           }
         );
       }
@@ -167,8 +275,10 @@ export class QuidaxClient {
       throw new QuidaxProviderError(
         "Quidax Ramp request failed.",
         {
-          code: "QUIDAX_RAMP_REQUEST_FAILED",
-          category: "RAMP_REQUEST_FAILED",
+          code:
+            "QUIDAX_RAMP_REQUEST_FAILED",
+          category:
+            "RAMP_REQUEST_FAILED",
         }
       );
     }
