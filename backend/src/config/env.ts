@@ -145,6 +145,14 @@ export const env = {
     process.env.QUIDAX_BASE_URL ||
     "",
 
+  QUIDAX_PRIVATE_KEY:
+    process.env.QUIDAX_PRIVATE_KEY ||
+    "",
+
+  QUIDAX_RAMP_BASE_URL:
+    process.env.QUIDAX_RAMP_BASE_URL ||
+    "",
+
   QUIDAX_ENVIRONMENT:
     process.env.QUIDAX_ENVIRONMENT ||
     "sandbox",
