@@ -315,6 +315,7 @@ model Merchant {
   notifications                Notification[]                @relation("MerchantNotification")
   paymentIntents               PaymentIntent[]
   paymentMethods               PaymentMethod[]
+  PaymentProviderAccounts      PaymentProviderAccount[]
   payrolls                     Payroll[]
   products                     Product[]
   purchases                    Purchase[]
@@ -846,46 +847,46 @@ model ReceiptTemplate {
 }
 
 model Wallet {
-  id                    String          @id @default(cuid())
-  merchantId            String?
-  merchant              Merchant?       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  merchantId String?
+  merchant   Merchant? @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
-  name                  String
-  type                  WalletType      @default(CRYPTO)
-  currency              CurrencyType    @default(USD)
+  name     String
+  type     WalletType   @default(CRYPTO)
+  currency CurrencyType @default(USD)
 
-  balance               Decimal         @default(0) @db.Decimal(18, 8)
-  reservedBalance       Decimal         @default(0) @db.Decimal(18, 8)
-  availableBalance      Decimal         @default(0) @db.Decimal(18, 8)
+  balance          Decimal @default(0) @db.Decimal(18, 8)
+  reservedBalance  Decimal @default(0) @db.Decimal(18, 8)
+  availableBalance Decimal @default(0) @db.Decimal(18, 8)
 
-  status                WalletStatus    @default(ACTIVE)
+  status WalletStatus @default(ACTIVE)
 
-  address               String?
+  address String?
 
-  blockchainId          String?
-  blockchain            BlockchainNetwork? @relation(fields: [blockchainId], references: [id], onDelete: SetNull)
+  blockchainId String?
+  blockchain   BlockchainNetwork? @relation(fields: [blockchainId], references: [id], onDelete: SetNull)
 
-  encryptedPrivateKey   String?
-  publicKey             String?
+  encryptedPrivateKey String?
+  publicKey           String?
 
-  bankAccountId         String?         @unique
-  bankAccount           BankAccount?    @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  bankAccountId String?      @unique
+  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
 
-  metadata              Json?
+  metadata Json?
 
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  balances              WalletBalance[]
-  walletAddresses       WalletAddress[]
-  walletKeys            WalletKey[]
-  walletAudits          WalletAudit[]
-  settlements           Settlement[]
-  transactionFees       TransactionFee[]
-  transactions          Transaction[]
+  balances               WalletBalance[]
+  walletAddresses        WalletAddress[]
+  walletKeys             WalletKey[]
+  walletAudits           WalletAudit[]
+  settlements            Settlement[]
+  transactionFees        TransactionFee[]
+  transactions           Transaction[]
   blockchainTransactions BlockchainTransaction[]
-  walletTransfers       WalletTransfer[] @relation("FromWallet")
-  incomingTransfers     WalletTransfer[] @relation("ToWallet")
+  walletTransfers        WalletTransfer[]        @relation("FromWallet")
+  incomingTransfers      WalletTransfer[]        @relation("ToWallet")
 
   @@index([merchantId])
   @@index([currency])
@@ -1726,26 +1727,26 @@ model PaymentMethod {
 }
 
 model PaymentIntent {
-  id                           String           @id @default(cuid())
-  merchantId                   String
-  customerId                   String?
-  paymentMethodId              String?
-  paymentProviderAccountId     String?
-  amount                       Decimal          @db.Decimal(18, 4)
-  currency                     CurrencyType     @default(USD)
-  status                       PaymentStatus    @default(PENDING)
-  description                  String?
-  clientSecret                 String?          @unique
-  metadata                     Json?
-  createdAt                    DateTime         @default(now())
-  updatedAt                    DateTime         @updatedAt
-  expiresAt                    DateTime?
-  paymentAttempts              PaymentAttempt[]
-  customer                     Customer?        @relation(fields: [customerId], references: [id])
-  merchant                     Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  paymentMethod                PaymentMethod?   @relation(fields: [paymentMethodId], references: [id])
-  paymentProviderAccount       PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
-  transactions                 Transaction[]
+  id                       String                  @id @default(cuid())
+  merchantId               String
+  customerId               String?
+  paymentMethodId          String?
+  paymentProviderAccountId String?
+  amount                   Decimal                 @db.Decimal(18, 4)
+  currency                 CurrencyType            @default(USD)
+  status                   PaymentStatus           @default(PENDING)
+  description              String?
+  clientSecret             String?                 @unique
+  metadata                 Json?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  expiresAt                DateTime?
+  paymentAttempts          PaymentAttempt[]
+  customer                 Customer?               @relation(fields: [customerId], references: [id])
+  merchant                 Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  paymentMethod            PaymentMethod?          @relation(fields: [paymentMethodId], references: [id])
+  paymentProviderAccount   PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
+  transactions             Transaction[]
 
   @@index([merchantId])
   @@index([customerId])
@@ -1755,21 +1756,21 @@ model PaymentIntent {
 }
 
 model PaymentAttempt {
-  id                           String        @id @default(cuid())
-  paymentIntentId              String
-  transactionId                String?
-  paymentProviderAccountId     String?
-  amount                       Decimal       @db.Decimal(18, 4)
-  currency                     CurrencyType  @default(USD)
-  status                       PaymentStatus @default(PENDING)
-  gatewayResponse              Json?
-  errorMessage                 String?
-  attemptedAt                  DateTime      @default(now())
-  createdAt                    DateTime      @default(now())
-  updatedAt                    DateTime      @updatedAt
-  paymentIntent                PaymentIntent @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
-  paymentProviderAccount       PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
-  transaction                  Transaction?  @relation(fields: [transactionId], references: [id])
+  id                       String                  @id @default(cuid())
+  paymentIntentId          String
+  transactionId            String?
+  paymentProviderAccountId String?
+  amount                   Decimal                 @db.Decimal(18, 4)
+  currency                 CurrencyType            @default(USD)
+  status                   PaymentStatus           @default(PENDING)
+  gatewayResponse          Json?
+  errorMessage             String?
+  attemptedAt              DateTime                @default(now())
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  paymentIntent            PaymentIntent           @relation(fields: [paymentIntentId], references: [id], onDelete: Cascade)
+  paymentProviderAccount   PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
+  transaction              Transaction?            @relation(fields: [transactionId], references: [id])
 
   @@index([paymentIntentId])
   @@index([transactionId])
@@ -1929,20 +1930,20 @@ model WebhookEvent {
 }
 
 model ProviderWebhookEvent {
-  id                  String    @id @default(cuid())
-  provider            String
-  eventId             String    @unique
-  eventName           String
-  providerReference   String?
-  merchantReference   String?
-  payloadHash         String
-  status              String
-  receivedAt          DateTime  @default(now())
-  processedAt         DateTime?
-  error               String?
-  rawPayload          Json
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  provider          String
+  eventId           String    @unique
+  eventName         String
+  providerReference String?
+  merchantReference String?
+  payloadHash       String
+  status            String
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+  error             String?
+  rawPayload        Json
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([provider, eventName])
   @@index([providerReference])
@@ -2015,38 +2016,38 @@ model CryptoConversion {
 }
 
 model TransakTransaction {
-  id                 String                @id @default(cuid())
-  merchantId         String
-  customerId         String?
-  paymentIntentId    String?
-  transakOrderId     String?               @unique
-  transakQuoteId     String?
-  partnerOrderId     String?               @unique
-  direction          String                @default("BUY")
-  fiatCurrency       String
-  fiatAmount         Decimal               @db.Decimal(36, 18)
-  amountPaid         Decimal?              @db.Decimal(36, 18)
-  cryptoCurrency     String
-  cryptoAmount       Decimal?              @db.Decimal(36, 18)
-  network            String
-  walletAddress      String
-  paymentMethod      String?
-  provider           String                @default("TRANSAK")
-  status             String
-  providerStatus     String?
-  transactionHash    String?
-  transactionLink    String?
-  feeAmount          Decimal?              @db.Decimal(36, 18)
-  feeCurrency        String?
-  quoteRate          Decimal?              @db.Decimal(36, 18)
-  failureReason      String?
-  completedAt        DateTime?
-  failedAt           DateTime?
-  metadata           Json?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  merchant           Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  webhookEvents      TransakWebhookEvent[]
+  id              String                @id @default(cuid())
+  merchantId      String
+  customerId      String?
+  paymentIntentId String?
+  transakOrderId  String?               @unique
+  transakQuoteId  String?
+  partnerOrderId  String?               @unique
+  direction       String                @default("BUY")
+  fiatCurrency    String
+  fiatAmount      Decimal               @db.Decimal(36, 18)
+  amountPaid      Decimal?              @db.Decimal(36, 18)
+  cryptoCurrency  String
+  cryptoAmount    Decimal?              @db.Decimal(36, 18)
+  network         String
+  walletAddress   String
+  paymentMethod   String?
+  provider        String                @default("TRANSAK")
+  status          String
+  providerStatus  String?
+  transactionHash String?
+  transactionLink String?
+  feeAmount       Decimal?              @db.Decimal(36, 18)
+  feeCurrency     String?
+  quoteRate       Decimal?              @db.Decimal(36, 18)
+  failureReason   String?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  metadata        Json?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  merchant        Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  webhookEvents   TransakWebhookEvent[]
 
   @@index([merchantId, createdAt(sort: Desc)])
   @@index([status])
@@ -2055,18 +2056,18 @@ model TransakTransaction {
 }
 
 model TransakWebhookEvent {
-  id                 String              @id @default(cuid())
-  eventId            String              @unique
-  eventType          String
-  transakOrderId     String?
-  transactionId      String?
-  receivedAt         DateTime            @default(now())
-  processedAt        DateTime?
-  processingStatus   String
-  payloadHash        String
-  safePayload        Json
-  error              String?
-  transaction        TransakTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  id               String              @id @default(cuid())
+  eventId          String              @unique
+  eventType        String
+  transakOrderId   String?
+  transactionId    String?
+  receivedAt       DateTime            @default(now())
+  processedAt      DateTime?
+  processingStatus String
+  payloadHash      String
+  safePayload      Json
+  error            String?
+  transaction      TransakTransaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
 
   @@index([transakOrderId])
   @@index([processingStatus])
@@ -3608,23 +3609,23 @@ enum PaymentProviderAccountStatus {
 }
 
 model PaymentProviderAccount {
-  id                 String                           @id @default(cuid())
-  name               String                           @unique
-  displayName        String
-  provider           String                           // e.g., "PAYSTACK", "FLUTTERWAVE", "STRIPE"
-  currency           String                           // e.g., "NGN", "USD", "GHS"
-  merchantId         String?                          // Optional: if set, account is merchant-specific; if null, system-wide
-  status             PaymentProviderAccountStatus     @default(NOT_CONFIGURED)
-  secretKeyRef       String?                          // Reference to vault/secret storage (not actual key)
-  publicKey          String?                          // Can be public (Paystack public key is non-sensitive)
-  metadata           Json?                            // Additional config (webhooks URL, etc.)
-  isDefault          Boolean                          @default(false)
-  createdAt          DateTime                         @default(now())
-  updatedAt          DateTime                         @updatedAt
-  deletedAt          DateTime?
-  merchant           Merchant?                        @relation(fields: [merchantId], references: [id], onDelete: SetNull)
-  paymentIntents     PaymentIntent[]
-  paymentAttempts    PaymentAttempt[]
+  id              String                       @id @default(cuid())
+  name            String                       @unique
+  displayName     String
+  provider        String // e.g., "PAYSTACK", "FLUTTERWAVE", "STRIPE"
+  currency        String // e.g., "NGN", "USD", "GHS"
+  merchantId      String? // Optional: if set, account is merchant-specific; if null, system-wide
+  status          PaymentProviderAccountStatus @default(NOT_CONFIGURED)
+  secretKeyRef    String? // Reference to vault/secret storage (not actual key)
+  publicKey       String? // Can be public (Paystack public key is non-sensitive)
+  metadata        Json? // Additional config (webhooks URL, etc.)
+  isDefault       Boolean                      @default(false)
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  deletedAt       DateTime?
+  merchant        Merchant?                    @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  paymentIntents  PaymentIntent[]
+  paymentAttempts PaymentAttempt[]
 
   @@index([provider])
   @@index([status])
