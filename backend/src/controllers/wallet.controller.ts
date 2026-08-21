@@ -151,26 +151,65 @@ export default class WalletController {
     reply: FastifyReply
   ) => {
     try {
-      const user = getAuthenticatedUser(request);
+      const user =
+        getAuthenticatedUser(request);
 
-      let merchantId = await this.walletService.resolveMerchantId(user);
+      let merchantId =
+        await this.walletService.resolveMerchantId(
+          user
+        );
 
-      const body = (request.body ?? {}) as CreateWalletBody;
+      /*
+       * CreateWalletBody does not declare merchantId.
+       * The controller nevertheless supports an optional
+       * merchantId supplied by the client as a fallback
+       * when the authenticated user is not linked directly
+       * to a merchant.
+       *
+       * Keep the request body strongly typed while reading
+       * this optional controller-level field safely.
+       */
+      const body =
+        (request.body ?? {}) as CreateWalletBody;
 
-      // allow client to pass merchantId in body when unauthenticated
-      if (!merchantId && typeof body.merchantId === "string") {
-        merchantId = body.merchantId.trim();
+      const requestedMerchantId =
+        body &&
+        typeof body === "object" &&
+        "merchantId" in body &&
+        typeof (
+          body as CreateWalletBody & {
+            merchantId?: unknown;
+          }
+        ).merchantId === "string"
+          ? (
+              body as CreateWalletBody & {
+                merchantId?: string;
+              }
+            ).merchantId?.trim()
+          : undefined;
+
+      if (
+        !merchantId &&
+        requestedMerchantId
+      ) {
+        merchantId =
+          requestedMerchantId;
       }
 
-      // fallback to admin-owned merchant when no merchantId present
+      /*
+       * Fallback to admin-owned merchant when
+       * no merchantId is available.
+       */
       if (!merchantId) {
-        merchantId = await this.walletService.ensureAdminMerchant();
+        merchantId =
+          await this.walletService.ensureAdminMerchant();
       }
 
-      const wallet = await this.walletService.createWallet({
-        ...body,
-        merchantId,
-      });
+      const wallet =
+        await this.walletService.createWallet({
+          ...body,
+          merchantId,
+        });
 
       return reply.code(201).send({
         success: true,
@@ -637,14 +676,20 @@ export default class WalletController {
     reply: FastifyReply
   ) => {
     try {
-      const wallets = await this.walletService.listWallets();
+      const wallets =
+        await this.walletService.listWallets();
 
       return reply.send({
         success: true,
-        data: sanitizeWallets(wallets ?? []),
+        data: sanitizeWallets(
+          wallets ?? []
+        ),
       });
     } catch (error) {
-      request.log.error({ err: error }, "Wallet list failed");
+      request.log.error(
+        { err: error },
+        "Wallet list failed"
+      );
 
       return reply.code(400).send({
         success: false,

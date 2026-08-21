@@ -64,7 +64,9 @@ export default class PaymentOrchestratorService {
     metadata?: Prisma.JsonValue
   ): Prisma.JsonValue {
     const source =
-      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata)
         ? (metadata as Record<string, unknown>)
         : {};
 
@@ -111,121 +113,304 @@ export default class PaymentOrchestratorService {
       walletId?: string;
     }
   ) {
-    const paymentIntent = await this.paymentService.getPaymentIntent(paymentIntentId);
-    if (!paymentIntent) throw new Error("Payment Intent not found.");
-    if (!payload.transactionId) throw new Error("Transaction ID is required for crypto settlement.");
+    const paymentIntent =
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
 
-    const transaction = await this.paymentService.findTransactionById(payload.transactionId);
-    if (!transaction || transaction.paymentIntentId !== paymentIntent.id) {
-      throw new Error("Transaction does not belong to the payment intent.");
+    if (!paymentIntent) {
+      throw new Error(
+        "Payment Intent not found."
+      );
     }
 
-    // Check if payment was captured (required before crypto settlement)
+    if (!payload.transactionId) {
+      throw new Error(
+        "Transaction ID is required for crypto settlement."
+      );
+    }
+
+    const transaction =
+      await this.paymentService.findTransactionById(
+        payload.transactionId
+      );
+
+    if (
+      !transaction ||
+      transaction.paymentIntentId !== paymentIntent.id
+    ) {
+      throw new Error(
+        "Transaction does not belong to the payment intent."
+      );
+    }
+
     if (transaction.status !== "CAPTURED") {
-      throw new Error(`Cannot settle crypto: transaction status is ${transaction.status}. Payment must be CAPTURED first.`);
+      throw new Error(
+        `Cannot settle crypto: transaction status is ${transaction.status}. Payment must be CAPTURED first.`
+      );
     }
 
-    // Idempotency: Check for existing conversion in non-failed state
-    const existingConversion = await this.app.prisma.cryptoConversion.findFirst({
-      where: { transactionId: transaction.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const existingConversion =
+      await this.app.prisma.cryptoConversion.findFirst({
+        where: {
+          transactionId: transaction.id,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
 
-    if (existingConversion && ["exchange_pending", "exchange_completed", "crypto_settled"].includes(existingConversion.status)) {
-      return { conversion: existingConversion, duplicate: true };
+    if (
+      existingConversion &&
+      [
+        "exchange_pending",
+        "exchange_completed",
+        "crypto_settled",
+      ].includes(existingConversion.status)
+    ) {
+      return {
+        conversion: existingConversion,
+        duplicate: true,
+      };
     }
 
-    // Validate crypto asset and destination
-    const cryptoAsset = String(payload.asset ?? "USDT").toUpperCase();
-    if (!["USDT", "BUSD", "USDC"].includes(cryptoAsset)) {
-      throw new Error(`Unsupported crypto asset: ${cryptoAsset}. Supported: USDT, BUSD, USDC`);
+    const cryptoAsset =
+      String(
+        payload.asset ?? "USDT"
+      ).toUpperCase();
+
+    if (
+      ![
+        "USDT",
+        "BUSD",
+        "USDC",
+      ].includes(cryptoAsset)
+    ) {
+      throw new Error(
+        `Unsupported crypto asset: ${cryptoAsset}. Supported: USDT, BUSD, USDC`
+      );
     }
 
     if (!payload.destinationAddress) {
-      throw new Error("Destination blockchain address is required.");
+      throw new Error(
+        "Destination blockchain address is required."
+      );
     }
 
-    // Create new conversion record
-    const conversion = await this.app.prisma.cryptoConversion.create({
-      data: {
-        transactionId: transaction.id,
-        status: "exchange_pending",
-        fromCurrency: paymentIntent.currency,
-        fromAmount: new Prisma.Decimal(String(paymentIntent.amount)),
-        toCurrency: cryptoAsset,
-        toAmount: new Prisma.Decimal("0"), // Will be updated on order execution
-        rate: new Prisma.Decimal("0"), // Will be set from provider order
-        network: payload.network || "ERC20",
-        destinationAddress: payload.destinationAddress,
-        metadata: {
-          paymentIntentId,
-          provider: "QUIDAX",
-          createdAt: new Date().toISOString(),
-        } as Prisma.JsonValue,
-      },
-    });
+    const conversion =
+      await this.app.prisma.cryptoConversion.create({
+        data: {
+          transactionId: transaction.id,
+
+          status: "exchange_pending",
+
+          fromCurrency:
+            paymentIntent.currency,
+
+          fromAmount:
+            new Prisma.Decimal(
+              String(paymentIntent.amount)
+            ),
+
+          toCurrency:
+            cryptoAsset,
+
+          toAmount:
+            new Prisma.Decimal("0"),
+
+          rate:
+            new Prisma.Decimal("0"),
+
+          network:
+            payload.network || "ERC20",
+
+          destinationAddress:
+            payload.destinationAddress,
+
+          metadata: {
+            paymentIntentId,
+            provider: "QUIDAX",
+            createdAt:
+              new Date().toISOString(),
+          } as Prisma.JsonValue,
+        },
+      });
 
     try {
-      // Call Quidax exchange API to create order
-      const provider = await this.exchangeService.getExchangeProvider();
-      const order = await provider.buy({
-        baseAsset: cryptoAsset,
-        quoteAsset: paymentIntent.currency,
-        amount: new Prisma.Decimal(String(paymentIntent.amount)),
-        limitPrice: undefined, // Market order
-      });
+      const provider =
+        await this.exchangeService.getExchangeProvider();
 
-      // Persist the order ID and status from provider
-      const exchangeOrder = await this.app.prisma.exchangeOrder.create({
-        data: {
-          orderId: order.id,
-          status: order.status,
-          market: `${cryptoAsset}${paymentIntent.currency}`.toLowerCase(),
+      /*
+       * CryptoOrderRequest requires `side`.
+       * We are purchasing the base asset (USDT/BUSD/USDC),
+       * so this is a BUY order.
+       */
+      const order =
+        await provider.buy({
           side: "BUY",
-          amount: new Prisma.Decimal(String(paymentIntent.amount)),
-          filledAmount: new Prisma.Decimal(order.executedAmount?.toString() || "0"),
-          price: new Prisma.Decimal(order.averagePrice?.toString() || "0"),
-          avgPrice: new Prisma.Decimal(order.averagePrice?.toString() || "0"),
-          provider: "QUIDAX",
-          metadata: {
-            createdAt: new Date().toISOString(),
-            quidaxOrderId: order.id,
-            quidaxStatus: order.status,
-            paymentIntentId,
-          } as Prisma.JsonValue,
-        },
-      });
 
-      // Link exchange order to conversion
+          baseAsset:
+            cryptoAsset,
+
+          quoteAsset:
+            paymentIntent.currency,
+
+          amount:
+            new Prisma.Decimal(
+              String(paymentIntent.amount)
+            ),
+
+          limitPrice:
+            undefined,
+        });
+
+      /*
+       * CryptoOrderResponse exposes orderId rather than id.
+       */
+      const orderId =
+        order.orderId;
+
+      const executedAmount =
+        order.executedAmount?.toString() ||
+        "0";
+
+      const averagePrice =
+        order.averagePrice?.toString() ||
+        "0";
+
+      const exchangeOrder =
+        await this.app.prisma.exchangeOrder.create({
+          data: {
+            orderId,
+
+            status:
+              order.status,
+
+            market:
+              `${cryptoAsset}${paymentIntent.currency}`.toLowerCase(),
+
+            side:
+              "BUY",
+
+            amount:
+              new Prisma.Decimal(
+                String(paymentIntent.amount)
+              ),
+
+            filledAmount:
+              new Prisma.Decimal(
+                executedAmount
+              ),
+
+            price:
+              new Prisma.Decimal(
+                averagePrice
+              ),
+
+            avgPrice:
+              new Prisma.Decimal(
+                averagePrice
+              ),
+
+            provider:
+              "QUIDAX",
+
+            metadata: {
+              createdAt:
+                new Date().toISOString(),
+
+              quidaxOrderId:
+                orderId,
+
+              quidaxStatus:
+                order.status,
+
+              paymentIntentId,
+            } as Prisma.JsonValue,
+          },
+        });
+
       await this.app.prisma.cryptoConversion.update({
-        where: { id: conversion.id },
+        where: {
+          id: conversion.id,
+        },
+
         data: {
-          exchangeOrderId: exchangeOrder.id,
-          toAmount: new Prisma.Decimal(order.executedAmount?.toString() || "0"),
-          rate: new Prisma.Decimal(order.averagePrice?.toString() || "0"),
+          exchangeOrderId:
+            exchangeOrder.id,
+
+          toAmount:
+            new Prisma.Decimal(
+              executedAmount
+            ),
+
+          rate:
+            new Prisma.Decimal(
+              averagePrice
+            ),
+
           metadata: {
-            ...(conversion.metadata && typeof conversion.metadata === "object" && !Array.isArray(conversion.metadata) ? conversion.metadata : {}),
-            exchangeOrderId: exchangeOrder.id,
-            orderId: order.id,
-            initialStatus: order.status,
+            ...(
+              conversion.metadata &&
+              typeof conversion.metadata === "object" &&
+              !Array.isArray(
+                conversion.metadata
+              )
+                ? conversion.metadata
+                : {}
+            ),
+
+            exchangeOrderId:
+              exchangeOrder.id,
+
+            orderId,
+
+            initialStatus:
+              order.status,
           } as Prisma.JsonValue,
         },
       });
 
-      return { conversion: { ...conversion, exchangeOrderId: exchangeOrder.id }, duplicate: false };
+      return {
+        conversion: {
+          ...conversion,
+          exchangeOrderId:
+            exchangeOrder.id,
+        },
+
+        duplicate: false,
+      };
     } catch (error: unknown) {
-      // Mark conversion as failed if order creation fails
       await this.app.prisma.cryptoConversion.update({
-        where: { id: conversion.id },
+        where: {
+          id: conversion.id,
+        },
+
         data: {
           status: "failed",
+
           metadata: {
-            ...(conversion.metadata && typeof conversion.metadata === "object" && !Array.isArray(conversion.metadata) ? conversion.metadata : {}),
-            errorMessage: error instanceof Error ? error.message : String(error),
-            failedAt: new Date().toISOString(),
+            ...(
+              conversion.metadata &&
+              typeof conversion.metadata === "object" &&
+              !Array.isArray(
+                conversion.metadata
+              )
+                ? conversion.metadata
+                : {}
+            ),
+
+            errorMessage:
+              error instanceof Error
+                ? error.message
+                : String(error),
+
+            failedAt:
+              new Date().toISOString(),
           } as Prisma.JsonValue,
         },
       });
+
       throw error;
     }
   }
@@ -273,9 +458,23 @@ export default class PaymentOrchestratorService {
       );
     }
 
+    /*
+     * getPaymentIntent() does not expose a customer relation
+     * in its returned TypeScript type, so resolve the customer
+     * separately when a customerId exists.
+     */
+    const paymentCustomer =
+      paymentIntent.customerId
+        ? await this.app.prisma.customer.findUnique({
+            where: {
+              id: paymentIntent.customerId,
+            },
+          })
+        : null;
+
     const email =
       customer.email ??
-      paymentIntent.customer?.email ??
+      paymentCustomer?.email ??
       undefined;
 
     if (!email) {
@@ -284,33 +483,48 @@ export default class PaymentOrchestratorService {
       );
     }
 
-    // Ensure paymentIntent currency matches merchant currency to avoid provider mismatches.
     try {
-      const merchant = await this.app.prisma.merchant.findUnique({
-        where: { id: paymentIntent.merchantId },
-        select: { id: true, currency: true }
-      });
+      const merchant =
+        await this.app.prisma.merchant.findUnique({
+          where: {
+            id: paymentIntent.merchantId,
+          },
 
-      if (merchant && String(merchant.currency) !== String(paymentIntent.currency)) {
-        console.warn(`Aligning paymentIntent currency ${paymentIntent.currency} -> ${merchant.currency} for merchant ${merchant.id}`);
-
-        await this.app.prisma.paymentIntent.update({
-          where: { id: paymentIntent.id },
-          data: { currency: merchant.currency }
+          select: {
+            id: true,
+            currency: true,
+          },
         });
 
-        // reflect change locally
-        paymentIntent.currency = merchant.currency as any;
+      if (
+        merchant &&
+        String(merchant.currency) !==
+          String(paymentIntent.currency)
+      ) {
+        console.warn(
+          `Aligning paymentIntent currency ${paymentIntent.currency} -> ${merchant.currency} for merchant ${merchant.id}`
+        );
+
+        await this.app.prisma.paymentIntent.update({
+          where: {
+            id: paymentIntent.id,
+          },
+
+          data: {
+            currency:
+              merchant.currency,
+          },
+        });
+
+        paymentIntent.currency =
+          merchant.currency as any;
       }
     } catch (e) {
-      console.error('Failed to align paymentIntent currency with merchant:', e);
+      console.error(
+        "Failed to align paymentIntent currency with merchant:",
+        e
+      );
     }
-
-    /*
-    |
-    | Crypto Destination Validation
-    |
-    */
 
     const checkoutMetadata =
       this.normalizeCryptoDestinationMetadata(
@@ -344,7 +558,8 @@ export default class PaymentOrchestratorService {
         "object"
     ) {
       const destinationAddress =
-        typeof cryptoDestination.address === "string"
+        typeof cryptoDestination.address ===
+          "string"
           ? cryptoDestination.address
           : undefined;
 
@@ -367,38 +582,36 @@ export default class PaymentOrchestratorService {
 
     const transaction =
       existingTransaction ??
-      (await this.paymentService.createTransaction(
-        {
-          merchantId:
-            paymentIntent.merchantId,
+      (await this.paymentService.createTransaction({
+        merchantId:
+          paymentIntent.merchantId,
 
-          customerId:
-            paymentIntent.customerId ??
-            undefined,
+        customerId:
+          paymentIntent.customerId ??
+          undefined,
 
-          amount:
-            paymentIntent.amount,
+        amount:
+          paymentIntent.amount,
 
-          currency:
-            paymentIntent.currency,
+        currency:
+          paymentIntent.currency,
 
-          paymentMethod:
-            "card",
+        paymentMethod:
+          "card",
 
-          type:
-            "payment",
+        type:
+          "payment",
 
-          description:
-            paymentIntent.description ??
-            undefined,
+        description:
+          paymentIntent.description ??
+          undefined,
 
-          paymentIntentId:
-            paymentIntent.id,
+        paymentIntentId:
+          paymentIntent.id,
 
-          metadata:
-            checkoutMetadata,
-        }
-      ));
+        metadata:
+          checkoutMetadata,
+      }));
 
     const existingAttempt =
       paymentIntent.paymentAttempts.find(
@@ -422,7 +635,7 @@ export default class PaymentOrchestratorService {
           paymentIntent.amount,
 
         currency:
-          paymentIntent.currency
+          paymentIntent.currency,
       });
 
     const providers =
@@ -431,14 +644,16 @@ export default class PaymentOrchestratorService {
     const providerNames =
       providers
         .filter(
-          provider => provider.isActive
+          provider =>
+            provider.isActive
         )
         .sort(
           (a, b) =>
             a.priority - b.priority
         )
         .map(
-          provider => provider.name
+          provider =>
+            provider.name
         );
 
     if (!providerNames.length) {
@@ -465,7 +680,7 @@ export default class PaymentOrchestratorService {
             ),
 
           paymentMethod:
-            "card"
+            "card",
         }
       );
 
@@ -497,66 +712,125 @@ export default class PaymentOrchestratorService {
             transaction.reference,
 
           customerEmail:
-            email
+            email,
         },
 
-        requestHeaders: {}
+        requestHeaders: {},
       });
 
-      if (!transaction.reference) {
-  throw new Error(
-    "Transaction reference is missing."
-  );
-}
+    if (!transaction.reference) {
+      throw new Error(
+        "Transaction reference is missing."
+      );
+    }
 
-    const providerAmount = Number(paymentIntent.amount);
-    const providerCurrency = String(paymentIntent.currency);
+    const providerAmount =
+      Number(paymentIntent.amount);
+
+    const providerCurrency =
+      String(paymentIntent.currency);
 
     try {
-      const execution = await this.failover.execute(
-        providerNames,
-        async provider =>
-          provider.createPayment({
-            amount: providerAmount,
-            currency: providerCurrency,
-            reference: transaction.reference!,
-            description: paymentIntent.description ?? undefined,
-            customer: {
-              email,
-              firstName: customer.firstName ?? paymentIntent.customer?.firstName ?? undefined,
-              lastName: customer.lastName ?? paymentIntent.customer?.lastName ?? undefined,
-              phone: customer.phone ?? paymentIntent.customer?.phone ?? undefined
-            },
-            metadata: {
-              paymentIntentId: paymentIntent.id,
-              transactionId: transaction.id,
-              paymentAttemptId: paymentAttempt.id
-            }
-          })
-      );
+      const execution =
+        await this.failover.execute(
+          providerNames,
+          async provider =>
+            provider.createPayment({
+              amount:
+                providerAmount,
 
-      const providerResponse = execution.result;
-      const authorizationCode = providerResponse.authorizationCode ?? null;
+              currency:
+                providerCurrency,
+
+              reference:
+                transaction.reference!,
+
+              description:
+                paymentIntent.description ??
+                undefined,
+
+              customer: {
+                email,
+
+                firstName:
+                  customer.firstName ??
+                  paymentCustomer?.firstName ??
+                  undefined,
+
+                lastName:
+                  customer.lastName ??
+                  paymentCustomer?.lastName ??
+                  undefined,
+
+                phone:
+                  customer.phone ??
+                  paymentCustomer?.phone ??
+                  undefined,
+              },
+
+              metadata: {
+                paymentIntentId:
+                  paymentIntent.id,
+
+                transactionId:
+                  transaction.id,
+
+                paymentAttemptId:
+                  paymentAttempt.id,
+              },
+            })
+        );
+
+      const providerResponse =
+        execution.result;
+
+      const authorizationCode =
+        providerResponse.authorizationCode ??
+        null;
 
       await this.app.prisma.transaction.update({
-        where: { id: transaction.id },
+        where: {
+          id: transaction.id,
+        },
+
         data: {
-          gatewayTransactionId: providerResponse.transactionId ?? providerResponse.reference ?? null,
-          gatewayProvider: execution.providerName,
-          authCode: authorizationCode,
-          approvalCode: authorizationCode
-        }
+          gatewayTransactionId:
+            providerResponse.transactionId ??
+            providerResponse.reference ??
+            null,
+
+          gatewayProvider:
+            execution.providerName,
+
+          authCode:
+            authorizationCode,
+
+          approvalCode:
+            authorizationCode,
+        },
       });
 
       if (authorizationCode) {
         await this.paymentService.authorizeTransaction({
-          transactionId: transaction.id,
-          amount: paymentIntent.amount,
-          currency: paymentIntent.currency,
+          transactionId:
+            transaction.id,
+
+          amount:
+            paymentIntent.amount,
+
+          currency:
+            paymentIntent.currency,
+
           authorizationCode,
+
           gatewayResponse:
-            (providerResponse.raw ?? providerResponse) as Prisma.JsonValue,
-          message: "Provider authorization captured for reusable customer payment."
+            (
+              providerResponse.raw ??
+              providerResponse
+            ) as Prisma.JsonValue,
+
+          message:
+            "Provider authorization captured for reusable customer payment.",
         });
       }
 
@@ -574,7 +848,7 @@ export default class PaymentOrchestratorService {
           {},
 
         responseTime:
-          0
+          0,
       });
 
       return {
@@ -603,11 +877,11 @@ export default class PaymentOrchestratorService {
 
           authorizationCode:
             providerResponse.authorizationCode ??
-            null
+            null,
         },
 
         response:
-          providerResponse
+          providerResponse,
       };
     } catch (error) {
       await this.gatewayService.createGatewayResponse({
@@ -626,7 +900,7 @@ export default class PaymentOrchestratorService {
         error:
           error instanceof Error
             ? error.message
-            : "Payment failed"
+            : "Payment failed",
       });
 
       throw error;
@@ -658,9 +932,13 @@ export default class PaymentOrchestratorService {
 
     if (
       paymentIntent.expiresAt &&
-      paymentIntent.expiresAt <= new Date()
+      paymentIntent.expiresAt <=
+        new Date()
     ) {
-      await this.paymentService.expirePaymentIntent(paymentIntent.id);
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+
       throw new Error(
         "Payment Intent has expired."
       );
@@ -669,7 +947,8 @@ export default class PaymentOrchestratorService {
     if (
       customerId &&
       paymentIntent.customerId &&
-      paymentIntent.customerId !== customerId
+      paymentIntent.customerId !==
+        customerId
     ) {
       throw new Error(
         "This payment intent does not belong to the current customer."
@@ -684,7 +963,7 @@ export default class PaymentOrchestratorService {
 
     return {
       paymentIntent,
-      authorizations
+      authorizations,
     };
   }
 
@@ -718,17 +997,24 @@ export default class PaymentOrchestratorService {
 
     if (
       paymentIntent.expiresAt &&
-      paymentIntent.expiresAt <= new Date()
+      paymentIntent.expiresAt <=
+        new Date()
     ) {
-      await this.paymentService.expirePaymentIntent(paymentIntent.id);
-      throw new Error("Payment Intent has expired.");
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+
+      throw new Error(
+        "Payment Intent has expired."
+      );
     }
 
     if (
       customerId &&
       paymentIntent.customerId &&
-      paymentIntent.customerId !== customerId
-      ) {
+      paymentIntent.customerId !==
+        customerId
+    ) {
       throw new Error(
         "This payment intent does not belong to the current customer."
       );
@@ -754,16 +1040,18 @@ export default class PaymentOrchestratorService {
     const existingTransaction =
       await this.app.prisma.transaction.findUnique({
         where: {
-          idempotencyKey: requestKey
-        }
+          idempotencyKey:
+            requestKey,
+        },
       });
 
     if (existingTransaction) {
       return {
         paymentIntent,
-        transaction: existingTransaction,
+        transaction:
+          existingTransaction,
         authorization,
-        duplicate: true
+        duplicate: true,
       };
     }
 
@@ -772,9 +1060,18 @@ export default class PaymentOrchestratorService {
 
     const providerNames =
       providers
-        .filter(provider => provider.isActive)
-        .sort((a, b) => a.priority - b.priority)
-        .map(provider => provider.name);
+        .filter(
+          provider =>
+            provider.isActive
+        )
+        .sort(
+          (a, b) =>
+            a.priority - b.priority
+        )
+        .map(
+          provider =>
+            provider.name
+        );
 
     if (!providerNames.length) {
       throw new Error(
@@ -782,14 +1079,27 @@ export default class PaymentOrchestratorService {
       );
     }
 
-    const selectedProvider = this.selector.select(
-      providers, {
-        merchantId: paymentIntent.merchantId,
-        currency: String(paymentIntent.currency),
-        amount: Number(paymentIntent.amount),
-        paymentMethod: "card"
-      }
-    );
+    const selectedProvider =
+      this.selector.select(
+        providers,
+        {
+          merchantId:
+            paymentIntent.merchantId,
+
+          currency:
+            String(
+              paymentIntent.currency
+            ),
+
+          amount:
+            Number(
+              paymentIntent.amount
+            ),
+
+          paymentMethod:
+            "card",
+        }
+      );
 
     const provider =
       this.providerManager.getProvider(
@@ -798,24 +1108,53 @@ export default class PaymentOrchestratorService {
 
     const transaction =
       await this.paymentService.createTransaction({
-        merchantId: paymentIntent.merchantId,
-        customerId: paymentIntent.customerId ?? customerId,
-        amount: paymentIntent.amount,
-        currency: paymentIntent.currency,
-        paymentMethod: "card",
-        type: "payment",
-        description: paymentIntent.description ?? undefined,
-        paymentIntentId: paymentIntent.id,
-        idempotencyKey: requestKey,
-        metadata: payload?.metadata ?? paymentIntent.metadata
+        merchantId:
+          paymentIntent.merchantId,
+
+        customerId:
+          paymentIntent.customerId ??
+          customerId,
+
+        amount:
+          paymentIntent.amount,
+
+        currency:
+          paymentIntent.currency,
+
+        paymentMethod:
+          "card",
+
+        type:
+          "payment",
+
+        description:
+          paymentIntent.description ??
+          undefined,
+
+        paymentIntentId:
+          paymentIntent.id,
+
+        idempotencyKey:
+          requestKey,
+
+        metadata:
+          payload?.metadata ??
+          paymentIntent.metadata,
       });
 
     const paymentAttempt =
       await this.paymentService.createPaymentAttempt({
-        paymentIntentId: paymentIntent.id,
-        transactionId: transaction.id,
-        amount: paymentIntent.amount,
-        currency: paymentIntent.currency
+        paymentIntentId:
+          paymentIntent.id,
+
+        transactionId:
+          transaction.id,
+
+        amount:
+          paymentIntent.amount,
+
+        currency:
+          paymentIntent.currency,
       });
 
     const providerResponse =
@@ -823,32 +1162,74 @@ export default class PaymentOrchestratorService {
         providerNames,
         async () =>
           provider.chargeWithAuthorization({
-            amount: Number(paymentIntent.amount),
-            currency: String(paymentIntent.currency),
-            email: paymentIntent.customer?.email ?? customerId ?? "customer@example.com",
-            authorizationCode: authorization.authorizationCode ?? "",
-            reference: transaction.reference!,
-            description: paymentIntent.description ?? undefined,
+            amount:
+              Number(
+                paymentIntent.amount
+              ),
+
+            currency:
+              String(
+                paymentIntent.currency
+              ),
+
+            email:
+              customerId ??
+              "customer@example.com",
+
+            authorizationCode:
+              authorization.authorizationCode ??
+              "",
+
+            reference:
+              transaction.reference!,
+
+            description:
+              paymentIntent.description ??
+              undefined,
+
             metadata: {
-              paymentIntentId: paymentIntent.id,
-              transactionId: transaction.id,
-              paymentAttemptId: paymentAttempt.id,
-              authorizationId: authorization.id
-            }
+              paymentIntentId:
+                paymentIntent.id,
+
+              transactionId:
+                transaction.id,
+
+              paymentAttemptId:
+                paymentAttempt.id,
+
+              authorizationId:
+                authorization.id,
+            },
           })
       );
 
-    const response = providerResponse.result;
+    const response =
+      providerResponse.result;
 
     await this.app.prisma.transaction.update({
-      where: { id: transaction.id },
+      where: {
+        id: transaction.id,
+      },
+
       data: {
         gatewayTransactionId:
-          response.transactionId ?? response.reference ?? null,
-        gatewayProvider: providerResponse.providerName,
-        authCode: response.authorizationCode ?? authorization.authorizationCode ?? null,
-        approvalCode: response.authorizationCode ?? authorization.authorizationCode ?? null
-      }
+          response.transactionId ??
+          response.reference ??
+          null,
+
+        gatewayProvider:
+          providerResponse.providerName,
+
+        authCode:
+          response.authorizationCode ??
+          authorization.authorizationCode ??
+          null,
+
+        approvalCode:
+          response.authorizationCode ??
+          authorization.authorizationCode ??
+          null,
+      },
     });
 
     if (
@@ -856,23 +1237,37 @@ export default class PaymentOrchestratorService {
       authorization.authorizationCode
     ) {
       await this.paymentService.authorizeTransaction({
-        transactionId: transaction.id,
-        amount: paymentIntent.amount,
-        currency: paymentIntent.currency,
+        transactionId:
+          transaction.id,
+
+        amount:
+          paymentIntent.amount,
+
+        currency:
+          paymentIntent.currency,
+
         authorizationCode:
           response.authorizationCode ??
           authorization.authorizationCode ??
           undefined,
+
         gatewayResponse:
-          (response.raw ?? response) as Prisma.JsonValue,
+          (
+            response.raw ??
+            response
+          ) as Prisma.JsonValue,
+
         message:
-          "Saved customer authorization charged successfully."
+          "Saved customer authorization charged successfully.",
       });
     }
 
     await this.paymentService.completePaymentAttempt(
       paymentAttempt.id,
-      (response.raw ?? response) as Prisma.JsonValue
+      (
+        response.raw ??
+        response
+      ) as Prisma.JsonValue
     );
 
     return {
@@ -880,28 +1275,51 @@ export default class PaymentOrchestratorService {
       transaction,
       paymentAttempt,
       authorization,
-      provider: providerResponse.providerName,
+
+      provider:
+        providerResponse.providerName,
+
       gateway: {
         transactionId:
-          response.transactionId ?? response.reference ?? null,
-        paymentUrl: response.paymentUrl ?? null,
-        accessCode: response.accessCode ?? null,
+          response.transactionId ??
+          response.reference ??
+          null,
+
+        paymentUrl:
+          response.paymentUrl ??
+          null,
+
+        accessCode:
+          response.accessCode ??
+          null,
+
         authorizationCode:
-          response.authorizationCode ?? authorization.authorizationCode ?? null
+          response.authorizationCode ??
+          authorization.authorizationCode ??
+          null,
       },
-      response
+
+      response,
     };
   }
 
-  async listCustomerPaymentMethods(paymentIntentId: string) {
+  async listCustomerPaymentMethods(
+    paymentIntentId: string
+  ) {
     const paymentIntent =
-      await this.paymentService.getPaymentIntent(paymentIntentId);
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
 
     if (!paymentIntent) {
-      throw new Error("Payment Intent not found.");
+      throw new Error(
+        "Payment Intent not found."
+      );
     }
 
-    if (paymentIntent.status !== "PENDING") {
+    if (
+      paymentIntent.status !== "PENDING"
+    ) {
       throw new Error(
         `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot accept saved payment methods.`
       );
@@ -909,28 +1327,52 @@ export default class PaymentOrchestratorService {
 
     if (
       paymentIntent.expiresAt &&
-      paymentIntent.expiresAt <= new Date()
+      paymentIntent.expiresAt <=
+        new Date()
     ) {
-      await this.paymentService.expirePaymentIntent(paymentIntent.id);
-      throw new Error("Payment Intent has expired.");
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+
+      throw new Error(
+        "Payment Intent has expired."
+      );
     }
 
     const authorizations =
       await this.paymentService.listAuthorizationsForPaymentIntent(
         paymentIntent.id,
-        paymentIntent.customerId ?? undefined
+        paymentIntent.customerId ??
+          undefined
       );
 
-    return authorizations.map((authorization) => ({
-      id: authorization.id,
-      type: "card",
-      label: "Saved card",
-      brand: null,
-      last4: null,
-      isReusable: true,
-      status: authorization.status,
-      createdAt: authorization.createdAt,
-    }));
+    return authorizations.map(
+      authorization => ({
+        id:
+          authorization.id,
+
+        type:
+          "card",
+
+        label:
+          "Saved card",
+
+        brand:
+          null,
+
+        last4:
+          null,
+
+        isReusable:
+          true,
+
+        status:
+          authorization.status,
+
+        createdAt:
+          authorization.createdAt,
+      })
+    );
   }
 
   async chargeCustomerPaymentMethod(
@@ -942,13 +1384,19 @@ export default class PaymentOrchestratorService {
     }
   ) {
     const paymentIntent =
-      await this.paymentService.getPaymentIntent(paymentIntentId);
+      await this.paymentService.getPaymentIntent(
+        paymentIntentId
+      );
 
     if (!paymentIntent) {
-      throw new Error("Payment Intent not found.");
+      throw new Error(
+        "Payment Intent not found."
+      );
     }
 
-    if (paymentIntent.status !== "PENDING") {
+    if (
+      paymentIntent.status !== "PENDING"
+    ) {
       throw new Error(
         `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`
       );
@@ -956,16 +1404,23 @@ export default class PaymentOrchestratorService {
 
     if (
       paymentIntent.expiresAt &&
-      paymentIntent.expiresAt <= new Date()
+      paymentIntent.expiresAt <=
+        new Date()
     ) {
-      await this.paymentService.expirePaymentIntent(paymentIntent.id);
-      throw new Error("Payment Intent has expired.");
+      await this.paymentService.expirePaymentIntent(
+        paymentIntent.id
+      );
+
+      throw new Error(
+        "Payment Intent has expired."
+      );
     }
 
     const authorization =
       await this.paymentService.getAuthorizationForPaymentIntent(
         paymentIntent.id,
-        paymentIntent.customerId ?? undefined,
+        paymentIntent.customerId ??
+          undefined,
         paymentMethodId
       );
 
@@ -977,14 +1432,17 @@ export default class PaymentOrchestratorService {
 
     return this.chargeSavedAuthorization(
       paymentIntent.id,
-      paymentIntent.customerId ?? undefined,
+
+      paymentIntent.customerId ??
+        undefined,
+
       authorization.id,
+
       payload
     );
   }
 
   async createPayment(data: {
-
     merchantId: string;
 
     customerId?: string;
@@ -1004,19 +1462,23 @@ export default class PaymentOrchestratorService {
     idempotencyKey?: string;
 
     metadata?: Prisma.JsonValue;
-
   }) {
+    let accountId =
+      data.paymentProviderAccountId;
 
-    // Resolve the payment provider account
-    let accountId = data.paymentProviderAccountId;
-    let selectedAccount: any = null;
-    let providerToUse: any = null;
+    let selectedAccount: any =
+      null;
+
+    let providerToUse: any =
+      null;
 
     if (accountId) {
-      // Validate that the account exists and belongs to this merchant
-      selectedAccount = await this.app.prisma.paymentProviderAccount.findUnique({
-        where: { id: accountId }
-      });
+      selectedAccount =
+        await this.app.prisma.paymentProviderAccount.findUnique({
+          where: {
+            id: accountId,
+          },
+        });
 
       if (!selectedAccount) {
         throw new Error(
@@ -1030,10 +1492,22 @@ export default class PaymentOrchestratorService {
         );
       }
 
-      // Validate merchant ownership: if account is merchant-specific, it must match the request merchant
-      if (selectedAccount.merchantId && selectedAccount.merchantId !== data.merchantId) {
+      if (
+        selectedAccount.merchantId &&
+        selectedAccount.merchantId !==
+          data.merchantId
+      ) {
         this.app.log.warn(
-          { accountId, requestMerchantId: data.merchantId, accountMerchantId: selectedAccount.merchantId },
+          {
+            accountId,
+
+            requestMerchantId:
+              data.merchantId,
+
+            accountMerchantId:
+              selectedAccount.merchantId,
+          },
+
           "Payment provider account does not belong to authenticated merchant"
         );
 
@@ -1042,25 +1516,37 @@ export default class PaymentOrchestratorService {
         );
       }
 
-      // Validate account status
-      if (selectedAccount.status !== "ACTIVE") {
+      if (
+        selectedAccount.status !==
+        "ACTIVE"
+      ) {
         throw new Error(
           `Payment account is ${selectedAccount.status.toLowerCase()}. Payment cannot proceed.`
         );
       }
 
-      // Resolve credentials from the account
       try {
-        const credentials = await this.paymentProviderAccountService.resolveCredentials(accountId);
+        const credentials =
+          await this.paymentProviderAccountService.resolveCredentials(
+            accountId
+          );
 
-        // Create provider with resolved credentials
-        providerToUse = ProviderFactory.createWithSecret(
-          selectedAccount.provider.toLowerCase(),
-          { secretKey: credentials.secretKey }
-        );
+        providerToUse =
+          ProviderFactory.createWithSecret(
+            selectedAccount.provider.toLowerCase(),
+
+            {
+              secretKey:
+                credentials.secretKey,
+            }
+          );
       } catch (err) {
         this.app.log.error(
-          { err, accountId },
+          {
+            err,
+            accountId,
+          },
+
           "Failed to resolve credentials for payment provider account"
         );
 
@@ -1069,57 +1555,100 @@ export default class PaymentOrchestratorService {
         );
       }
     } else {
-      // No account specified - use default selection logic (existing behavior)
-      // For now, if no account is specified, we require one for proper routing
       throw new Error(
         "Payment account is required."
       );
     }
 
-    // Create payment intent with the selected account
     const paymentIntent =
       await this.paymentService.createPaymentIntent({
+        merchantId:
+          data.merchantId,
 
-        merchantId: data.merchantId,
+        customerId:
+          data.customerId,
 
-        customerId: data.customerId,
+        paymentMethodId:
+          data.paymentMethodId,
 
-        paymentMethodId: data.paymentMethodId,
+        paymentProviderAccountId:
+          accountId,
 
-        paymentProviderAccountId: accountId,
+        amount:
+          data.amount,
 
-        amount: data.amount,
+        currency:
+          data.currency,
 
-        currency: data.currency,
+        description:
+          data.description,
 
-        description: data.description,
-
-        metadata: data.metadata
-
+        metadata:
+          data.metadata,
       });
+
+    /*
+     * createPaymentIntent() also does not expose
+     * the customer relation in its returned type.
+     * Resolve it separately.
+     */
+    const paymentCustomer =
+      paymentIntent.customerId
+        ? await this.app.prisma.customer.findUnique({
+            where: {
+              id: paymentIntent.customerId,
+            },
+          })
+        : null;
 
     const providerResponse =
       await this.failover.execute(
-        [selectedAccount.provider.toLowerCase()],
-        async () => providerToUse.createPayment({
-          amount: Number(data.amount),
-          currency: String(data.currency),
-          reference: data.idempotencyKey ?? `pi:${paymentIntent.id}`,
-          description: data.description ?? undefined,
-          customer: {
-            email: paymentIntent.customer?.email ?? "customer@example.com",
-            firstName: paymentIntent.customer?.firstName ?? undefined,
-            lastName: paymentIntent.customer?.lastName ?? undefined
-          },
-          metadata: data.metadata ?? {}
-        })
+        [
+          selectedAccount.provider.toLowerCase(),
+        ],
+
+        async () =>
+          providerToUse.createPayment({
+            amount:
+              Number(data.amount),
+
+            currency:
+              String(data.currency),
+
+            reference:
+              data.idempotencyKey ??
+              `pi:${paymentIntent.id}`,
+
+            description:
+              data.description ??
+              undefined,
+
+            customer: {
+              email:
+                paymentCustomer?.email ??
+                "customer@example.com",
+
+              firstName:
+                paymentCustomer?.firstName ??
+                undefined,
+
+              lastName:
+                paymentCustomer?.lastName ??
+                undefined,
+            },
+
+            metadata:
+              data.metadata ?? {},
+          })
       );
 
     return providerResponse;
   }
 
   private normalizeJsonValue(
-    value: Prisma.JsonValue | Record<string, unknown>
+    value:
+      | Prisma.JsonValue
+      | Record<string, unknown>
   ): Prisma.JsonValue {
     return JSON.parse(
       JSON.stringify(value)
