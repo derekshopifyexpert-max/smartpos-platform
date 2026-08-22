@@ -229,6 +229,7 @@ export default class PaymentOrchestratorService {
 
           metadata: {
             paymentIntentId,
+            provider: "QUIDAX",
             createdAt:
               new Date().toISOString(),
           } as Prisma.JsonValue,
@@ -312,13 +313,16 @@ export default class PaymentOrchestratorService {
               ),
 
             provider:
+              "QUIDAX",
 
             metadata: {
               createdAt:
                 new Date().toISOString(),
 
+              quidaxOrderId:
                 orderId,
 
+              quidaxStatus:
                 order.status,
 
               paymentIntentId,

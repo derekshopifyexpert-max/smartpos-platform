@@ -1,6 +1,7 @@
 import { CurrencyType, Prisma } from "@prisma/client";
 import { FastifyInstance } from "fastify";
 
+import QuidaxRampClient from "../providers/quidax/quidax-ramp.client.js";
 import QuoteValidatorService from "./quote-validator.service.js";
 
 type OrderRequest = {
@@ -51,6 +52,7 @@ export default class ExchangeService {
     return value.toUpperCase() as CurrencyType;
   }
 
+  async initiateQuidaxOnRamp(request: {
     fromCurrency: string;
     toCurrency: string;
     fromAmount: Prisma.Decimal;
@@ -71,11 +73,18 @@ export default class ExchangeService {
     );
 
     if (
+      !config.QUIDAX_RAMP_BASE_URL ||
+      !config.QUIDAX_PRIVATE_KEY
     ) {
       throw new Error(
+        "Quidax Ramp is not configured. Set QUIDAX_RAMP_BASE_URL and QUIDAX_PRIVATE_KEY.",
       );
     }
 
+    const client = new QuidaxRampClient(
+      config.QUIDAX_RAMP_BASE_URL,
+      config.QUIDAX_PRIVATE_KEY,
+      config.QUIDAX_TIMEOUT_MS,
     );
 
     return client.initiateOnRamp({
@@ -364,24 +373,35 @@ export default class ExchangeService {
       );
 
     if (
+      !config.QUIDAX_API_KEY ||
+      !config.QUIDAX_BASE_URL
     ) {
       throw new Error(
+        "Quidax is not configured. Set QUIDAX_API_KEY and QUIDAX_BASE_URL on the backend.",
       );
     }
 
     const {
+      QuidaxProviderAdapter,
     } = await import(
+      "../providers/quidax/quidax.provider.js"
     );
 
+    return new QuidaxProviderAdapter({
       apiKey:
+        config.QUIDAX_API_KEY,
 
       baseUrl:
+        config.QUIDAX_BASE_URL,
 
       timeoutMs:
+        config.QUIDAX_TIMEOUT_MS,
 
       rampBaseUrl:
+        config.QUIDAX_RAMP_BASE_URL,
 
       rampPrivateKey:
+        config.QUIDAX_PRIVATE_KEY,
     });
   }
 
@@ -391,6 +411,7 @@ export default class ExchangeService {
 
     if (!("getAssets" in provider)) {
       throw new Error(
+        "Quidax asset lookup is unavailable.",
       );
     }
 
@@ -403,6 +424,7 @@ export default class ExchangeService {
 
     if (!("getMarkets" in provider)) {
       throw new Error(
+        "Quidax market lookup is unavailable.",
       );
     }
 
@@ -415,6 +437,7 @@ export default class ExchangeService {
 
     if (!("getBalances" in provider)) {
       throw new Error(
+        "Quidax balance lookup is unavailable.",
       );
     }
 
@@ -424,6 +447,7 @@ export default class ExchangeService {
   /**
    * Get a live provider-backed quote.
    *
+   * Quidax Ramp BUY quotes currently support:
    *
    *   Fiat: NGN, GHS
    *   Tokens: USDT, USDC, XAUT, USAT
@@ -473,6 +497,7 @@ export default class ExchangeService {
       }
 
       /*
+       * Quidax Ramp BUY quotes are fiat -> crypto.
        *
        * Therefore:
        *
@@ -491,11 +516,13 @@ export default class ExchangeService {
 
         if (!supportedFiat) {
           throw new Error(
+            `Quidax Ramp does not support ${quoteAsset} BUY quotes. Supported fiat currencies are NGN and GHS. Change the dashboard currency from ${quoteAsset} to NGN or GHS.`,
           );
         }
 
         if (!request.network) {
           throw new Error(
+            "A crypto network is required for a Quidax BUY quote. Select a supported network such as TRC20.",
           );
         }
 
@@ -508,11 +535,13 @@ export default class ExchangeService {
           ].includes(baseAsset)
         ) {
           throw new Error(
+            `Quidax Ramp does not support BUY quotes for ${baseAsset}.`,
           );
         }
       }
 
       /*
+       * The provider adapter currently implements Quidax
        * Ramp quotes through getQuote().
        *
        * Pass a clean request object so network can never
@@ -543,11 +572,13 @@ export default class ExchangeService {
 
       if (!providerQuote) {
         throw new Error(
+          "Quidax returned an empty quote.",
         );
       }
 
       const providerRecord =
         await this.getOrCreateProviderRecord(
+          "QUIDAX",
         );
 
       return this.app.prisma.exchangeQuote.create({
@@ -601,6 +632,7 @@ export default class ExchangeService {
                 providerQuote.feePercentage.toString(),
 
               provider:
+                "QUIDAX",
 
               ...(request.network
                 ? {
@@ -682,6 +714,7 @@ export default class ExchangeService {
 
       const providerRecord =
         await this.getOrCreateProviderRecord(
+          "QUIDAX",
         );
 
       const dbOrder =
@@ -837,6 +870,7 @@ export default class ExchangeService {
             quote.toAmount,
 
           provider:
+            "QUIDAX",
         },
 
         {
