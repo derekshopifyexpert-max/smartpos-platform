@@ -344,7 +344,6 @@ export default class ExchangeController {
   /**
    * POST /exchange/real-quote
    *
-   * Current Quidax Ramp BUY request:
    *
    * {
    *   "baseAsset": "USDT",
@@ -453,7 +452,6 @@ export default class ExchangeController {
       }
 
       /**
-       * The current Quidax Ramp adapter requires
        * a network for BUY quotes.
        */
       if (
@@ -465,12 +463,10 @@ export default class ExchangeController {
           .send({
             success: false,
             error:
-              "network is required for a Quidax BUY quote.",
           });
       }
 
       /**
-       * The current Quidax Ramp adapter only supports
        * NGN and GHS as fiat quote assets.
        *
        * Keeping this validation here gives the frontend
@@ -488,7 +484,6 @@ export default class ExchangeController {
           .send({
             success: false,
             error:
-              "Quidax BUY quotes currently support NGN or GHS only.",
           });
       }
 
@@ -952,7 +947,6 @@ export default class ExchangeController {
           error:
             errorMessage(
               error,
-              "Quidax assets unavailable."
             ),
         });
     }
@@ -983,7 +977,6 @@ export default class ExchangeController {
           error:
             errorMessage(
               error,
-              "Quidax markets unavailable."
             ),
         });
     }
@@ -1014,7 +1007,6 @@ export default class ExchangeController {
           error:
             errorMessage(
               error,
-              "Quidax balances unavailable."
             ),
         });
     }
@@ -1043,9 +1035,7 @@ export default class ExchangeController {
         success: true,
         data: {
           provider:
-            "QUIDAX",
           environment:
-            configuration.QUIDAX_ENVIRONMENT,
           connected: true,
           accountId:
             account.accountId,
@@ -1058,14 +1048,11 @@ export default class ExchangeController {
           success: true,
           data: {
             provider:
-              "QUIDAX",
             environment:
-              configuration.QUIDAX_ENVIRONMENT,
             connected: false,
             error:
               errorMessage(
                 error,
-                "Quidax unavailable."
               ),
           },
         });

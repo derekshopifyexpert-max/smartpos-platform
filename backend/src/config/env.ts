@@ -137,28 +137,16 @@ export const env = {
     process.env.EXCHANGE_PROVIDER_API_SECRET ||
     "",
 
-  QUIDAX_API_KEY:
-    process.env.QUIDAX_API_KEY ||
     "",
 
-  QUIDAX_BASE_URL:
-    process.env.QUIDAX_BASE_URL ||
     "",
 
-  QUIDAX_PRIVATE_KEY:
-    process.env.QUIDAX_PRIVATE_KEY ||
     "",
 
-  QUIDAX_RAMP_BASE_URL:
-    process.env.QUIDAX_RAMP_BASE_URL ||
     "",
 
-  QUIDAX_ENVIRONMENT:
-    process.env.QUIDAX_ENVIRONMENT ||
     "sandbox",
 
-  QUIDAX_TIMEOUT_MS:
-    Number(process.env.QUIDAX_TIMEOUT_MS || 15000),
 
   SMARTPOS_WEBHOOK_SECRET:
     process.env.SMARTPOS_WEBHOOK_SECRET ||

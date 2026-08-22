@@ -160,7 +160,6 @@ export interface CryptoQuoteRequest {
    * Optional crypto network.
    *
    * This is primarily required by crypto-ramp providers such
-   * as Quidax when purchasing an on-chain asset.
    *
    * Examples:
    * - trc20
