@@ -1,37 +1,128 @@
 // Exchange Quote - Real provider pricing
 export interface ExchangeQuote {
-  id: string;
+  /**
+   * Provider quote identifier.
+   *
+   * The backend/provider uses quoteId.
+   */
+  quoteId: string;
+
+  /**
+   * Provider name, e.g. QUIDAX.
+   */
+  provider: string;
+
+  /**
+   * Trading pair.
+   */
+  symbol: string;
+
   baseAsset: string;
   quoteAsset: string;
-  amount: string; // Decimal as string
-  quoteAmount: string; // Decimal as string
-  rate: string; // Decimal as string
+
   side: "BUY" | "SELL";
-  expiresAt: string; // ISO timestamp
-  ttlSeconds: number;
-  provider: string;
-  fee?: string; // Provider fee
-  metadata?: Record<string, any>;
-  createdAt: string;
+
+  /**
+   * Price expressed as quote currency per base asset.
+   */
+  price: string;
+
+  /**
+   * Amount supplied to the provider.
+   *
+   * For BUY this is the fiat input amount.
+   * For SELL this is the crypto input amount.
+   */
+  inputAmount: string;
+
+  /**
+   * Amount received from the provider.
+   *
+   * For BUY this is the crypto output.
+   * For SELL this is the fiat output.
+   */
+  outputAmount: string;
+
+  /**
+   * Provider fee.
+   */
+  fee: string;
+
+  /**
+   * Currency in which the fee is charged.
+   */
+  feeCurrency: string;
+
+  /**
+   * Fee as a percentage of the input amount.
+   */
+  feePercentage: string;
+
+  /**
+   * ISO timestamp.
+   */
+  expiresAt: string;
+
+  /**
+   * Remaining quote lifetime in seconds when generated.
+   */
+  expiresIn: number;
+
+  /**
+   * ISO timestamp representing provider response time.
+   */
+  providerTimestamp: string;
+
+  /**
+   * Backend/provider metadata.
+   */
+  metadata?: Record<string, unknown>;
 }
 
-// Exchange Order - Real provider order
+// Real provider order
 export interface ExchangeOrder {
-  id: string;
-  orderId?: string | null; // Provider's order ID
+  orderId: string;
+
+  provider: string;
+
   symbol: string;
+
+  baseAsset: string;
+
+  quoteAsset: string;
+
   side: "BUY" | "SELL";
-  amount: string; // Requested amount
-  filledAmount: string; // Actual filled amount
-  avgPrice?: string | null;
-  status: "PENDING" | "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELED" | "REJECTED" | "EXPIRED" | "FAILED";
-  fee?: string;
-  provider?: string;
+
+  status:
+    | "PENDING"
+    | "OPEN"
+    | "PARTIALLY_FILLED"
+    | "FILLED"
+    | "CANCELED"
+    | "REJECTED"
+    | "EXPIRED"
+    | "FAILED";
+
+  requestedAmount: string;
+
+  executedAmount: string;
+
+  averagePrice: string;
+
+  totalFee: string;
+
+  feeCurrency: string;
+
   createdAt: string;
+
   updatedAt: string;
+
   metadata?: {
+    rawStatus?: string;
+    trades?: unknown;
     clientOrderId?: string;
     quoteId?: string;
+    [key: string]: unknown;
   };
 }
 
@@ -49,9 +140,8 @@ export interface ExchangeTrade {
 export interface ProviderBalance {
   asset: string;
   available: string;
+  reserved: string;
   total: string;
-  reserved?: string;
-  provider?: string;
 }
 
 // Quote Request
@@ -60,6 +150,12 @@ export interface GetQuoteRequest {
   quoteAsset: string;
   side: "BUY" | "SELL";
   amount: string;
+
+  /**
+   * Required by the Quidax Ramp BUY quote flow.
+   */
+  network?: string;
+
   ttlSeconds?: number;
 }
 
@@ -85,10 +181,17 @@ export interface BlockchainTransaction {
   gasPrice?: string;
   blockNumber?: number;
   confirmations: number;
-  status: "PENDING" | "BROADCASTED" | "CONFIRMING" | "CONFIRMED" | "REVERTED" | "FAILED" | "SETTLED";
+  status:
+    | "PENDING"
+    | "BROADCASTED"
+    | "CONFIRMING"
+    | "CONFIRMED"
+    | "REVERTED"
+    | "FAILED"
+    | "SETTLED";
   createdAt: string;
   updatedAt: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Settlement Status
@@ -96,7 +199,14 @@ export interface SettlementStatus {
   id: string;
   exchangeOrderId: string;
   blockchainTxId?: string;
-  status: "PENDING" | "BROADCASTED" | "CONFIRMING" | "CONFIRMED" | "FAILED" | "SETTLED";
+  status:
+    | "PENDING"
+    | "BROADCASTED"
+    | "CONFIRMING"
+    | "CONFIRMED"
+    | "FAILED"
+    | "SETTLED";
+
   destinationWallet?: {
     id: string;
     name: string;
@@ -104,11 +214,17 @@ export interface SettlementStatus {
     network: string;
     asset: string;
   };
+
   amount: string;
+
   blockchainConfirmations?: number;
+
   requiredConfirmations?: number;
+
   transactionHash?: string;
+
   createdAt: string;
+
   updatedAt: string;
 }
 

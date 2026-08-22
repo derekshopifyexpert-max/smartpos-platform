@@ -1,4 +1,5 @@
 import { api } from "@/lib/api/client";
+
 import type {
   ExchangeQuote,
   ExchangeOrder,
@@ -10,28 +11,41 @@ import type {
 
 class ExchangeService {
   /**
-   * Get a live quote from the real exchange provider
+   * Get a live quote from the real exchange provider.
+   *
    * POST /exchange/real-quote
+   *
+   * Quidax Ramp BUY quote:
+   * - baseAsset: USDT
+   * - quoteAsset: NGN or GHS
+   * - side: BUY
+   * - amount: fiat amount
+   * - network: e.g. trc20
    */
   async getRealQuote(
     request: GetQuoteRequest
   ): Promise<ExchangeQuote> {
-    const response = await api.post<ApiResponse<ExchangeQuote>>(
-      "/exchange/real-quote",
-      {
-        baseAsset: request.baseAsset,
-        quoteAsset: request.quoteAsset,
-        side: request.side,
-        amount: request.amount,
-        ttlSeconds: request.ttlSeconds ?? 30,
-      }
-    );
+    const response =
+      await api.post<ApiResponse<ExchangeQuote>>(
+        "/exchange/real-quote",
+        {
+          baseAsset: request.baseAsset,
+          quoteAsset: request.quoteAsset,
+          side: request.side,
+          amount: request.amount,
+          network: request.network,
+          ttlSeconds: request.ttlSeconds ?? 30,
+        }
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       throw new Error(
         response.data.error ||
           response.data.message ||
-          "Failed to get quote"
+          "Failed to get live quote"
       );
     }
 
@@ -39,25 +53,32 @@ class ExchangeService {
   }
 
   /**
-   * Execute a BUY order on the real exchange provider
+   * Execute a BUY order on the real exchange provider.
+   *
    * POST /exchange/buy
    */
   async buyUsdt(
     request: ExecuteOrderRequest
   ): Promise<ExchangeOrder> {
-    const response = await api.post<ApiResponse<ExchangeOrder>>(
-      "/exchange/buy",
-      {
-        baseAsset: request.baseAsset,
-        quoteAsset: request.quoteAsset,
-        amount: request.amount,
-        quoteId: request.quoteId,
-        clientOrderId: request.clientOrderId,
-        limitPrice: request.limitPrice,
-      }
-    );
+    const response =
+      await api.post<ApiResponse<ExchangeOrder>>(
+        "/exchange/buy",
+        {
+          baseAsset: request.baseAsset,
+          quoteAsset: request.quoteAsset,
+          amount: request.amount,
+          quoteId: request.quoteId,
+          clientOrderId:
+            request.clientOrderId,
+          limitPrice:
+            request.limitPrice,
+        }
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       throw new Error(
         response.data.error ||
           response.data.message ||
@@ -69,25 +90,32 @@ class ExchangeService {
   }
 
   /**
-   * Execute a SELL order on the real exchange provider
+   * Execute a SELL order on the real exchange provider.
+   *
    * POST /exchange/sell
    */
   async sellUsdt(
     request: ExecuteOrderRequest
   ): Promise<ExchangeOrder> {
-    const response = await api.post<ApiResponse<ExchangeOrder>>(
-      "/exchange/sell",
-      {
-        baseAsset: request.baseAsset,
-        quoteAsset: request.quoteAsset,
-        amount: request.amount,
-        quoteId: request.quoteId,
-        clientOrderId: request.clientOrderId,
-        limitPrice: request.limitPrice,
-      }
-    );
+    const response =
+      await api.post<ApiResponse<ExchangeOrder>>(
+        "/exchange/sell",
+        {
+          baseAsset: request.baseAsset,
+          quoteAsset: request.quoteAsset,
+          amount: request.amount,
+          quoteId: request.quoteId,
+          clientOrderId:
+            request.clientOrderId,
+          limitPrice:
+            request.limitPrice,
+        }
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       throw new Error(
         response.data.error ||
           response.data.message ||
@@ -99,15 +127,24 @@ class ExchangeService {
   }
 
   /**
-   * Get order status from the provider
+   * Get order status from the provider.
+   *
    * GET /exchange/orders/:orderId
    */
-  async getOrderStatus(orderId: string): Promise<ExchangeOrder> {
-    const response = await api.get<ApiResponse<ExchangeOrder>>(
-      `/exchange/orders/${orderId}`
-    );
+  async getOrderStatus(
+    orderId: string
+  ): Promise<ExchangeOrder> {
+    const response =
+      await api.get<ApiResponse<ExchangeOrder>>(
+        `/exchange/orders/${encodeURIComponent(
+          orderId
+        )}`
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       throw new Error(
         response.data.error ||
           response.data.message ||
@@ -119,17 +156,26 @@ class ExchangeService {
   }
 
   /**
-   * Get provider balance for a specific asset
+   * Get provider balance for a specific asset.
+   *
    * GET /exchange/balance/:asset
    */
   async getProviderBalance(
     asset: string
   ): Promise<ProviderBalance> {
-    const response = await api.get<ApiResponse<ProviderBalance>>(
-      `/exchange/balance/${asset}`
-    );
+    const response =
+      await api.get<
+        ApiResponse<ProviderBalance>
+      >(
+        `/exchange/balance/${encodeURIComponent(
+          asset
+        )}`
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       throw new Error(
         response.data.error ||
           response.data.message ||
@@ -141,15 +187,24 @@ class ExchangeService {
   }
 
   /**
-   * Get order details with fills
+   * Get order details with fills.
+   *
    * GET /exchange/orders/:orderId/details
    */
-  async getOrderDetails(orderId: string): Promise<any> {
-    const response = await api.get<ApiResponse<any>>(
-      `/exchange/orders/${orderId}/details`
-    );
+  async getOrderDetails(
+    orderId: string
+  ): Promise<unknown> {
+    const response =
+      await api.get<ApiResponse<unknown>>(
+        `/exchange/orders/${encodeURIComponent(
+          orderId
+        )}/details`
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       throw new Error(
         response.data.error ||
           response.data.message ||
@@ -161,16 +216,24 @@ class ExchangeService {
   }
 
   /**
-   * Get settlement status for a BUY order
+   * Get settlement status for a BUY order.
+   *
    * GET /exchange/orders/:orderId/settlement
    */
-  async getSettlementStatus(orderId: string): Promise<any> {
-    const response = await api.get<ApiResponse<any>>(
-      `/exchange/orders/${orderId}/settlement`
-    );
+  async getSettlementStatus(
+    orderId: string
+  ): Promise<unknown | null> {
+    const response =
+      await api.get<ApiResponse<unknown>>(
+        `/exchange/orders/${encodeURIComponent(
+          orderId
+        )}/settlement`
+      );
 
-    if (!response.data.success || !response.data.data) {
-      // Settlement may not exist yet, return null instead of throwing
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       return null;
     }
 
@@ -178,15 +241,24 @@ class ExchangeService {
   }
 
   /**
-   * Get blockchain transaction details
+   * Get blockchain transaction details.
+   *
    * GET /exchange/orders/:orderId/blockchain
    */
-  async getBlockchainTransaction(orderId: string): Promise<any> {
-    const response = await api.get<ApiResponse<any>>(
-      `/exchange/orders/${orderId}/blockchain`
-    );
+  async getBlockchainTransaction(
+    orderId: string
+  ): Promise<unknown | null> {
+    const response =
+      await api.get<ApiResponse<unknown>>(
+        `/exchange/orders/${encodeURIComponent(
+          orderId
+        )}/blockchain`
+      );
 
-    if (!response.data.success || !response.data.data) {
+    if (
+      !response.data.success ||
+      !response.data.data
+    ) {
       return null;
     }
 
@@ -194,4 +266,5 @@ class ExchangeService {
   }
 }
 
-export const exchangeService = new ExchangeService();
+export const exchangeService =
+  new ExchangeService();

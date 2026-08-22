@@ -26,12 +26,6 @@ import type {
   QuidaxWithdrawalRequest,
 } from "./quidax.types.js";
 
-/*
-|--------------------------------------------------------------------------
-| JSON / Response Helpers
-|--------------------------------------------------------------------------
-*/
-
 function record(
   value: unknown,
 ): Record<string, unknown> {
@@ -70,23 +64,10 @@ function list(value: unknown): unknown[] {
   return [];
 }
 
-/**
- * Convert arbitrary provider values into JSON-safe values.
- *
- * This is important because Prisma.JsonValue does not accept
- * arbitrary TypeScript interfaces such as CryptoQuoteResponse
- * or CryptoOrderResponse.
- *
- * Prisma.Decimal and Date are converted to strings.
- */
 function jsonSafe(
   value: unknown,
 ): Prisma.JsonValue {
-  if (value === null) {
-    return null;
-  }
-
-  if (value === undefined) {
+  if (value === null || value === undefined) {
     return null;
   }
 
@@ -189,7 +170,8 @@ function requiredString(
     throw new QuidaxProviderError(
       `Quidax response did not include ${field}.`,
       {
-        code: "QUIDAX_INVALID_RESPONSE",
+        code:
+          "QUIDAX_INVALID_RESPONSE",
       },
     );
   }
@@ -208,7 +190,8 @@ function decimal(
     throw new QuidaxProviderError(
       `Quidax response did not include ${field}.`,
       {
-        code: "QUIDAX_INVALID_RESPONSE",
+        code:
+          "QUIDAX_INVALID_RESPONSE",
       },
     );
   }
@@ -221,7 +204,8 @@ function decimal(
     throw new QuidaxProviderError(
       `Quidax response contained an invalid ${field}.`,
       {
-        code: "QUIDAX_INVALID_RESPONSE",
+        code:
+          "QUIDAX_INVALID_RESPONSE",
       },
     );
   }
@@ -299,11 +283,10 @@ function normalizeNetwork(
     .toLowerCase();
 }
 
-/*
-|--------------------------------------------------------------------------
-| Provider Adapter
-|--------------------------------------------------------------------------
-*/
+type QuidaxRampQuoteRequest =
+  CryptoQuoteRequest & {
+    network?: string;
+  };
 
 export class QuidaxProviderAdapter
   implements QuidaxProvider
@@ -322,12 +305,6 @@ export class QuidaxProviderAdapter
     this.client =
       new QuidaxClient(config);
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Account / Balance
-  |--------------------------------------------------------------------------
-  */
 
   async getAccountInfo(): Promise<ProviderAccountInfo> {
     const balances =
@@ -435,14 +412,17 @@ export class QuidaxProviderAdapter
     );
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Quotes
-  |--------------------------------------------------------------------------
-  */
-
+  /**
+   * Provider quote entry point.
+   *
+   * BUY quotes use Quidax Ramp.
+   *
+   * IMPORTANT:
+   * network is preserved here and explicitly forwarded
+   * into getRampQuote().
+   */
   async getQuote(
-    request: CryptoQuoteRequest,
+    request: QuidaxRampQuoteRequest,
   ): Promise<CryptoQuoteResponse> {
     if (
       request.side !== "BUY"
@@ -458,15 +438,15 @@ export class QuidaxProviderAdapter
       );
     }
 
-    return this.getRampQuote(
-      request,
-    );
+    return this.getRampQuote({
+      ...request,
+      network:
+        request.network,
+    });
   }
 
   async getRampQuote(
-    request: CryptoQuoteRequest & {
-      network?: string;
-    },
+    request: QuidaxRampQuoteRequest,
   ): Promise<CryptoQuoteResponse> {
     if (!this.config.rampBaseUrl) {
       throw new QuidaxConfigurationError(
@@ -830,12 +810,6 @@ export class QuidaxProviderAdapter
     }
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Orders
-  |--------------------------------------------------------------------------
-  */
-
   async buy(
     request: CryptoOrderRequest,
   ): Promise<CryptoOrderResponse> {
@@ -938,12 +912,6 @@ export class QuidaxProviderAdapter
       : [];
   }
 
-  /*
-  |--------------------------------------------------------------------------
-  | Assets / Markets
-  |--------------------------------------------------------------------------
-  */
-
   async getAssets(): Promise<unknown[]> {
     const markets =
       await this.getMarkets();
@@ -1022,12 +990,6 @@ export class QuidaxProviderAdapter
 
     return data;
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Withdrawals
-  |--------------------------------------------------------------------------
-  */
 
   async getWithdrawalFee(
     asset: string,
@@ -1146,9 +1108,9 @@ export class QuidaxProviderAdapter
 
       fee:
         typeof value.fee ===
-          "string" ||
+            "string" ||
         typeof value.fee ===
-          "number"
+            "number"
           ? String(value.fee)
           : undefined,
 
@@ -1183,12 +1145,6 @@ export class QuidaxProviderAdapter
           : undefined,
     };
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Order Normalization
-  |--------------------------------------------------------------------------
-  */
 
   private normalizeOrder(
     value: Record<string, unknown>,
@@ -1390,12 +1346,6 @@ export class QuidaxProviderAdapter
         }),
     };
   }
-
-  /*
-  |--------------------------------------------------------------------------
-  | Balance Conversion
-  |--------------------------------------------------------------------------
-  */
 
   private toBalance(
     balance: QuidaxBalanceRecord,

@@ -1,5 +1,6 @@
 import { CurrencyType, Prisma } from "@prisma/client";
 import { FastifyInstance } from "fastify";
+
 import QuidaxRampClient from "../providers/quidax/quidax-ramp.client.js";
 import QuoteValidatorService from "./quote-validator.service.js";
 
@@ -11,6 +12,15 @@ type OrderRequest = {
   quoteId?: string;
   clientOrderId?: string;
   limitPrice?: Prisma.Decimal;
+};
+
+type RealQuoteRequest = {
+  baseAsset: string;
+  quoteAsset: string;
+  side: "BUY" | "SELL";
+  amount: Prisma.Decimal;
+  ttlSeconds?: number;
+  network?: string;
 };
 
 export default class ExchangeService {
@@ -62,7 +72,10 @@ export default class ExchangeService {
       (m) => m.default,
     );
 
-    if (!config.QUIDAX_RAMP_BASE_URL || !config.QUIDAX_PRIVATE_KEY) {
+    if (
+      !config.QUIDAX_RAMP_BASE_URL ||
+      !config.QUIDAX_PRIVATE_KEY
+    ) {
       throw new Error(
         "Quidax Ramp is not configured. Set QUIDAX_RAMP_BASE_URL and QUIDAX_PRIVATE_KEY.",
       );
@@ -75,29 +88,48 @@ export default class ExchangeService {
     );
 
     return client.initiateOnRamp({
-      fromCurrency: request.fromCurrency.toLowerCase() as "ngn" | "ghs",
-      toCurrency: request.toCurrency.toLowerCase() as
-        | "usdt"
-        | "usdc"
-        | "cngn",
+      fromCurrency:
+        request.fromCurrency.toLowerCase() as "ngn" | "ghs",
+
+      toCurrency:
+        request.toCurrency.toLowerCase() as
+          | "usdt"
+          | "usdc"
+          | "cngn",
+
       fromAmount: request.fromAmount.toString(),
-      merchantReference: request.merchantReference,
+
+      merchantReference:
+        request.merchantReference,
+
       customer: {
         email: request.customer.email,
         first_name: request.customer.firstName,
         last_name: request.customer.lastName,
+
         ...(request.customer.phoneNumber && {
-          phone_number: request.customer.phoneNumber,
+          phone_number:
+            request.customer.phoneNumber,
         }),
       },
-      walletAddress: request.walletAddress,
+
+      walletAddress:
+        request.walletAddress,
     });
   }
 
-  async latestRate(fromCurrency: any, toCurrency: any) {
+  async latestRate(
+    fromCurrency: any,
+    toCurrency: any,
+  ) {
     return this.app.prisma.exchangeRate.findFirst({
-      where: { fromCurrency, toCurrency },
-      orderBy: { timestamp: "desc" },
+      where: {
+        fromCurrency,
+        toCurrency,
+      },
+      orderBy: {
+        timestamp: "desc",
+      },
     });
   }
 
@@ -112,7 +144,8 @@ export default class ExchangeService {
     return this.app.prisma.exchangeRate.create({
       data: {
         ...data,
-        metadata: this.toPrismaJson(data.metadata),
+        metadata:
+          this.toPrismaJson(data.metadata),
       },
     });
   }
@@ -122,7 +155,10 @@ export default class ExchangeService {
     toCurrency: any,
     amount: Prisma.Decimal,
   ) {
-    if (fromCurrency === toCurrency) {
+    if (
+      String(fromCurrency).toUpperCase() ===
+      String(toCurrency).toUpperCase()
+    ) {
       return {
         fromCurrency,
         toCurrency,
@@ -133,7 +169,10 @@ export default class ExchangeService {
       };
     }
 
-    const rate = await this.latestRate(fromCurrency, toCurrency);
+    const rate = await this.latestRate(
+      fromCurrency,
+      toCurrency,
+    );
 
     if (!rate) {
       throw new Error(
@@ -146,7 +185,8 @@ export default class ExchangeService {
       toCurrency,
       rate: rate.rate,
       amount,
-      convertedAmount: amount.mul(rate.rate),
+      convertedAmount:
+        amount.mul(rate.rate),
       expiresAt: rate.expiresAt,
     };
   }
@@ -161,26 +201,50 @@ export default class ExchangeService {
     exchangeProvider?: string;
     metadata?: Prisma.JsonValue;
   }) {
-    const quote = await this.calculateQuote(
-      data.fromCurrency,
-      data.toCurrency,
-      data.fromAmount,
-    );
+    const quote =
+      await this.calculateQuote(
+        data.fromCurrency,
+        data.toCurrency,
+        data.fromAmount,
+      );
 
-    const fee = data.fee ?? new Prisma.Decimal(0);
+    const fee =
+      data.fee ??
+      new Prisma.Decimal(0);
 
     return this.app.prisma.cryptoConversion.create({
       data: {
-        merchantId: data.merchantId,
-        transactionId: data.transactionId,
-        fromCurrency: data.fromCurrency,
-        toCurrency: data.toCurrency,
-        fromAmount: data.fromAmount,
-        toAmount: quote.convertedAmount.sub(fee),
-        rate: quote.rate,
+        merchantId:
+          data.merchantId,
+
+        transactionId:
+          data.transactionId,
+
+        fromCurrency:
+          data.fromCurrency,
+
+        toCurrency:
+          data.toCurrency,
+
+        fromAmount:
+          data.fromAmount,
+
+        toAmount:
+          quote.convertedAmount.sub(fee),
+
+        rate:
+          quote.rate,
+
         fee,
-        exchangeProvider: data.exchangeProvider,
-        metadata: this.toPrismaJson(data.metadata),
+
+        exchangeProvider:
+          data.exchangeProvider,
+
+        metadata:
+          this.toPrismaJson(
+            data.metadata,
+          ),
+
         status: "pending",
       },
     });
@@ -194,10 +258,11 @@ export default class ExchangeService {
     ttlSeconds?: number;
     metadata?: Prisma.JsonValue;
   }) {
-    const rate = await this.latestRate(
-      data.fromCurrency,
-      data.toCurrency,
-    );
+    const rate =
+      await this.latestRate(
+        data.fromCurrency,
+        data.toCurrency,
+      );
 
     if (!rate) {
       throw new Error(
@@ -207,23 +272,51 @@ export default class ExchangeService {
 
     return this.app.prisma.cryptoQuote.create({
       data: {
-        fromCurrency: this.toCurrencyType(String(data.fromCurrency)),
-        toCurrency: this.toCurrencyType(String(data.toCurrency)),
-        amount: data.amount,
-        quoteAmount: data.amount.mul(rate.rate),
-        rate: rate.rate,
-        expiresAt: new Date(
-          Date.now() + (data.ttlSeconds ?? 30) * 1000,
-        ),
-        provider: data.provider ?? "",
-        metadata: this.toPrismaJson(data.metadata),
+        fromCurrency:
+          this.toCurrencyType(
+            String(data.fromCurrency),
+          ),
+
+        toCurrency:
+          this.toCurrencyType(
+            String(data.toCurrency),
+          ),
+
+        amount:
+          data.amount,
+
+        quoteAmount:
+          data.amount.mul(rate.rate),
+
+        rate:
+          rate.rate,
+
+        expiresAt:
+          new Date(
+            Date.now() +
+              (data.ttlSeconds ?? 30) *
+                1000,
+          ),
+
+        provider:
+          data.provider ?? "",
+
+        metadata:
+          this.toPrismaJson(
+            data.metadata,
+          ),
       },
     });
   }
 
-  async completeConversion(conversionId: string) {
+  async completeConversion(
+    conversionId: string,
+  ) {
     return this.app.prisma.cryptoConversion.update({
-      where: { id: conversionId },
+      where: {
+        id: conversionId,
+      },
+
       data: {
         status: "completed",
         completedAt: new Date(),
@@ -231,16 +324,26 @@ export default class ExchangeService {
     });
   }
 
-  async failConversion(conversionId: string) {
+  async failConversion(
+    conversionId: string,
+  ) {
     return this.app.prisma.cryptoConversion.update({
-      where: { id: conversionId },
-      data: { status: "failed" },
+      where: {
+        id: conversionId,
+      },
+
+      data: {
+        status: "failed",
+      },
     });
   }
 
   async findConversion(id: string) {
     return this.app.prisma.cryptoConversion.findUnique({
-      where: { id },
+      where: {
+        id,
+      },
+
       include: {
         merchant: true,
         transaction: true,
@@ -249,125 +352,332 @@ export default class ExchangeService {
     });
   }
 
-  async merchantConversions(merchantId: string) {
+  async merchantConversions(
+    merchantId: string,
+  ) {
     return this.app.prisma.cryptoConversion.findMany({
-      where: { merchantId },
-      orderBy: { createdAt: "desc" },
+      where: {
+        merchantId,
+      },
+
+      orderBy: {
+        createdAt: "desc",
+      },
     });
   }
 
   async getExchangeProvider() {
-    const config = await import("../config/env.js").then(
-      (m) => m.default,
-    );
+    const config =
+      await import("../config/env.js").then(
+        (m) => m.default,
+      );
 
-    if (!config.QUIDAX_API_KEY || !config.QUIDAX_BASE_URL) {
+    if (
+      !config.QUIDAX_API_KEY ||
+      !config.QUIDAX_BASE_URL
+    ) {
       throw new Error(
         "Quidax is not configured. Set QUIDAX_API_KEY and QUIDAX_BASE_URL on the backend.",
       );
     }
 
-    const { QuidaxProviderAdapter } = await import(
+    const {
+      QuidaxProviderAdapter,
+    } = await import(
       "../providers/quidax/quidax.provider.js"
     );
 
     return new QuidaxProviderAdapter({
-      apiKey: config.QUIDAX_API_KEY,
-      baseUrl: config.QUIDAX_BASE_URL,
-      timeoutMs: config.QUIDAX_TIMEOUT_MS,
+      apiKey:
+        config.QUIDAX_API_KEY,
+
+      baseUrl:
+        config.QUIDAX_BASE_URL,
+
+      timeoutMs:
+        config.QUIDAX_TIMEOUT_MS,
+
+      rampBaseUrl:
+        config.QUIDAX_RAMP_BASE_URL,
+
+      rampPrivateKey:
+        config.QUIDAX_PRIVATE_KEY,
     });
   }
 
   async getProviderAssets() {
-    const provider = await this.getExchangeProvider();
+    const provider =
+      await this.getExchangeProvider();
 
     if (!("getAssets" in provider)) {
-      throw new Error("Quidax asset lookup is unavailable.");
+      throw new Error(
+        "Quidax asset lookup is unavailable.",
+      );
     }
 
     return provider.getAssets();
   }
 
   async getProviderMarkets() {
-    const provider = await this.getExchangeProvider();
+    const provider =
+      await this.getExchangeProvider();
 
     if (!("getMarkets" in provider)) {
-      throw new Error("Quidax market lookup is unavailable.");
+      throw new Error(
+        "Quidax market lookup is unavailable.",
+      );
     }
 
     return provider.getMarkets();
   }
 
   async getProviderBalances() {
-    const provider = await this.getExchangeProvider();
+    const provider =
+      await this.getExchangeProvider();
 
     if (!("getBalances" in provider)) {
-      throw new Error("Quidax balance lookup is unavailable.");
+      throw new Error(
+        "Quidax balance lookup is unavailable.",
+      );
     }
 
     return provider.getBalances();
   }
 
-  async getRealQuote(request: {
-    baseAsset: string;
-    quoteAsset: string;
-    side: "BUY" | "SELL";
-    amount: Prisma.Decimal;
-    ttlSeconds?: number;
-  }) {
+  /**
+   * Get a live provider-backed quote.
+   *
+   * Quidax Ramp BUY quotes currently support:
+   *
+   *   Fiat: NGN, GHS
+   *   Tokens: USDT, USDC, XAUT, USAT
+   *
+   * The Ramp API also requires token_network.
+   *
+   * IMPORTANT:
+   * USD is intentionally NOT converted to NGN or GHS here.
+   * Doing so would silently change the user's requested
+   * currency and amount.
+   */
+  async getRealQuote(
+    request: RealQuoteRequest,
+  ) {
     try {
-      const provider = await this.getExchangeProvider();
-      const providerQuote = await provider.getQuote(request);
+      const baseAsset =
+        request.baseAsset
+          .trim()
+          .toUpperCase();
+
+      const quoteAsset =
+        request.quoteAsset
+          .trim()
+          .toUpperCase();
+
+      const side =
+        request.side;
+
+      if (
+        !baseAsset ||
+        !quoteAsset
+      ) {
+        throw new Error(
+          "baseAsset and quoteAsset are required.",
+        );
+      }
+
+      if (
+        !request.amount ||
+        request.amount.lte(
+          new Prisma.Decimal(0),
+        )
+      ) {
+        throw new Error(
+          "amount must be greater than zero.",
+        );
+      }
+
+      /*
+       * Quidax Ramp BUY quotes are fiat -> crypto.
+       *
+       * Therefore:
+       *
+       *   BUY USDT/NGN
+       *   BUY USDT/GHS
+       *
+       * are valid Ramp requests.
+       *
+       * USD is NOT a supported Ramp fiat currency.
+       */
+      if (side === "BUY") {
+        const supportedFiat =
+          ["NGN", "GHS"].includes(
+            quoteAsset,
+          );
+
+        if (!supportedFiat) {
+          throw new Error(
+            `Quidax Ramp does not support ${quoteAsset} BUY quotes. Supported fiat currencies are NGN and GHS. Change the dashboard currency from ${quoteAsset} to NGN or GHS.`,
+          );
+        }
+
+        if (!request.network) {
+          throw new Error(
+            "A crypto network is required for a Quidax BUY quote. Select a supported network such as TRC20.",
+          );
+        }
+
+        if (
+          ![
+            "USDT",
+            "USDC",
+            "XAUT",
+            "USAT",
+          ].includes(baseAsset)
+        ) {
+          throw new Error(
+            `Quidax Ramp does not support BUY quotes for ${baseAsset}.`,
+          );
+        }
+      }
+
+      /*
+       * The provider adapter currently implements Quidax
+       * Ramp quotes through getQuote().
+       *
+       * Pass a clean request object so network can never
+       * accidentally be dropped before reaching the provider.
+       */
+      const provider =
+        await this.getExchangeProvider();
+
+      const providerQuote =
+        await provider.getQuote({
+          ...request,
+
+          baseAsset,
+
+          quoteAsset,
+
+          side,
+
+          ...(request.network
+            ? {
+                network:
+                  request.network
+                    .trim()
+                    .toLowerCase(),
+              }
+            : {}),
+        } as any);
+
+      if (!providerQuote) {
+        throw new Error(
+          "Quidax returned an empty quote.",
+        );
+      }
+
       const providerRecord =
         await this.getOrCreateProviderRecord(
-          provider.constructor.name,
+          "QUIDAX",
         );
 
       return this.app.prisma.exchangeQuote.create({
         data: {
-          exchangeProviderId: providerRecord.id,
-          fromCurrency: this.toCurrencyType(
-            request.side === "BUY"
-              ? request.quoteAsset
-              : request.baseAsset,
-          ),
-          toCurrency: this.toCurrencyType(
-            request.side === "BUY"
-              ? request.baseAsset
-              : request.quoteAsset,
-          ),
+          exchangeProviderId:
+            providerRecord.id,
+
+          fromCurrency:
+            this.toCurrencyType(
+              side === "BUY"
+                ? quoteAsset
+                : baseAsset,
+            ),
+
+          toCurrency:
+            this.toCurrencyType(
+              side === "BUY"
+                ? baseAsset
+                : quoteAsset,
+            ),
+
           fromAmount:
-            request.side === "BUY"
+            side === "BUY"
               ? request.amount
               : providerQuote.inputAmount,
+
           toAmount:
-            request.side === "BUY"
+            side === "BUY"
               ? providerQuote.outputAmount
               : request.amount,
-          rate: providerQuote.price,
-          expiresAt: providerQuote.expiresAt,
-          metadata: this.toPrismaJson({
-  providerQuote: JSON.parse(JSON.stringify(providerQuote)),
-  quoteId: providerQuote.quoteId,
-  feePercentage: providerQuote.feePercentage.toString(),
-}),
+
+          rate:
+            providerQuote.price,
+
+          expiresAt:
+            providerQuote.expiresAt,
+
+          metadata:
+            this.toPrismaJson({
+              providerQuote:
+                JSON.parse(
+                  JSON.stringify(
+                    providerQuote,
+                  ),
+                ),
+
+              quoteId:
+                providerQuote.quoteId,
+
+              feePercentage:
+                providerQuote.feePercentage.toString(),
+
+              provider:
+                "QUIDAX",
+
+              ...(request.network
+                ? {
+                    network:
+                      request.network
+                        .trim()
+                        .toLowerCase(),
+                  }
+                : {}),
+            }),
         },
       });
     } catch (error) {
       this.app.log.error(
-        { error },
+        {
+          error,
+          request: {
+            ...request,
+            amount:
+              request.amount.toString(),
+          },
+        },
         "Failed to get real exchange quote",
       );
+
       throw error;
     }
   }
 
-  async executeBuyOrder(request: OrderRequest) {
-    return this.executeOrder("BUY", request);
+  async executeBuyOrder(
+    request: OrderRequest,
+  ) {
+    return this.executeOrder(
+      "BUY",
+      request,
+    );
   }
 
-  async executeSellOrder(request: OrderRequest) {
-    return this.executeOrder("SELL", request);
+  async executeSellOrder(
+    request: OrderRequest,
+  ) {
+    return this.executeOrder(
+      "SELL",
+      request,
+    );
   }
 
   private async executeOrder(
@@ -375,60 +685,119 @@ export default class ExchangeService {
     request: OrderRequest,
   ) {
     try {
-      const existing = await this.getExistingOrder(request);
+      const existing =
+        await this.getExistingOrder(
+          request,
+        );
 
-      if (existing) return existing;
+      if (existing) {
+        return existing;
+      }
 
-      await this.validateAndUseQuote(request);
+      await this.validateAndUseQuote(
+        request,
+      );
 
-      const provider = await this.getExchangeProvider();
+      const provider =
+        await this.getExchangeProvider();
 
       const order =
         side === "BUY"
-          ? await provider.buy({ ...request, side })
-          : await provider.sell({ ...request, side });
+          ? await provider.buy({
+              ...request,
+              side,
+            })
+          : await provider.sell({
+              ...request,
+              side,
+            });
 
       const providerRecord =
         await this.getOrCreateProviderRecord(
-          provider.constructor.name,
+          "QUIDAX",
         );
 
       const dbOrder =
         await this.app.prisma.exchangeOrder.create({
           data: {
-            exchangeProviderId: providerRecord.id,
-            merchantId: request.merchantId,
-            orderId: order.orderId,
-            symbol: order.symbol,
+            exchangeProviderId:
+              providerRecord.id,
+
+            merchantId:
+              request.merchantId,
+
+            orderId:
+              order.orderId,
+
+            symbol:
+              order.symbol,
+
             side,
-            type: request.limitPrice ? "LIMIT" : "MARKET",
-            price: order.averagePrice,
-            amount: order.requestedAmount,
-            filledAmount: order.executedAmount,
-            avgPrice: order.averagePrice,
-            status: order.status,
-            metadata: this.toPrismaJson({
-  order: JSON.parse(JSON.stringify(order)),
-  clientOrderId: request.clientOrderId,
-  quoteId: request.quoteId,
-}),
+
+            type:
+              request.limitPrice
+                ? "LIMIT"
+                : "MARKET",
+
+            price:
+              order.averagePrice,
+
+            amount:
+              order.requestedAmount,
+
+            filledAmount:
+              order.executedAmount,
+
+            avgPrice:
+              order.averagePrice,
+
+            status:
+              order.status,
+
+            metadata:
+              this.toPrismaJson({
+                order:
+                  JSON.parse(
+                    JSON.stringify(
+                      order,
+                    ),
+                  ),
+
+                clientOrderId:
+                  request.clientOrderId,
+
+                quoteId:
+                  request.quoteId,
+              }),
           },
         });
 
-      await this.createTradeIfFilled(dbOrder.id, order);
+      await this.createTradeIfFilled(
+        dbOrder.id,
+        order,
+      );
 
       return dbOrder;
     } catch (error) {
       this.app.log.error(
-        { error, request, side },
+        {
+          error,
+          request,
+          side,
+        },
         `Failed to execute ${side.toLowerCase()} order`,
       );
+
       throw error;
     }
   }
 
-  private async getExistingOrder(request: OrderRequest) {
-    if (!request.clientOrderId) return null;
+  private async getExistingOrder(
+    request: OrderRequest,
+  ) {
+    if (!request.clientOrderId) {
+      return null;
+    }
 
     const order =
       await this.quoteValidator.getOrderByClientOrderId(
@@ -437,7 +806,10 @@ export default class ExchangeService {
 
     if (order) {
       this.app.log.info(
-        { clientOrderId: request.clientOrderId },
+        {
+          clientOrderId:
+            request.clientOrderId,
+        },
         "Idempotent order retrieval: returning existing order",
       );
     }
@@ -445,38 +817,74 @@ export default class ExchangeService {
     return order;
   }
 
-  private async validateAndUseQuote(request: OrderRequest) {
-    if (!request.quoteId) return;
+  private async validateAndUseQuote(
+    request: OrderRequest,
+  ) {
+    if (!request.quoteId) {
+      return;
+    }
 
     const quote =
       await this.app.prisma.exchangeQuote.findUnique({
-        where: { id: request.quoteId },
+        where: {
+          id: request.quoteId,
+        },
       });
 
     if (!quote) {
-      throw new Error(`Quote not found: ${request.quoteId}`);
+      throw new Error(
+        `Quote not found: ${request.quoteId}`,
+      );
     }
 
     const validation =
       await this.quoteValidator.validateQuote(
         {
           id: quote.id,
-          metadata: quote.metadata,
-          createdAt: quote.createdAt,
-          updatedAt: quote.updatedAt,
-          fromCurrency: quote.fromCurrency,
-          toCurrency: quote.toCurrency,
-          rate: quote.rate,
-          expiresAt: quote.expiresAt,
-          amount: quote.fromAmount,
-          quoteAmount: quote.toAmount,
-          provider: "QUIDAX",
+
+          metadata:
+            quote.metadata,
+
+          createdAt:
+            quote.createdAt,
+
+          updatedAt:
+            quote.updatedAt,
+
+          fromCurrency:
+            quote.fromCurrency,
+
+          toCurrency:
+            quote.toCurrency,
+
+          rate:
+            quote.rate,
+
+          expiresAt:
+            quote.expiresAt,
+
+          amount:
+            quote.fromAmount,
+
+          quoteAmount:
+            quote.toAmount,
+
+          provider:
+            "QUIDAX",
         },
+
         {
-          baseAsset: request.baseAsset,
-          quoteAsset: request.quoteAsset,
-          requestedAmount: request.amount,
-          allowedVariancePercent: 2,
+          baseAsset:
+            request.baseAsset,
+
+          quoteAsset:
+            request.quoteAsset,
+
+          requestedAmount:
+            request.amount,
+
+          allowedVariancePercent:
+            2,
         },
       );
 
@@ -486,15 +894,24 @@ export default class ExchangeService {
       );
     }
 
-    const metadata = this.toMetadataObject(quote.metadata);
+    const metadata =
+      this.toMetadataObject(
+        quote.metadata,
+      );
 
     await this.app.prisma.exchangeQuote.update({
-      where: { id: request.quoteId },
+      where: {
+        id: request.quoteId,
+      },
+
       data: {
-        metadata: this.toPrismaJson({
-          ...metadata,
-          usedAt: new Date().toISOString(),
-        }),
+        metadata:
+          this.toPrismaJson({
+            ...metadata,
+
+            usedAt:
+              new Date().toISOString(),
+          }),
       },
     });
   }
@@ -503,20 +920,42 @@ export default class ExchangeService {
     orderId: string,
     order: any,
   ) {
-    if (!order.executedAmount.gt(new Prisma.Decimal(0))) {
+    if (
+      !order.executedAmount.gt(
+        new Prisma.Decimal(0),
+      )
+    ) {
       return;
     }
 
     return this.app.prisma.exchangeTrade.create({
       data: {
         orderId,
-        tradeId: order.orderId,
-        price: order.averagePrice,
-        amount: order.executedAmount,
-        total: order.executedAmount.mul(order.averagePrice),
-        fee: order.totalFee,
-        feeCurrency: "USD" as any,
-        metadata: this.toPrismaJson(order.metadata),
+
+        tradeId:
+          order.orderId,
+
+        price:
+          order.averagePrice,
+
+        amount:
+          order.executedAmount,
+
+        total:
+          order.executedAmount.mul(
+            order.averagePrice,
+          ),
+
+        fee:
+          order.totalFee,
+
+        feeCurrency:
+          "USD" as any,
+
+        metadata:
+          this.toPrismaJson(
+            order.metadata,
+          ),
       },
     });
   }
@@ -529,38 +968,73 @@ export default class ExchangeService {
       if (merchantId) {
         const ownedOrder =
           await this.app.prisma.exchangeOrder.findFirst({
-            where: { orderId, merchantId },
-            select: { id: true },
+            where: {
+              orderId,
+              merchantId,
+            },
+
+            select: {
+              id: true,
+            },
           });
 
         if (!ownedOrder) {
-          throw new Error("Exchange order not found.");
+          throw new Error(
+            "Exchange order not found.",
+          );
         }
       }
 
-      const provider = await this.getExchangeProvider();
-      const order = await provider.getOrder(orderId);
+      const provider =
+        await this.getExchangeProvider();
+
+      const order =
+        await provider.getOrder(
+          orderId,
+        );
 
       const dbOrder =
         await this.app.prisma.exchangeOrder.findFirst({
-          where: { orderId },
+          where: {
+            orderId,
+          },
         });
 
       if (dbOrder) {
         const metadata =
-          this.toMetadataObject(dbOrder.metadata);
+          this.toMetadataObject(
+            dbOrder.metadata,
+          );
 
         await this.app.prisma.exchangeOrder.update({
-          where: { id: dbOrder.id },
+          where: {
+            id: dbOrder.id,
+          },
+
           data: {
-            status: order.status,
-            filledAmount: order.executedAmount,
-            avgPrice: order.averagePrice,
-            metadata: this.toPrismaJson({
-              ...metadata,
-              lastStatusUpdate: new Date().toISOString(),
-              order: JSON.parse(JSON.stringify(order)),
-            }),
+            status:
+              order.status,
+
+            filledAmount:
+              order.executedAmount,
+
+            avgPrice:
+              order.averagePrice,
+
+            metadata:
+              this.toPrismaJson({
+                ...metadata,
+
+                lastStatusUpdate:
+                  new Date().toISOString(),
+
+                order:
+                  JSON.parse(
+                    JSON.stringify(
+                      order,
+                    ),
+                  ),
+              }),
           },
         });
       }
@@ -568,22 +1042,36 @@ export default class ExchangeService {
       return order;
     } catch (error) {
       this.app.log.error(
-        { error, orderId },
+        {
+          error,
+          orderId,
+        },
         "Failed to get order status",
       );
+
       throw error;
     }
   }
 
-  async getProviderBalance(asset: string) {
+  async getProviderBalance(
+    asset: string,
+  ) {
     try {
-      const provider = await this.getExchangeProvider();
-      return provider.getBalance(asset);
+      const provider =
+        await this.getExchangeProvider();
+
+      return provider.getBalance(
+        asset,
+      );
     } catch (error) {
       this.app.log.error(
-        { error, asset },
+        {
+          error,
+          asset,
+        },
         "Failed to get provider balance",
       );
+
       throw error;
     }
   }
@@ -593,21 +1081,38 @@ export default class ExchangeService {
     page = 1,
     limit = 10,
   ) {
-    const skip = Math.max(0, page - 1) * limit;
+    const skip =
+      Math.max(
+        0,
+        page - 1,
+      ) * limit;
 
-    const [items, total] = await Promise.all([
+    const [
+      items,
+      total,
+    ] = await Promise.all([
       this.app.prisma.exchangeOrder.findMany({
-        where: { merchantId },
+        where: {
+          merchantId,
+        },
+
         include: {
           exchangeProvider: true,
           trades: true,
         },
-        orderBy: { createdAt: "desc" },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+
         skip,
         take: limit,
       }),
+
       this.app.prisma.exchangeOrder.count({
-        where: { merchantId },
+        where: {
+          merchantId,
+        },
       }),
     ]);
 
@@ -616,7 +1121,10 @@ export default class ExchangeService {
       total,
       page,
       limit,
-      pages: Math.ceil(total / limit),
+      pages:
+        Math.ceil(
+          total / limit,
+        ),
     };
   }
 
@@ -628,19 +1136,34 @@ export default class ExchangeService {
       await this.app.prisma.exchangeOrder.findFirst({
         where: {
           merchantId,
-          OR: [{ id: orderId }, { orderId }],
+
+          OR: [
+            {
+              id: orderId,
+            },
+            {
+              orderId,
+            },
+          ],
         },
+
         include: {
           exchangeProvider: true,
           trades: true,
         },
       });
 
-    if (!order) return null;
+    if (!order) {
+      return null;
+    }
 
     const conversion =
       await this.app.prisma.cryptoConversion.findFirst({
-        where: { exchangeOrderId: order.id },
+        where: {
+          exchangeOrderId:
+            order.id,
+        },
+
         include: {
           transaction: {
             include: {
@@ -651,15 +1174,22 @@ export default class ExchangeService {
         },
       });
 
-    return { order, conversion };
+    return {
+      order,
+      conversion,
+    };
   }
 
   private async getOrCreateProviderRecord(
     providerName: string,
   ) {
     return this.app.prisma.exchangeProvider.upsert({
-      where: { name: providerName },
+      where: {
+        name: providerName,
+      },
+
       update: {},
+
       create: {
         name: providerName,
         isActive: true,

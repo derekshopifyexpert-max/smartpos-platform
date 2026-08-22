@@ -315,7 +315,7 @@ model Merchant {
   notifications                Notification[]                @relation("MerchantNotification")
   paymentIntents               PaymentIntent[]
   paymentMethods               PaymentMethod[]
-  PaymentProviderAccounts      PaymentProviderAccount[]
+  paymentProviderAccounts      PaymentProviderAccount[] @relation("MerchantPaymentProviderAccounts")
   payrolls                     Payroll[]
   products                     Product[]
   purchases                    Purchase[]
@@ -3623,7 +3623,7 @@ model PaymentProviderAccount {
   createdAt       DateTime                     @default(now())
   updatedAt       DateTime                     @updatedAt
   deletedAt       DateTime?
-  merchant        Merchant?                    @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  merchant        Merchant? @relation("MerchantPaymentProviderAccounts", fields: [merchantId], references: [id], onDelete: SetNull)
   paymentIntents  PaymentIntent[]
   paymentAttempts PaymentAttempt[]
 

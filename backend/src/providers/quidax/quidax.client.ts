@@ -160,12 +160,12 @@ export class QuidaxClient {
     /*
      * Quidax Exchange API.
      *
-     * Current Quidax API documentation uses:
+     * Current Quidax Exchange API base URL:
      *
      * https://openapi.quidax.io/exchange-open-api/api/v1
      *
-     * If QUIDAX_BASE_URL already contains this path,
-     * we use it exactly as supplied.
+     * QUIDAX_BASE_URL should contain the complete
+     * Exchange API base path.
      */
     const exchangeBaseUrl =
       cleanBaseUrl(baseUrl);
@@ -202,6 +202,17 @@ export class QuidaxClient {
      *
      * Ramp:
      * x-private-key: <ramp private key>
+     *
+     * QUIDAX_RAMP_BASE_URL is currently configured
+     * as:
+     *
+     * https://ramp-be.quidax.io
+     *
+     * The Ramp API itself is under /api/v1.
+     *
+     * Therefore we intentionally keep the environment
+     * variable as the host and add /api/v1 to the
+     * Axios baseURL here.
      */
     const rampBaseUrl =
       config.rampBaseUrl?.trim();
@@ -213,12 +224,28 @@ export class QuidaxClient {
       rampBaseUrl &&
       rampPrivateKey
     ) {
+      const cleanRampBaseUrl =
+        cleanBaseUrl(rampBaseUrl);
+
+      /*
+       * Avoid accidentally producing:
+       *
+       * /api/v1/api/v1
+       *
+       * if somebody later supplies a base URL that
+       * already contains /api/v1.
+       */
+      const rampApiBaseUrl =
+        cleanRampBaseUrl.endsWith(
+          "/api/v1",
+        )
+          ? cleanRampBaseUrl
+          : `${cleanRampBaseUrl}/api/v1`;
+
       this.rampHttp =
         axios.create({
           baseURL:
-            cleanBaseUrl(
-              rampBaseUrl
-            ),
+            rampApiBaseUrl,
 
           timeout:
             config.timeoutMs || 15000,
@@ -315,13 +342,16 @@ export class QuidaxClient {
 
   /**
    * Make an authenticated Quidax Ramp request.
+   *
+   * The configured Ramp Axios instance already has
+   * /api/v1 in its baseURL.
    */
   async rampRequest<T>(
     request: AxiosRequestConfig,
   ): Promise<T> {
     if (!this.rampHttp) {
       throw new QuidaxConfigurationError(
-        "Quidax Ramp is not configured. Set QUIDAX_RAMP_BASE_URL and QUIDAX_PRIVATE_KEY.",
+        "Quidax Ramp is not configured. Set QUIDAX_RAMP_BASE_URL and QUIDAX_RAMP_PRIVATE_KEY.",
       );
     }
 
@@ -572,7 +602,7 @@ export class QuidaxClient {
 
     if (status === 403) {
       throw new QuidaxProviderError(
-        "Quidax Ramp denied this request (403 Forbidden). Check Ramp permissions and configuration.",
+        "Quidax Ramp denied this request (403 Forbidden). Check the Ramp private key, merchant permissions, account capability, and any IP restrictions.",
         {
           code:
             "QUIDAX_RAMP_FORBIDDEN",
@@ -590,7 +620,7 @@ export class QuidaxClient {
 
     if (status === 404) {
       throw new QuidaxProviderError(
-        `Quidax Ramp endpoint was not found (404). Check QUIDAX_RAMP_BASE_URL. Provider message: ${message}`,
+        `Quidax Ramp endpoint was not found (404). Check QUIDAX_RAMP_BASE_URL and the requested Ramp API endpoint. Provider message: ${message}`,
         {
           code:
             "QUIDAX_RAMP_NOT_FOUND",
@@ -696,6 +726,27 @@ export class QuidaxClient {
     }
 
     if (
+      ramp &&
+      status === 403
+    ) {
+      throw new QuidaxProviderError(
+        "Quidax Ramp denied this request (403 Forbidden). Check the Ramp private key, merchant permissions, account capability, and any IP restrictions.",
+        {
+          code:
+            "QUIDAX_RAMP_FORBIDDEN",
+
+          status: 403,
+
+          retryable:
+            false,
+
+          category:
+            "AUTHENTICATION_FAILED",
+        },
+      );
+    }
+
+    if (
       !ramp &&
       status === 401
     ) {
@@ -716,16 +767,15 @@ export class QuidaxClient {
       );
     }
 
-    if (status === 403) {
+    if (
+      !ramp &&
+      status === 403
+    ) {
       throw new QuidaxProviderError(
-        ramp
-          ? "Quidax Ramp denied this request (403 Forbidden)."
-          : "Quidax denied this request (403 Forbidden). Check the API key permissions and IP restrictions in Quidax API Management.",
+        "Quidax denied this request (403 Forbidden). Check the API key permissions and IP restrictions in Quidax API Management.",
         {
           code:
-            ramp
-              ? "QUIDAX_RAMP_FORBIDDEN"
-              : "QUIDAX_FORBIDDEN",
+            "QUIDAX_FORBIDDEN",
 
           status: 403,
 
@@ -734,6 +784,48 @@ export class QuidaxClient {
 
           category:
             "AUTHENTICATION_FAILED",
+        },
+      );
+    }
+
+    if (
+      ramp &&
+      status === 404
+    ) {
+      throw new QuidaxProviderError(
+        `Quidax Ramp endpoint was not found (404). Check QUIDAX_RAMP_BASE_URL and the requested Ramp API endpoint. Provider message: ${message}`,
+        {
+          code:
+            "QUIDAX_RAMP_NOT_FOUND",
+
+          status: 404,
+
+          retryable:
+            false,
+
+          category:
+            "NOT_FOUND",
+        },
+      );
+    }
+
+    if (
+      !ramp &&
+      status === 404
+    ) {
+      throw new QuidaxProviderError(
+        `Quidax endpoint was not found (404). Check QUIDAX_BASE_URL and the requested API endpoint. Provider message: ${message}`,
+        {
+          code:
+            "QUIDAX_NOT_FOUND",
+
+          status: 404,
+
+          retryable:
+            false,
+
+          category:
+            "NOT_FOUND",
         },
       );
     }
