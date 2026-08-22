@@ -26,8 +26,14 @@ import type {
   QuidaxWithdrawalRequest,
 } from "./quidax.types.js";
 
+/*
+|--------------------------------------------------------------------------
+| JSON / Response Helpers
+|--------------------------------------------------------------------------
+*/
+
 function record(
-  value: unknown
+  value: unknown,
 ): Record<string, unknown> {
   if (
     !value ||
@@ -64,6 +70,90 @@ function list(value: unknown): unknown[] {
   return [];
 }
 
+/**
+ * Convert arbitrary provider values into JSON-safe values.
+ *
+ * This is important because Prisma.JsonValue does not accept
+ * arbitrary TypeScript interfaces such as CryptoQuoteResponse
+ * or CryptoOrderResponse.
+ *
+ * Prisma.Decimal and Date are converted to strings.
+ */
+function jsonSafe(
+  value: unknown,
+): Prisma.JsonValue {
+  if (value === null) {
+    return null;
+  }
+
+  if (value === undefined) {
+    return null;
+  }
+
+  if (
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+      ? value
+      : null;
+  }
+
+  if (value instanceof Prisma.Decimal) {
+    return value.toString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      jsonSafe(item),
+    );
+  }
+
+  if (typeof value === "object") {
+    const output: Record<
+      string,
+      Prisma.JsonValue
+    > = {};
+
+    for (const [
+      key,
+      item,
+    ] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      output[key] = jsonSafe(item);
+    }
+
+    return output;
+  }
+
+  return String(value);
+}
+
+function jsonObject(
+  value: unknown,
+): Prisma.InputJsonObject {
+  const safe = jsonSafe(value);
+
+  if (
+    safe &&
+    typeof safe === "object" &&
+    !Array.isArray(safe)
+  ) {
+    return safe as Prisma.InputJsonObject;
+  }
+
+  return {};
+}
+
 function apiData(value: unknown): unknown {
   const body = record(value);
 
@@ -74,14 +164,14 @@ function apiData(value: unknown): unknown {
       String(
         details.message ??
           body.message ??
-          "Quidax request failed."
+          "Quidax request failed.",
       ),
       {
         code: String(
           details.code ??
-            "QUIDAX_API_ERROR"
+            "QUIDAX_API_ERROR",
         ),
-      }
+      },
     );
   }
 
@@ -90,7 +180,7 @@ function apiData(value: unknown): unknown {
 
 function requiredString(
   value: unknown,
-  field: string
+  field: string,
 ): string {
   if (
     typeof value !== "string" ||
@@ -100,7 +190,7 @@ function requiredString(
       `Quidax response did not include ${field}.`,
       {
         code: "QUIDAX_INVALID_RESPONSE",
-      }
+      },
     );
   }
 
@@ -109,7 +199,7 @@ function requiredString(
 
 function decimal(
   value: unknown,
-  field: string
+  field: string,
 ): Prisma.Decimal {
   if (
     typeof value !== "string" &&
@@ -119,37 +209,37 @@ function decimal(
       `Quidax response did not include ${field}.`,
       {
         code: "QUIDAX_INVALID_RESPONSE",
-      }
+      },
     );
   }
 
   try {
     return new Prisma.Decimal(
-      String(value)
+      String(value),
     );
   } catch {
     throw new QuidaxProviderError(
       `Quidax response contained an invalid ${field}.`,
       {
         code: "QUIDAX_INVALID_RESPONSE",
-      }
+      },
     );
   }
 }
 
 function bodyData(
-  value: unknown
+  value: unknown,
 ): Record<string, unknown> {
   const body = record(value);
 
   return record(
-    body.data ?? body
+    body.data ?? body,
   );
 }
 
 function firstString(
   source: Record<string, unknown>,
-  keys: string[]
+  keys: string[],
 ): string | undefined {
   for (const key of keys) {
     const value = source[key];
@@ -161,9 +251,7 @@ function firstString(
       return value;
     }
 
-    if (
-      typeof value === "number"
-    ) {
+    if (typeof value === "number") {
       return String(value);
     }
   }
@@ -173,11 +261,11 @@ function firstString(
 
 function firstNumber(
   source: Record<string, unknown>,
-  keys: string[]
+  keys: string[],
 ): Prisma.Decimal | undefined {
   const value = firstString(
     source,
-    keys
+    keys,
   );
 
   if (value === undefined) {
@@ -192,14 +280,9 @@ function firstNumber(
 }
 
 function normalizeNetwork(
-  network?: string
+  network?: string,
 ): string {
   if (!network) {
-    /**
-     * Quidax documents a network as required for the Ramp
-     * purchase quote. For SmartPOS, defaulting to tron is
-     * intentionally NOT done silently.
-     */
     throw new QuidaxProviderError(
       "A crypto network is required for a Quidax Ramp quote.",
       {
@@ -207,7 +290,7 @@ function normalizeNetwork(
           "QUIDAX_RAMP_NETWORK_REQUIRED",
         category:
           "INVALID_REQUEST",
-      }
+      },
     );
   }
 
@@ -216,9 +299,15 @@ function normalizeNetwork(
     .toLowerCase();
 }
 
-export class QuidaxProviderAdapter
-  implements QuidaxProvider {
+/*
+|--------------------------------------------------------------------------
+| Provider Adapter
+|--------------------------------------------------------------------------
+*/
 
+export class QuidaxProviderAdapter
+  implements QuidaxProvider
+{
   readonly name = "QUIDAX";
 
   private readonly client: QuidaxClient;
@@ -226,13 +315,19 @@ export class QuidaxProviderAdapter
   private readonly config: QuidaxConfig;
 
   constructor(
-    config: QuidaxConfig
+    config: QuidaxConfig,
   ) {
     this.config = config;
 
     this.client =
       new QuidaxClient(config);
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Account / Balance
+  |--------------------------------------------------------------------------
+  */
 
   async getAccountInfo(): Promise<ProviderAccountInfo> {
     const balances =
@@ -249,7 +344,7 @@ export class QuidaxProviderAdapter
       balances:
         balances.map(
           (balance) =>
-            this.toBalance(balance)
+            this.toBalance(balance),
         ),
     };
   }
@@ -270,7 +365,7 @@ export class QuidaxProviderAdapter
         {
           code:
             "QUIDAX_INVALID_RESPONSE",
-        }
+        },
       );
     }
 
@@ -282,13 +377,13 @@ export class QuidaxProviderAdapter
         asset:
           requiredString(
             value.currency,
-            "wallet currency"
+            "wallet currency",
           ),
 
         available:
           requiredString(
             value.balance,
-            "wallet balance"
+            "wallet balance",
           ),
 
         locked:
@@ -313,7 +408,7 @@ export class QuidaxProviderAdapter
   }
 
   async getBalance(
-    asset: string
+    asset: string,
   ): Promise<ProviderBalance> {
     const balances =
       await this.getBalances();
@@ -322,7 +417,7 @@ export class QuidaxProviderAdapter
       balances.find(
         (item) =>
           item.asset.toUpperCase() ===
-          asset.toUpperCase()
+          asset.toUpperCase(),
       );
 
     if (!balance) {
@@ -331,34 +426,23 @@ export class QuidaxProviderAdapter
         {
           code:
             "ASSET_UNSUPPORTED",
-        }
+        },
       );
     }
 
     return this.toBalance(
-      balance
+      balance,
     );
   }
 
-  /**
-   * Quidax Ramp BUY quote.
-   *
-   * Current documented endpoint:
-   *
-   * POST
-   * /api/v1/merchants/purchase_quotes/buy
-   *
-   * Query parameters:
-   * currency
-   * token
-   * fiat_amount
-   * token_network
-   *
-   * Authentication:
-   * x-private-key
-   */
+  /*
+  |--------------------------------------------------------------------------
+  | Quotes
+  |--------------------------------------------------------------------------
+  */
+
   async getQuote(
-    request: CryptoQuoteRequest
+    request: CryptoQuoteRequest,
   ): Promise<CryptoQuoteResponse> {
     if (
       request.side !== "BUY"
@@ -370,29 +454,29 @@ export class QuidaxProviderAdapter
             "QUIDAX_RAMP_BUY_ONLY",
           category:
             "CAPABILITY_NOT_SUPPORTED",
-        }
+        },
       );
     }
 
     return this.getRampQuote(
-      request
+      request,
     );
   }
 
   async getRampQuote(
     request: CryptoQuoteRequest & {
       network?: string;
-    }
+    },
   ): Promise<CryptoQuoteResponse> {
     if (!this.config.rampBaseUrl) {
       throw new QuidaxConfigurationError(
-        "QUIDAX_RAMP_BASE_URL is not configured."
+        "QUIDAX_RAMP_BASE_URL is not configured.",
       );
     }
 
     if (!this.config.rampPrivateKey) {
       throw new QuidaxConfigurationError(
-        "QUIDAX_PRIVATE_KEY is not configured."
+        "QUIDAX_PRIVATE_KEY is not configured.",
       );
     }
 
@@ -408,16 +492,12 @@ export class QuidaxProviderAdapter
 
     const network =
       normalizeNetwork(
-        request.network
+        request.network,
       );
 
-    /**
-     * Current Quidax Ramp purchase quote documentation
-     * supports NGN and GHS as fiat currencies.
-     */
     if (
       !["ngn", "ghs"].includes(
-        fiat
+        fiat,
       )
     ) {
       throw new QuidaxProviderError(
@@ -427,13 +507,10 @@ export class QuidaxProviderAdapter
             "QUIDAX_RAMP_FIAT_UNSUPPORTED",
           category:
             "CAPABILITY_NOT_SUPPORTED",
-        }
+        },
       );
     }
 
-    /**
-     * Current documented purchase quote tokens.
-     */
     if (
       ![
         "usdt",
@@ -449,13 +526,13 @@ export class QuidaxProviderAdapter
             "QUIDAX_RAMP_TOKEN_UNSUPPORTED",
           category:
             "CAPABILITY_NOT_SUPPORTED",
-        }
+        },
       );
     }
 
     if (
       request.amount.lte(
-        new Prisma.Decimal("0")
+        new Prisma.Decimal("0"),
       )
     ) {
       throw new QuidaxProviderError(
@@ -465,7 +542,7 @@ export class QuidaxProviderAdapter
             "QUIDAX_INVALID_AMOUNT",
           category:
             "INVALID_REQUEST",
-        }
+        },
       );
     }
 
@@ -480,9 +557,12 @@ export class QuidaxProviderAdapter
           params: {
             currency: fiat,
             token,
+
             fiat_amount:
               request.amount.toString(),
-            token_network: network,
+
+            token_network:
+              network,
           },
         });
 
@@ -500,28 +580,24 @@ export class QuidaxProviderAdapter
           String(
             details.message ??
               body.message ??
-              "Quidax Ramp quote failed."
+              "Quidax Ramp quote failed.",
           ),
           {
             code:
               String(
                 details.code ??
-                  "QUIDAX_RAMP_QUOTE_FAILED"
+                  "QUIDAX_RAMP_QUOTE_FAILED",
               ),
+
             category:
               "RAMP_QUOTE_FAILED",
-          }
+          },
         );
       }
 
       const data =
         bodyData(response);
 
-      /**
-       * Quidax's Ramp response has changed shape across
-       * API revisions. Normalize known field names while
-       * preserving the raw response in metadata.
-       */
       const quoteId =
         firstString(
           data,
@@ -531,7 +607,7 @@ export class QuidaxProviderAdapter
             "id",
             "public_id",
             "reference",
-          ]
+          ],
         );
 
       if (!quoteId) {
@@ -540,7 +616,7 @@ export class QuidaxProviderAdapter
           {
             code:
               "QUIDAX_INVALID_RESPONSE",
-          }
+          },
         );
       }
 
@@ -555,7 +631,7 @@ export class QuidaxProviderAdapter
             "receive_amount",
             "receiveAmount",
             "amount",
-          ]
+          ],
         );
 
       if (!tokenAmount) {
@@ -564,7 +640,7 @@ export class QuidaxProviderAdapter
           {
             code:
               "QUIDAX_INVALID_RESPONSE",
-          }
+          },
         );
       }
 
@@ -576,7 +652,7 @@ export class QuidaxProviderAdapter
             "rate",
             "exchange_rate",
             "exchangeRate",
-          ]
+          ],
         );
 
       const fee =
@@ -589,7 +665,7 @@ export class QuidaxProviderAdapter
             "processingFee",
             "fiat_processing_fee",
             "fiatProcessingFee",
-          ]
+          ],
         ) ??
         new Prisma.Decimal("0");
 
@@ -600,7 +676,7 @@ export class QuidaxProviderAdapter
             "expires_in",
             "expiresIn",
             "ttl",
-          ]
+          ],
         );
 
       const expiresAtRaw =
@@ -611,7 +687,7 @@ export class QuidaxProviderAdapter
             "expiresAt",
             "expiry",
             "expires",
-          ]
+          ],
         );
 
       const expiresIn =
@@ -625,38 +701,42 @@ export class QuidaxProviderAdapter
       const expiresAt =
         expiresAtRaw &&
         !Number.isNaN(
-          Date.parse(expiresAtRaw)
+          Date.parse(
+            expiresAtRaw,
+          ),
         )
-          ? new Date(expiresAtRaw)
+          ? new Date(
+              expiresAtRaw,
+            )
           : new Date(
               providerTimestamp.getTime() +
                 Math.max(
                   expiresIn,
-                  1
+                  1,
                 ) *
-                  1000
+                  1000,
             );
 
       const outputAmount =
         new Prisma.Decimal(
-          tokenAmount
+          tokenAmount,
         );
 
       const effectivePrice =
         price ??
         (
           outputAmount.gt(
-            new Prisma.Decimal("0")
+            new Prisma.Decimal("0"),
           )
             ? request.amount.div(
-                outputAmount
+                outputAmount,
               )
             : new Prisma.Decimal("0")
         );
 
       const feePercentage =
         request.amount.gt(
-          new Prisma.Decimal("0")
+          new Prisma.Decimal("0"),
         )
           ? fee
               .div(request.amount)
@@ -702,27 +782,29 @@ export class QuidaxProviderAdapter
           Math.max(
             1,
             Math.floor(
-              (expiresAt.getTime() -
-                Date.now()) /
-                1000
-            )
+              (
+                expiresAt.getTime() -
+                Date.now()
+              ) / 1000,
+            ),
           ),
 
         providerTimestamp,
 
-        metadata: {
-          provider:
-            "QUIDAX_RAMP",
+        metadata:
+          jsonObject({
+            provider:
+              "QUIDAX_RAMP",
 
-          rampBaseUrl:
-            this.config.rampBaseUrl,
+            rampBaseUrl:
+              this.config.rampBaseUrl,
 
-          tokenNetwork:
-            network,
+            tokenNetwork:
+              network,
 
-          raw:
-            response,
-        },
+            raw:
+              response,
+          }),
       };
     } catch (error) {
       if (
@@ -743,13 +825,19 @@ export class QuidaxProviderAdapter
 
           category:
             "RAMP_QUOTE_FAILED",
-        }
+        },
       );
     }
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Orders
+  |--------------------------------------------------------------------------
+  */
+
   async buy(
-    request: CryptoOrderRequest
+    request: CryptoOrderRequest,
   ): Promise<CryptoOrderResponse> {
     return this.createOrder({
       ...request,
@@ -758,7 +846,7 @@ export class QuidaxProviderAdapter
   }
 
   async sell(
-    request: CryptoOrderRequest
+    request: CryptoOrderRequest,
   ): Promise<CryptoOrderResponse> {
     return this.createOrder({
       ...request,
@@ -767,7 +855,7 @@ export class QuidaxProviderAdapter
   }
 
   private async createOrder(
-    request: CryptoOrderRequest
+    request: CryptoOrderRequest,
   ): Promise<CryptoOrderResponse> {
     const response =
       await this.client.request<unknown>({
@@ -789,8 +877,12 @@ export class QuidaxProviderAdapter
               ? "limit"
               : "market",
 
-          price:
-            request.limitPrice?.toString(),
+          ...(request.limitPrice
+            ? {
+                price:
+                  request.limitPrice.toString(),
+              }
+            : {}),
 
           volume:
             request.amount.toString(),
@@ -799,14 +891,14 @@ export class QuidaxProviderAdapter
 
     return this.normalizeOrder(
       record(
-        apiData(response)
+        apiData(response),
       ),
-      request
+      request,
     );
   }
 
   async getOrder(
-    orderId: string
+    orderId: string,
   ): Promise<CryptoOrderResponse> {
     const response =
       await this.client.request<unknown>({
@@ -814,34 +906,43 @@ export class QuidaxProviderAdapter
 
         url:
           `/users/me/orders/${encodeURIComponent(
-            orderId
+            orderId,
           )}`,
       });
 
     return this.normalizeOrder(
       record(
-        apiData(response)
-      )
+        apiData(response),
+      ),
     );
   }
 
   async getTrades(
-    orderId: string
+    orderId: string,
   ): Promise<unknown[]> {
     const order =
       await this.getOrder(
-        orderId
+        orderId,
       );
 
+    const metadata =
+      record(order.metadata);
+
     const trades =
-      order.metadata?.trades;
+      metadata.trades;
 
     return Array.isArray(
-      trades
+      trades,
     )
       ? trades
       : [];
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Assets / Markets
+  |--------------------------------------------------------------------------
+  */
 
   async getAssets(): Promise<unknown[]> {
     const markets =
@@ -884,13 +985,13 @@ export class QuidaxProviderAdapter
         "string"
       ) {
         existing.markets.push(
-          value.id
+          value.id,
         );
       }
 
       assets.set(
         base,
-        existing
+        existing,
       );
     }
 
@@ -915,16 +1016,22 @@ export class QuidaxProviderAdapter
         {
           code:
             "QUIDAX_INVALID_RESPONSE",
-        }
+        },
       );
     }
 
     return data;
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Withdrawals
+  |--------------------------------------------------------------------------
+  */
+
   async getWithdrawalFee(
     asset: string,
-    network: string
+    network: string,
   ) {
     const response =
       await this.client.request<unknown>({
@@ -932,15 +1039,15 @@ export class QuidaxProviderAdapter
 
         url:
           `/users/me/fee_rule?currency=${encodeURIComponent(
-            asset.toLowerCase()
+            asset.toLowerCase(),
           )}&amount=0&network=${encodeURIComponent(
-            network.toLowerCase()
+            network.toLowerCase(),
           )}`,
       });
 
     const value =
       record(
-        apiData(response)
+        apiData(response),
       );
 
     return {
@@ -949,7 +1056,7 @@ export class QuidaxProviderAdapter
 
       fee:
         String(
-          value.fee ?? "0"
+          value.fee ?? "0",
         ),
 
       minimum:
@@ -961,7 +1068,7 @@ export class QuidaxProviderAdapter
   }
 
   async createWithdrawal(
-    request: QuidaxWithdrawalRequest
+    request: QuidaxWithdrawalRequest,
   ): Promise<QuidaxWithdrawal> {
     const response =
       await this.client.request<unknown>({
@@ -990,13 +1097,13 @@ export class QuidaxProviderAdapter
 
     return this.normalizeWithdrawal(
       record(
-        apiData(response)
-      )
+        apiData(response),
+      ),
     );
   }
 
   async getWithdrawal(
-    withdrawalId: string
+    withdrawalId: string,
   ): Promise<QuidaxWithdrawal> {
     const response =
       await this.client.request<unknown>({
@@ -1004,31 +1111,31 @@ export class QuidaxProviderAdapter
 
         url:
           `/users/me/withdraws/${encodeURIComponent(
-            withdrawalId
+            withdrawalId,
           )}`,
       });
 
     return this.normalizeWithdrawal(
       record(
-        apiData(response)
-      )
+        apiData(response),
+      ),
     );
   }
 
   private normalizeWithdrawal(
-    value: Record<string, unknown>
+    value: Record<string, unknown>,
   ): QuidaxWithdrawal {
     return {
       id:
         requiredString(
           value.id,
-          "withdrawal ID"
+          "withdrawal ID",
         ),
 
       status:
         requiredString(
           value.status,
-          "withdrawal status"
+          "withdrawal status",
         ),
 
       txHash:
@@ -1048,13 +1155,13 @@ export class QuidaxProviderAdapter
       amount:
         requiredString(
           value.amount,
-          "withdrawal amount"
+          "withdrawal amount",
         ),
 
       asset:
         requiredString(
           value.currency,
-          "withdrawal asset"
+          "withdrawal asset",
         ),
 
       network:
@@ -1077,21 +1184,27 @@ export class QuidaxProviderAdapter
     };
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Order Normalization
+  |--------------------------------------------------------------------------
+  */
+
   private normalizeOrder(
     value: Record<string, unknown>,
-    request?: CryptoOrderRequest
+    request?: CryptoOrderRequest,
   ): CryptoOrderResponse {
     const orderId =
       requiredString(
         value.id,
-        "order ID"
+        "order ID",
       );
 
     const side =
       String(
         value.side ??
           request?.side ??
-          ""
+          "",
       ).toUpperCase() as
         | "BUY"
         | "SELL";
@@ -1105,33 +1218,33 @@ export class QuidaxProviderAdapter
         {
           code:
             "QUIDAX_INVALID_RESPONSE",
-        }
+        },
       );
     }
 
     const volume =
       record(
-        value.volume
+        value.volume,
       );
 
     const originVolume =
       record(
-        value.origin_volume
+        value.origin_volume,
       );
 
     const executedVolume =
       record(
-        value.executed_volume
+        value.executed_volume,
       );
 
     const price =
       record(
-        value.price
+        value.price,
       );
 
     const avgPrice =
       record(
-        value.avg_price
+        value.avg_price,
       );
 
     const requestedAmount =
@@ -1139,7 +1252,7 @@ export class QuidaxProviderAdapter
         originVolume.amount ??
           volume.amount ??
           request?.amount?.toString(),
-        "requested amount"
+        "requested amount",
       );
 
     const executedRaw =
@@ -1150,16 +1263,16 @@ export class QuidaxProviderAdapter
         ? new Prisma.Decimal("0")
         : decimal(
             executedRaw,
-            "executed amount"
+            "executed amount",
           );
 
     const status =
       normalizeOrderStatus(
         String(
-          value.status ?? ""
+          value.status ?? "",
         ),
         executedAmount,
-        requestedAmount
+        requestedAmount,
       );
 
     const priceRaw =
@@ -1179,6 +1292,29 @@ export class QuidaxProviderAdapter
           : undefined
       );
 
+    const marketRecord =
+      record(market);
+
+    const symbol =
+      typeof market ===
+      "object"
+        ? marketRecord.id
+        : market;
+
+    const baseAsset =
+      request?.baseAsset ??
+      String(
+        marketRecord.base_unit ??
+          "",
+      );
+
+    const quoteAsset =
+      request?.quoteAsset ??
+      String(
+        marketRecord.quote_unit ??
+          "",
+      );
+
     return {
       orderId,
 
@@ -1187,28 +1323,13 @@ export class QuidaxProviderAdapter
 
       symbol:
         requiredString(
-          typeof market ===
-          "object"
-            ? record(market).id
-            : market,
-          "market"
+          symbol,
+          "market",
         ),
 
-      baseAsset:
-        request?.baseAsset ??
-        String(
-          record(
-            market
-          ).base_unit ?? ""
-        ),
+      baseAsset,
 
-      quoteAsset:
-        request?.quoteAsset ??
-        String(
-          record(
-            market
-          ).quote_unit ?? ""
-        ),
+      quoteAsset,
 
       side,
 
@@ -1223,7 +1344,7 @@ export class QuidaxProviderAdapter
           ? new Prisma.Decimal("0")
           : decimal(
               priceRaw,
-              "average price"
+              "average price",
             ),
 
       totalFee:
@@ -1231,22 +1352,22 @@ export class QuidaxProviderAdapter
           ? new Prisma.Decimal("0")
           : decimal(
               feeRaw,
-              "fee"
+              "fee",
             ),
 
       feeCurrency:
         String(
           value.fee_currency ??
             request?.quoteAsset ??
-            ""
+            "",
         ),
 
       createdAt:
         value.created_at
           ? new Date(
               String(
-                value.created_at
-              )
+                value.created_at,
+              ),
             )
           : new Date(),
 
@@ -1254,43 +1375,52 @@ export class QuidaxProviderAdapter
         value.updated_at
           ? new Date(
               String(
-                value.updated_at
-              )
+                value.updated_at,
+              ),
             )
           : new Date(),
 
-      metadata: {
-        rawStatus:
-          value.status,
+      metadata:
+        jsonObject({
+          rawStatus:
+            value.status,
 
-        trades:
-          value.trades,
-      },
+          trades:
+            value.trades,
+        }),
     };
   }
 
+  /*
+  |--------------------------------------------------------------------------
+  | Balance Conversion
+  |--------------------------------------------------------------------------
+  */
+
   private toBalance(
-    balance: QuidaxBalanceRecord
+    balance: QuidaxBalanceRecord,
   ): ProviderBalance {
     const available =
       new Prisma.Decimal(
-        balance.available
+        balance.available,
       );
 
     const reserved =
-      balance.locked === undefined
+      balance.locked ===
+      undefined
         ? new Prisma.Decimal("0")
         : new Prisma.Decimal(
-            balance.locked
+            balance.locked,
           );
 
     const total =
-      balance.total === undefined
+      balance.total ===
+      undefined
         ? available.add(
-            reserved
+            reserved,
           )
         : new Prisma.Decimal(
-            balance.total
+            balance.total,
           );
 
     return {
