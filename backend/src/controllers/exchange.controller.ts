@@ -30,7 +30,7 @@ type OrderBody = {
 };
 
 function getMerchantId(
-  request: FastifyRequest
+  request: FastifyRequest,
 ): string | undefined {
   return (
     request.user as
@@ -40,7 +40,7 @@ function getMerchantId(
 }
 
 function requiredString(
-  value: unknown
+  value: unknown,
 ): string | undefined {
   if (
     typeof value !== "string" ||
@@ -53,7 +53,7 @@ function requiredString(
 }
 
 function decimalFrom(
-  value: unknown
+  value: unknown,
 ): Prisma.Decimal | undefined {
   if (
     value === undefined ||
@@ -66,7 +66,7 @@ function decimalFrom(
   try {
     const decimal =
       new Prisma.Decimal(
-        String(value)
+        String(value),
       );
 
     if (!decimal.isFinite()) {
@@ -80,7 +80,7 @@ function decimalFrom(
 }
 
 function positiveDecimal(
-  value: unknown
+  value: unknown,
 ): Prisma.Decimal | undefined {
   const decimal =
     decimalFrom(value);
@@ -97,7 +97,7 @@ function positiveDecimal(
 
 function errorStatus(
   error: unknown,
-  fallback = 400
+  fallback = 400,
 ): number {
   if (
     error &&
@@ -140,7 +140,7 @@ function errorStatus(
 
 function errorMessage(
   error: unknown,
-  fallback: string
+  fallback: string,
 ): string {
   if (
     error &&
@@ -157,7 +157,7 @@ function errorMessage(
         error as {
           message: string;
         }
-      ).message
+      ).message,
     );
   }
 
@@ -172,12 +172,12 @@ function errorMessage(
 
 export default class ExchangeController {
   constructor(
-    private readonly exchangeService: ExchangeService
+    private readonly exchangeService: ExchangeService,
   ) {}
 
   createRate = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const body =
@@ -188,12 +188,12 @@ export default class ExchangeController {
 
       const fromCurrency =
         requiredString(
-          body?.fromCurrency
+          body?.fromCurrency,
         );
 
       const toCurrency =
         requiredString(
-          body?.toCurrency
+          body?.toCurrency,
         );
 
       const rate =
@@ -201,7 +201,7 @@ export default class ExchangeController {
 
       const source =
         requiredString(
-          body?.source
+          body?.source,
         );
 
       if (
@@ -237,7 +237,7 @@ export default class ExchangeController {
             toCurrency,
             rate,
             source,
-          } as any
+          } as any,
         );
 
       return reply
@@ -251,19 +251,19 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to create exchange rate"
+        "Failed to create exchange rate",
       );
 
       return reply
         .code(
-          errorStatus(error)
+          errorStatus(error),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to create exchange rate"
+              "Failed to create exchange rate",
             ),
         });
     }
@@ -271,7 +271,7 @@ export default class ExchangeController {
 
   quote = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const body =
@@ -282,17 +282,17 @@ export default class ExchangeController {
 
       const fromCurrency =
         requiredString(
-          body?.fromCurrency
+          body?.fromCurrency,
         );
 
       const toCurrency =
         requiredString(
-          body?.toCurrency
+          body?.toCurrency,
         );
 
       const amount =
         positiveDecimal(
-          body?.amount
+          body?.amount,
         );
 
       if (
@@ -313,7 +313,7 @@ export default class ExchangeController {
         await this.exchangeService.calculateQuote(
           fromCurrency,
           toCurrency,
-          amount
+          amount,
         );
 
       return reply.send({
@@ -323,19 +323,19 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to calculate exchange quote"
+        "Failed to calculate exchange quote",
       );
 
       return reply
         .code(
-          errorStatus(error)
+          errorStatus(error),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to calculate exchange quote"
+              "Failed to calculate exchange quote",
             ),
         });
     }
@@ -357,7 +357,7 @@ export default class ExchangeController {
    */
   getRealQuote = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const body =
@@ -366,27 +366,27 @@ export default class ExchangeController {
 
       const baseAsset =
         requiredString(
-          body.baseAsset
+          body.baseAsset,
         );
 
       const quoteAsset =
         requiredString(
-          body.quoteAsset
+          body.quoteAsset,
         );
 
       const side =
         requiredString(
-          body.side
+          body.side,
         )?.toUpperCase();
 
       const amount =
         positiveDecimal(
-          body.amount
+          body.amount,
         );
 
       const network =
         requiredString(
-          body.network
+          body.network,
         );
 
       let ttlSeconds:
@@ -402,12 +402,12 @@ export default class ExchangeController {
       ) {
         const parsed =
           Number(
-            body.ttlSeconds
+            body.ttlSeconds,
           );
 
         if (
           !Number.isFinite(
-            parsed
+            parsed,
           ) ||
           parsed <= 0
         ) {
@@ -452,10 +452,6 @@ export default class ExchangeController {
           });
       }
 
-      /**
-       * The current Quidax Ramp adapter requires
-       * a network for BUY quotes.
-       */
       if (
         side === "BUY" &&
         !network
@@ -469,18 +465,10 @@ export default class ExchangeController {
           });
       }
 
-      /**
-       * The current Quidax Ramp adapter only supports
-       * NGN and GHS as fiat quote assets.
-       *
-       * Keeping this validation here gives the frontend
-       * a clear 400 instead of allowing an invalid
-       * request to travel deeper into the provider.
-       */
       if (
         side === "BUY" &&
         !["NGN", "GHS"].includes(
-          quoteAsset.toUpperCase()
+          quoteAsset.toUpperCase(),
         )
       ) {
         return reply
@@ -506,7 +494,7 @@ export default class ExchangeController {
                   network,
                 }
               : {}),
-          } as any
+          } as any,
         );
 
       return reply
@@ -520,22 +508,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to get real exchange quote"
+        "Failed to get real exchange quote",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to get quote"
+              "Failed to get quote",
             ),
         });
     }
@@ -546,7 +534,7 @@ export default class ExchangeController {
    */
   buyOrder = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const body =
@@ -555,27 +543,27 @@ export default class ExchangeController {
 
       const baseAsset =
         requiredString(
-          body.baseAsset
+          body.baseAsset,
         );
 
       const quoteAsset =
         requiredString(
-          body.quoteAsset
+          body.quoteAsset,
         );
 
       const amount =
         positiveDecimal(
-          body.amount
+          body.amount,
         );
 
       const quoteId =
         requiredString(
-          body.quoteId
+          body.quoteId,
         );
 
       const clientOrderId =
         requiredString(
-          body.clientOrderId
+          body.clientOrderId,
         );
 
       const limitPrice =
@@ -586,7 +574,7 @@ export default class ExchangeController {
         body.limitPrice === ""
           ? undefined
           : positiveDecimal(
-              body.limitPrice
+              body.limitPrice,
             );
 
       if (
@@ -621,9 +609,7 @@ export default class ExchangeController {
       }
 
       const merchantId =
-        getMerchantId(
-          request
-        );
+        getMerchantId(request);
 
       const order =
         await this.exchangeService.executeBuyOrder(
@@ -635,7 +621,7 @@ export default class ExchangeController {
             quoteId,
             clientOrderId,
             limitPrice,
-          }
+          },
         );
 
       return reply
@@ -649,22 +635,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to execute buy order"
+        "Failed to execute buy order",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to execute buy order"
+              "Failed to execute buy order",
             ),
         });
     }
@@ -675,7 +661,7 @@ export default class ExchangeController {
    */
   sellOrder = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const body =
@@ -684,27 +670,27 @@ export default class ExchangeController {
 
       const baseAsset =
         requiredString(
-          body.baseAsset
+          body.baseAsset,
         );
 
       const quoteAsset =
         requiredString(
-          body.quoteAsset
+          body.quoteAsset,
         );
 
       const amount =
         positiveDecimal(
-          body.amount
+          body.amount,
         );
 
       const quoteId =
         requiredString(
-          body.quoteId
+          body.quoteId,
         );
 
       const clientOrderId =
         requiredString(
-          body.clientOrderId
+          body.clientOrderId,
         );
 
       const limitPrice =
@@ -715,7 +701,7 @@ export default class ExchangeController {
         body.limitPrice === ""
           ? undefined
           : positiveDecimal(
-              body.limitPrice
+              body.limitPrice,
             );
 
       if (
@@ -750,9 +736,7 @@ export default class ExchangeController {
       }
 
       const merchantId =
-        getMerchantId(
-          request
-        );
+        getMerchantId(request);
 
       const order =
         await this.exchangeService.executeSellOrder(
@@ -764,7 +748,7 @@ export default class ExchangeController {
             quoteId,
             clientOrderId,
             limitPrice,
-          }
+          },
         );
 
       return reply
@@ -778,22 +762,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to execute sell order"
+        "Failed to execute sell order",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to execute sell order"
+              "Failed to execute sell order",
             ),
         });
     }
@@ -804,7 +788,7 @@ export default class ExchangeController {
    */
   getOrderStatus = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const {
@@ -815,9 +799,7 @@ export default class ExchangeController {
         };
 
       const merchantId =
-        getMerchantId(
-          request
-        );
+        getMerchantId(request);
 
       if (
         !orderId ||
@@ -835,7 +817,7 @@ export default class ExchangeController {
       const order =
         await this.exchangeService.getOrderStatus(
           orderId,
-          merchantId
+          merchantId,
         );
 
       return reply.send({
@@ -845,22 +827,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to get order status"
+        "Failed to get order status",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            404
-          )
+            404,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to get order status"
+              "Failed to get order status",
             ),
         });
     }
@@ -871,7 +853,7 @@ export default class ExchangeController {
    */
   getBalance = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const { asset } =
@@ -896,7 +878,7 @@ export default class ExchangeController {
 
       const balance =
         await this.exchangeService.getProviderBalance(
-          normalizedAsset
+          normalizedAsset,
         );
 
       return reply.send({
@@ -906,22 +888,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to get provider balance"
+        "Failed to get provider balance",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to get balance"
+              "Failed to get balance",
             ),
         });
     }
@@ -929,7 +911,7 @@ export default class ExchangeController {
 
   getAssets = async (
     _request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const assets =
@@ -944,15 +926,15 @@ export default class ExchangeController {
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Quidax assets unavailable."
+              "Quidax assets unavailable.",
             ),
         });
     }
@@ -960,7 +942,7 @@ export default class ExchangeController {
 
   getMarkets = async (
     _request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const markets =
@@ -975,15 +957,15 @@ export default class ExchangeController {
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Quidax markets unavailable."
+              "Quidax markets unavailable.",
             ),
         });
     }
@@ -991,7 +973,7 @@ export default class ExchangeController {
 
   getBalances = async (
     _request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const balances =
@@ -1006,15 +988,15 @@ export default class ExchangeController {
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Quidax balances unavailable."
+              "Quidax balances unavailable.",
             ),
         });
     }
@@ -1022,14 +1004,14 @@ export default class ExchangeController {
 
   providerStatus = async (
     _request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     const configuration =
       await import(
         "../config/env.js"
       ).then(
         (module) =>
-          module.default
+          module.default,
       );
 
     try {
@@ -1045,7 +1027,7 @@ export default class ExchangeController {
           provider:
             "QUIDAX",
           environment:
-            configuration.QUIDAX_ENVIRONMENT,
+            configuration.NODE_ENV,
           connected: true,
           accountId:
             account.accountId,
@@ -1060,12 +1042,12 @@ export default class ExchangeController {
             provider:
               "QUIDAX",
             environment:
-              configuration.QUIDAX_ENVIRONMENT,
+              configuration.NODE_ENV,
             connected: false,
             error:
               errorMessage(
                 error,
-                "Quidax unavailable."
+                "Quidax unavailable.",
               ),
           },
         });
@@ -1074,13 +1056,11 @@ export default class ExchangeController {
 
   listOrders = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const merchantId =
-        getMerchantId(
-          request
-        );
+        getMerchantId(request);
 
       if (!merchantId) {
         return reply
@@ -1104,38 +1084,38 @@ export default class ExchangeController {
 
       const pageNumber =
         Number(
-          query?.page ?? 1
+          query?.page ?? 1,
         );
 
       const limitNumber =
         Number(
-          query?.limit ?? 10
+          query?.limit ?? 10,
         );
 
       const page =
         Number.isFinite(
-          pageNumber
+          pageNumber,
         )
           ? Math.max(
               1,
               Math.floor(
-                pageNumber
-              )
+                pageNumber,
+              ),
             )
           : 1;
 
       const limit =
         Number.isFinite(
-          limitNumber
+          limitNumber,
         )
           ? Math.min(
               50,
               Math.max(
                 1,
                 Math.floor(
-                  limitNumber
-                )
-              )
+                  limitNumber,
+                ),
+              ),
             )
           : 10;
 
@@ -1143,7 +1123,7 @@ export default class ExchangeController {
         await this.exchangeService.listMerchantOrders(
           merchantId,
           page,
-          limit
+          limit,
         );
 
       return reply.send({
@@ -1153,22 +1133,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to list merchant exchange orders"
+        "Failed to list merchant exchange orders",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to load exchange orders."
+              "Failed to load exchange orders.",
             ),
         });
     }
@@ -1176,13 +1156,11 @@ export default class ExchangeController {
 
   getOrderDetails = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     try {
       const merchantId =
-        getMerchantId(
-          request
-        );
+        getMerchantId(request);
 
       const {
         orderId,
@@ -1207,7 +1185,7 @@ export default class ExchangeController {
       const details =
         await this.exchangeService.getMerchantOrderDetails(
           merchantId,
-          orderId
+          orderId,
         );
 
       if (!details) {
@@ -1227,22 +1205,22 @@ export default class ExchangeController {
     } catch (error) {
       request.log.error(
         { error },
-        "Failed to get exchange order details"
+        "Failed to get exchange order details",
       );
 
       return reply
         .code(
           errorStatus(
             error,
-            400
-          )
+            400,
+          ),
         )
         .send({
           success: false,
           error:
             errorMessage(
               error,
-              "Failed to get exchange order details."
+              "Failed to get exchange order details.",
             ),
         });
     }

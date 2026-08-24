@@ -1,8 +1,86 @@
-import { CurrencyType, Prisma } from "@prisma/client";
+import {
+  CurrencyType,
+  Prisma,
+} from "@prisma/client";
 import { FastifyInstance } from "fastify";
 
-import QuidaxRampClient from "../providers/quidax/quidax-ramp.client.js";
 import QuoteValidatorService from "./quote-validator.service.js";
+
+/**
+ * Local provider contracts.
+ *
+ * The original exchange-provider.interface.ts was deleted.
+ * These types keep exchange.service.ts compiling while the
+ * provider adapter/interface is being restored.
+ */
+
+export type CryptoQuoteRequest = {
+  baseAsset: string;
+  quoteAsset: string;
+  side: "BUY" | "SELL";
+  amount: Prisma.Decimal;
+  network?: string;
+};
+
+export type CryptoOrderRequest = {
+  baseAsset: string;
+  quoteAsset: string;
+  amount: Prisma.Decimal;
+  side: "BUY" | "SELL";
+  quoteId?: string;
+  clientOrderId?: string;
+  limitPrice?: Prisma.Decimal;
+};
+
+export type ProviderQuote = {
+  provider: string;
+  quoteId: string;
+  inputAmount: Prisma.Decimal;
+  outputAmount: Prisma.Decimal;
+  price: Prisma.Decimal;
+  feePercentage: Prisma.Decimal;
+  expiresAt: Date;
+  metadata?: Record<string, unknown>;
+};
+
+export type ProviderOrder = {
+  provider: string;
+  orderId: string;
+  symbol: string;
+  status: string;
+  requestedAmount: Prisma.Decimal;
+  executedAmount: Prisma.Decimal;
+  averagePrice: Prisma.Decimal;
+  totalFee: Prisma.Decimal;
+  feeCurrency: string;
+  metadata?: Record<string, unknown>;
+};
+
+export interface IExchangeProvider {
+  getAccountInfo(): Promise<{
+    accountId: string;
+  }>;
+
+  getQuote(
+    request: CryptoQuoteRequest,
+  ): Promise<ProviderQuote>;
+
+  buy(
+    request: CryptoOrderRequest,
+  ): Promise<ProviderOrder>;
+
+  sell(
+    request: CryptoOrderRequest,
+  ): Promise<ProviderOrder>;
+
+  getOrder(
+    orderId: string,
+  ): Promise<ProviderOrder>;
+
+  getBalance(
+    asset: string,
+  ): Promise<unknown>;
+}
 
 type OrderRequest = {
   baseAsset: string;
@@ -26,13 +104,18 @@ type RealQuoteRequest = {
 export default class ExchangeService {
   private readonly quoteValidator: QuoteValidatorService;
 
-  constructor(private readonly app: FastifyInstance) {
-    this.quoteValidator = new QuoteValidatorService(app);
+  constructor(
+    private readonly app: FastifyInstance,
+  ) {
+    this.quoteValidator =
+      new QuoteValidatorService(app);
   }
 
   private toPrismaJson(
     value?: Prisma.JsonValue | null,
-  ): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  ):
+    | Prisma.InputJsonValue
+    | typeof Prisma.JsonNull {
     return value == null
       ? Prisma.JsonNull
       : (value as Prisma.InputJsonValue);
@@ -48,74 +131,12 @@ export default class ExchangeService {
       : {};
   }
 
-  private toCurrencyType(value: string): CurrencyType {
-    return value.toUpperCase() as CurrencyType;
-  }
-
-  async initiateQuidaxOnRamp(request: {
-    fromCurrency: string;
-    toCurrency: string;
-    fromAmount: Prisma.Decimal;
-    merchantReference: string;
-    customer: {
-      email: string;
-      firstName: string;
-      lastName: string;
-      phoneNumber?: string;
-    };
-    walletAddress: {
-      address: string;
-      network: string;
-    };
-  }) {
-    const config = await import("../config/env.js").then(
-      (m) => m.default,
-    );
-
-    if (
-      !config.QUIDAX_RAMP_BASE_URL ||
-      !config.QUIDAX_PRIVATE_KEY
-    ) {
-      throw new Error(
-        "Quidax Ramp is not configured. Set QUIDAX_RAMP_BASE_URL and QUIDAX_PRIVATE_KEY.",
-      );
-    }
-
-    const client = new QuidaxRampClient(
-      config.QUIDAX_RAMP_BASE_URL,
-      config.QUIDAX_PRIVATE_KEY,
-      config.QUIDAX_TIMEOUT_MS,
-    );
-
-    return client.initiateOnRamp({
-      fromCurrency:
-        request.fromCurrency.toLowerCase() as "ngn" | "ghs",
-
-      toCurrency:
-        request.toCurrency.toLowerCase() as
-          | "usdt"
-          | "usdc"
-          | "cngn",
-
-      fromAmount: request.fromAmount.toString(),
-
-      merchantReference:
-        request.merchantReference,
-
-      customer: {
-        email: request.customer.email,
-        first_name: request.customer.firstName,
-        last_name: request.customer.lastName,
-
-        ...(request.customer.phoneNumber && {
-          phone_number:
-            request.customer.phoneNumber,
-        }),
-      },
-
-      walletAddress:
-        request.walletAddress,
-    });
+  private toCurrencyType(
+    value: string,
+  ): CurrencyType {
+    return value
+      .trim()
+      .toUpperCase() as CurrencyType;
   }
 
   async latestRate(
@@ -169,10 +190,11 @@ export default class ExchangeService {
       };
     }
 
-    const rate = await this.latestRate(
-      fromCurrency,
-      toCurrency,
-    );
+    const rate =
+      await this.latestRate(
+        fromCurrency,
+        toCurrency,
+      );
 
     if (!rate) {
       throw new Error(
@@ -366,98 +388,58 @@ export default class ExchangeService {
     });
   }
 
-  async getExchangeProvider() {
+  /**
+   * Return the currently configured exchange provider.
+   *
+   * Provider implementations are intentionally kept outside
+   * this service.
+   */
+  async getExchangeProvider(): Promise<IExchangeProvider> {
     const config =
-      await import("../config/env.js").then(
+      await import(
+        "../config/env.js"
+      ).then(
         (m) => m.default,
       );
 
-    if (
-      !config.QUIDAX_API_KEY ||
-      !config.QUIDAX_BASE_URL
-    ) {
+    const providerName =
+      String(
+        config.EXCHANGE_PROVIDER_NAME ?? "",
+      )
+        .trim()
+        .toUpperCase();
+
+    if (!providerName) {
       throw new Error(
-        "Quidax is not configured. Set QUIDAX_API_KEY and QUIDAX_BASE_URL on the backend.",
+        "Exchange provider is not configured.",
       );
     }
 
-    const {
-      QuidaxProviderAdapter,
-    } = await import(
-      "../providers/quidax/quidax.provider.js"
+    throw new Error(
+      `Exchange provider "${providerName}" is configured but its adapter is not installed.`,
     );
-
-    return new QuidaxProviderAdapter({
-      apiKey:
-        config.QUIDAX_API_KEY,
-
-      baseUrl:
-        config.QUIDAX_BASE_URL,
-
-      timeoutMs:
-        config.QUIDAX_TIMEOUT_MS,
-
-      rampBaseUrl:
-        config.QUIDAX_RAMP_BASE_URL,
-
-      rampPrivateKey:
-        config.QUIDAX_PRIVATE_KEY,
-    });
   }
 
   async getProviderAssets() {
-    const provider =
-      await this.getExchangeProvider();
-
-    if (!("getAssets" in provider)) {
-      throw new Error(
-        "Quidax asset lookup is unavailable.",
-      );
-    }
-
-    return provider.getAssets();
+    throw new Error(
+      "Provider asset lookup is unavailable until an exchange provider adapter is configured.",
+    );
   }
 
   async getProviderMarkets() {
-    const provider =
-      await this.getExchangeProvider();
-
-    if (!("getMarkets" in provider)) {
-      throw new Error(
-        "Quidax market lookup is unavailable.",
-      );
-    }
-
-    return provider.getMarkets();
+    throw new Error(
+      "Provider market lookup is unavailable until an exchange provider adapter is configured.",
+    );
   }
 
   async getProviderBalances() {
-    const provider =
-      await this.getExchangeProvider();
-
-    if (!("getBalances" in provider)) {
-      throw new Error(
-        "Quidax balance lookup is unavailable.",
-      );
-    }
-
-    return provider.getBalances();
+    throw new Error(
+      "Provider balance lookup is unavailable until an exchange provider adapter is configured.",
+    );
   }
 
   /**
    * Get a live provider-backed quote.
-   *
-   * Quidax Ramp BUY quotes currently support:
-   *
-   *   Fiat: NGN, GHS
-   *   Tokens: USDT, USDC, XAUT, USAT
-   *
-   * The Ramp API also requires token_network.
-   *
-   * IMPORTANT:
-   * USD is intentionally NOT converted to NGN or GHS here.
-   * Doing so would silently change the user's requested
-   * currency and amount.
    */
   async getRealQuote(
     request: RealQuoteRequest,
@@ -496,89 +478,40 @@ export default class ExchangeService {
         );
       }
 
-      /*
-       * Quidax Ramp BUY quotes are fiat -> crypto.
-       *
-       * Therefore:
-       *
-       *   BUY USDT/NGN
-       *   BUY USDT/GHS
-       *
-       * are valid Ramp requests.
-       *
-       * USD is NOT a supported Ramp fiat currency.
-       */
-      if (side === "BUY") {
-        const supportedFiat =
-          ["NGN", "GHS"].includes(
-            quoteAsset,
-          );
-
-        if (!supportedFiat) {
-          throw new Error(
-            `Quidax Ramp does not support ${quoteAsset} BUY quotes. Supported fiat currencies are NGN and GHS. Change the dashboard currency from ${quoteAsset} to NGN or GHS.`,
-          );
-        }
-
-        if (!request.network) {
-          throw new Error(
-            "A crypto network is required for a Quidax BUY quote. Select a supported network such as TRC20.",
-          );
-        }
-
-        if (
-          ![
-            "USDT",
-            "USDC",
-            "XAUT",
-            "USAT",
-          ].includes(baseAsset)
-        ) {
-          throw new Error(
-            `Quidax Ramp does not support BUY quotes for ${baseAsset}.`,
-          );
-        }
-      }
-
-      /*
-       * The provider adapter currently implements Quidax
-       * Ramp quotes through getQuote().
-       *
-       * Pass a clean request object so network can never
-       * accidentally be dropped before reaching the provider.
-       */
       const provider =
         await this.getExchangeProvider();
 
+      const providerRequest: CryptoQuoteRequest = {
+        baseAsset,
+        quoteAsset,
+        side,
+        amount:
+          request.amount,
+
+        ...(request.network
+          ? {
+              network:
+                request.network
+                  .trim()
+                  .toLowerCase(),
+            }
+          : {}),
+      };
+
       const providerQuote =
-        await provider.getQuote({
-          ...request,
-
-          baseAsset,
-
-          quoteAsset,
-
-          side,
-
-          ...(request.network
-            ? {
-                network:
-                  request.network
-                    .trim()
-                    .toLowerCase(),
-              }
-            : {}),
-        } as any);
+        await provider.getQuote(
+          providerRequest,
+        );
 
       if (!providerQuote) {
         throw new Error(
-          "Quidax returned an empty quote.",
+          "Provider returned an empty quote.",
         );
       }
 
       const providerRecord =
         await this.getOrCreateProviderRecord(
-          "QUIDAX",
+          providerQuote.provider,
         );
 
       return this.app.prisma.exchangeQuote.create({
@@ -632,7 +565,7 @@ export default class ExchangeService {
                 providerQuote.feePercentage.toString(),
 
               provider:
-                "QUIDAX",
+                providerQuote.provider,
 
               ...(request.network
                 ? {
@@ -701,20 +634,52 @@ export default class ExchangeService {
       const provider =
         await this.getExchangeProvider();
 
+      const providerRequest: CryptoOrderRequest = {
+        baseAsset:
+          request.baseAsset,
+
+        quoteAsset:
+          request.quoteAsset,
+
+        amount:
+          request.amount,
+
+        side,
+
+        ...(request.quoteId
+          ? {
+              quoteId:
+                request.quoteId,
+            }
+          : {}),
+
+        ...(request.clientOrderId
+          ? {
+              clientOrderId:
+                request.clientOrderId,
+            }
+          : {}),
+
+        ...(request.limitPrice
+          ? {
+              limitPrice:
+                request.limitPrice,
+            }
+          : {}),
+      };
+
       const order =
         side === "BUY"
-          ? await provider.buy({
-              ...request,
-              side,
-            })
-          : await provider.sell({
-              ...request,
-              side,
-            });
+          ? await provider.buy(
+              providerRequest,
+            )
+          : await provider.sell(
+              providerRequest,
+            );
 
       const providerRecord =
         await this.getOrCreateProviderRecord(
-          "QUIDAX",
+          order.provider,
         );
 
       const dbOrder =
@@ -824,10 +789,20 @@ export default class ExchangeService {
       return;
     }
 
+    /**
+     * IMPORTANT:
+     * Load exchangeProvider explicitly because Prisma's
+     * generated type does not include the relation unless
+     * it is requested with include.
+     */
     const quote =
       await this.app.prisma.exchangeQuote.findUnique({
         where: {
           id: request.quoteId,
+        },
+
+        include: {
+          exchangeProvider: true,
         },
       });
 
@@ -836,6 +811,10 @@ export default class ExchangeService {
         `Quote not found: ${request.quoteId}`,
       );
     }
+
+    const providerName =
+      quote.exchangeProvider?.name ??
+      "";
 
     const validation =
       await this.quoteValidator.validateQuote(
@@ -870,7 +849,7 @@ export default class ExchangeService {
             quote.toAmount,
 
           provider:
-            "QUIDAX",
+            providerName,
         },
 
         {
@@ -918,7 +897,14 @@ export default class ExchangeService {
 
   private async createTradeIfFilled(
     orderId: string,
-    order: any,
+    order: {
+      executedAmount: Prisma.Decimal;
+      orderId: string;
+      averagePrice: Prisma.Decimal;
+      totalFee: Prisma.Decimal;
+      feeCurrency: string;
+      metadata?: Record<string, unknown>;
+    },
   ) {
     if (
       !order.executedAmount.gt(
@@ -949,12 +935,18 @@ export default class ExchangeService {
         fee:
           order.totalFee,
 
+        /**
+         * Prisma expects CurrencyType here, not string.
+         */
         feeCurrency:
-          "USD" as any,
+          this.toCurrencyType(
+            order.feeCurrency,
+          ),
 
         metadata:
           this.toPrismaJson(
-            order.metadata,
+            order.metadata as
+              Prisma.JsonValue,
           ),
       },
     });

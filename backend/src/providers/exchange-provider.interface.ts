@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 
 /**
- * ExchangeProvider Interface
+ * Exchange Provider Interface
  *
  * Defines the normalized contract used by SmartPOS to communicate
  * with cryptocurrency liquidity/exchange providers.
@@ -159,8 +159,8 @@ export interface CryptoQuoteRequest {
   /**
    * Optional crypto network.
    *
-   * This is primarily required by crypto-ramp providers such
-   * as Quidax when purchasing an on-chain asset.
+   * Providers may require a network when the asset
+   * is transferred on-chain.
    *
    * Examples:
    * - trc20
