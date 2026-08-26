@@ -2,75 +2,80 @@ import BaseProvider from "./base.provider.js";
 import ProviderFactory from "./provider.factory.js";
 
 export default class ProviderManager {
-
   private readonly providers =
-    new Map<
-      string,
-      BaseProvider
-    >();
+    new Map<string, BaseProvider>();
 
+  /**
+   * Resolve a provider by name.
+   *
+   * Provider names are normalized so:
+   *   Flutterwave
+   *   FLUTTERWAVE
+   *   flutterwave
+   *
+   * all resolve to the same cached provider instance.
+   */
   getProvider(
-
-    provider: string
-
+    provider: string,
   ): BaseProvider {
+    const normalizedProvider =
+      String(provider ?? "")
+        .trim()
+        .toLowerCase();
 
-    if (
+    if (!normalizedProvider) {
+      throw new Error(
+        "Payment provider is required.",
+      );
+    }
 
-      this.providers.has(
+    const existing =
+      this.providers.get(
+        normalizedProvider,
+      );
 
-        provider
-
-      )
-
-    ) {
-
-      return this.providers.get(
-
-        provider
-
-      )!;
-
+    if (existing) {
+      return existing;
     }
 
     const instance =
-
       ProviderFactory.create(
-
-        provider
-
+        normalizedProvider,
       );
 
     this.providers.set(
-
-      provider,
-
-      instance
-
+      normalizedProvider,
+      instance,
     );
 
     return instance;
-
   }
 
+  /**
+   * Check whether a provider has already been
+   * instantiated and cached.
+   */
   hasProvider(
+    provider: string,
+  ): boolean {
+    const normalizedProvider =
+      String(provider ?? "")
+        .trim()
+        .toLowerCase();
 
-    provider: string
-
-  ) {
+    if (!normalizedProvider) {
+      return false;
+    }
 
     return this.providers.has(
-
-      provider
-
+      normalizedProvider,
     );
-
   }
 
-  clear() {
-
+  /**
+   * Clear all cached provider instances.
+   */
+  clear(): void {
     this.providers.clear();
-
   }
-
 }

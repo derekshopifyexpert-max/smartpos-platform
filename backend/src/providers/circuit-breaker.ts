@@ -4,90 +4,128 @@ export interface CircuitState {
 }
 
 export default class CircuitBreaker {
-
   private readonly circuits =
     new Map<string, CircuitState>();
 
   constructor(
     private readonly failureThreshold = 5,
-    private readonly cooldown = 30000
+    private readonly cooldown = 30_000,
   ) {}
 
-  canExecute(provider: string): boolean {
+  canExecute(
+    provider: string,
+  ): boolean {
+    const normalizedProvider =
+      this.normalizeProvider(provider);
 
     const state =
-      this.circuits.get(provider);
+      this.circuits.get(
+        normalizedProvider,
+      );
 
     if (!state) {
       return true;
     }
 
     if (
-      state.failures < this.failureThreshold
+      state.failures <
+      this.failureThreshold
     ) {
       return true;
     }
 
-    if (!state.openedAt) {
+    if (
+      state.openedAt === undefined
+    ) {
       return false;
     }
 
     if (
-      Date.now() - state.openedAt >
+      Date.now() -
+        state.openedAt >=
       this.cooldown
     ) {
-
-      this.circuits.delete(provider);
+      this.circuits.delete(
+        normalizedProvider,
+      );
 
       return true;
-
     }
 
     return false;
-
   }
 
-  success(provider: string) {
-
-    this.circuits.delete(provider);
-
+  success(
+    provider: string,
+  ): void {
+    this.circuits.delete(
+      this.normalizeProvider(
+        provider,
+      ),
+    );
   }
 
-  failure(provider: string) {
+  failure(
+    provider: string,
+  ): void {
+    const normalizedProvider =
+      this.normalizeProvider(
+        provider,
+      );
 
     const state =
-      this.circuits.get(provider) ?? {
-        failures: 0
+      this.circuits.get(
+        normalizedProvider,
+      ) ?? {
+        failures: 0,
       };
 
-    state.failures++;
+    state.failures += 1;
 
     if (
       state.failures >=
       this.failureThreshold
     ) {
-
       state.openedAt =
+        state.openedAt ??
         Date.now();
-
     }
 
     this.circuits.set(
-      provider,
-      state
+      normalizedProvider,
+      state,
     );
-
   }
 
-  status() {
-
+  status(): Array<
+    CircuitState & {
+      provider: string;
+    }
+  > {
     return Array.from(
-      this.circuits.entries()
-    ).map(([provider, state]) => ({
-      provider,
-      ...state
-    }));
-
+      this.circuits.entries(),
+    ).map(
+      ([provider, state]) => ({
+        provider,
+        ...state,
+      }),
+    );
   }
 
+  private normalizeProvider(
+    provider: string,
+  ): string {
+    const normalized =
+      String(provider ?? "")
+        .trim()
+        .toLowerCase();
+
+    if (!normalized) {
+      throw new Error(
+        "Payment provider is required.",
+      );
+    }
+
+    return normalized;
+  }
 }

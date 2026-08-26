@@ -1,49 +1,78 @@
-import FlutterwaveProvider
-  from "./flutterwave.provider.js";
+import FlutterwaveProvider from "./flutterwave.provider.js";
+import CoinbaseProvider from "./coinbase.provider.js";
+import BinanceProvider from "./binance.provider.js";
+import BaseProvider from "./base.provider.js";
 
-import CoinbaseProvider
-  from "./coinbase.provider.js";
-
-import BinanceProvider
-  from "./binance.provider.js";
-
-import BaseProvider
-  from "./base.provider.js";
-
-import env
-  from "../config/env.js";
+import env from "../config/env.js";
 
 export default class ProviderFactory {
+  /**
+   * Create a provider using the application's default
+   * environment credentials.
+   *
+   * Flutterwave is the SmartPOS fiat/card payment provider.
+   * Coinbase/Binance remain available here only where the
+   * existing BaseProvider contract requires them.
+   */
+  static create(provider: string): BaseProvider {
+    const normalizedProvider = String(provider)
+      .trim()
+      .toLowerCase();
 
-  static create(
-    provider: string
-  ): BaseProvider {
+    switch (normalizedProvider) {
+      case "flutterwave": {
+        const secretKey =
+          env.FLUTTERWAVE_SECRET_KEY;
 
-    switch (
-      provider.toLowerCase()
-    ) {
-
-      case "flutterwave":
+        if (!secretKey?.trim()) {
+          throw new Error(
+            "Flutterwave secret key is not configured."
+          );
+        }
 
         return new FlutterwaveProvider(
-          env.FLUTTERWAVE_SECRET_KEY
+          secretKey
         );
+      }
 
-      case "coinbase":
+      case "coinbase": {
+        const apiKey =
+          env.COINBASE_API_KEY;
+
+        if (!apiKey?.trim()) {
+          throw new Error(
+            "Coinbase API key is not configured."
+          );
+        }
 
         return new CoinbaseProvider(
-          env.COINBASE_API_KEY
+          apiKey
         );
+      }
 
-      case "binance":
+      case "binance": {
+        const apiKey =
+          env.BINANCE_API_KEY;
+
+        const apiSecret =
+          env.BINANCE_SECRET_KEY;
+
+        if (
+          !apiKey?.trim() ||
+          !apiSecret?.trim()
+        ) {
+          throw new Error(
+            "Binance API credentials are not configured."
+          );
+        }
 
         return new BinanceProvider(
-          env.BINANCE_API_KEY,
-          env.BINANCE_SECRET_KEY
+          apiKey,
+          apiSecret
         );
+      }
 
       default:
-
         throw new Error(
           `Unsupported production payment provider: ${provider}`
         );
@@ -51,57 +80,75 @@ export default class ProviderFactory {
   }
 
   /**
-   * Create a provider instance with explicitly supplied credentials.
-   * Used for multi-account support where credentials vary by selected account.
+   * Create a provider with credentials resolved from a
+   * PaymentProviderAccount.
+   *
+   * SmartPOS uses this path for merchant-specific
+   * payment-provider accounts.
    */
   static createWithSecret(
     provider: string,
-    credentials: { secretKey?: string; apiKey?: string; apiSecret?: string }
+    credentials: {
+      secretKey?: string;
+      apiKey?: string;
+      apiSecret?: string;
+    }
   ): BaseProvider {
+    const normalizedProvider = String(provider)
+      .trim()
+      .toLowerCase();
 
-    switch (
-      provider.toLowerCase()
-    ) {
+    switch (normalizedProvider) {
+      case "flutterwave": {
+        const secretKey =
+          credentials.secretKey?.trim();
 
-      case "flutterwave":
-
-        if (!credentials.secretKey) {
+        if (!secretKey) {
           throw new Error(
-            "Flutterwave requires secretKey"
+            "Flutterwave requires secretKey."
           );
         }
 
         return new FlutterwaveProvider(
-          credentials.secretKey
+          secretKey
         );
+      }
 
-      case "coinbase":
+      case "coinbase": {
+        const apiKey =
+          credentials.apiKey?.trim();
 
-        if (!credentials.apiKey) {
+        if (!apiKey) {
           throw new Error(
-            "Coinbase requires apiKey"
+            "Coinbase requires apiKey."
           );
         }
 
         return new CoinbaseProvider(
-          credentials.apiKey
+          apiKey
         );
+      }
 
-      case "binance":
+      case "binance": {
+        const apiKey =
+          credentials.apiKey?.trim();
 
-        if (!credentials.apiKey || !credentials.apiSecret) {
+        const apiSecret =
+          credentials.apiSecret?.trim();
+
+        if (!apiKey || !apiSecret) {
           throw new Error(
-            "Binance requires apiKey and apiSecret"
+            "Binance requires apiKey and apiSecret."
           );
         }
 
         return new BinanceProvider(
-          credentials.apiKey,
-          credentials.apiSecret
+          apiKey,
+          apiSecret
         );
+      }
 
       default:
-
         throw new Error(
           `Unsupported production payment provider: ${provider}`
         );

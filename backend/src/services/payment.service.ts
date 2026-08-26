@@ -4,7 +4,6 @@ import {
   TransactionStatus,
   SettlementStatus,
 } from "@prisma/client";
-
 import { FastifyInstance } from "fastify";
 import crypto from "crypto";
 
@@ -13,26 +12,26 @@ type PrismaTransactionClient =
 
 export default class PaymentService {
   constructor(
-    private readonly app: FastifyInstance
+    private readonly app: FastifyInstance,
   ) {}
 
   /*
-  |--------------------------------------------------------------------------
-  | Database Client
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Database Client
+   * --------------------------------------------------------------------------
+   */
 
   private db(
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     return tx ?? this.app.prisma;
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Helpers
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Helpers
+   * --------------------------------------------------------------------------
+   */
 
   private generateReference(): string {
     return `TX-${Date.now()}-${crypto
@@ -47,29 +46,16 @@ export default class PaymentService {
       .toString("hex");
   }
 
-  /**
-   * Converts a Prisma JsonValue into a value accepted by Prisma
-   * JSON write operations.
-   *
-   * Decimal objects and other non-JSON values are intentionally
-   * converted through JSON serialization before being written.
-   */
   private normalizeJson(
-    value: Prisma.JsonValue
+    value: Prisma.JsonValue,
   ): Prisma.InputJsonValue {
     return JSON.parse(
-      JSON.stringify(value)
+      JSON.stringify(value),
     ) as Prisma.InputJsonValue;
   }
 
-  /**
-   * Normalizes metadata and preserves crypto destination aliases.
-   *
-   * Null/undefined is handled by the callers using Prisma.JsonNull,
-   * because Prisma.JsonNull is not itself an InputJsonValue.
-   */
   private normalizeMetadata(
-    metadata?: Prisma.JsonValue
+    metadata?: Prisma.JsonValue,
   ): Prisma.InputJsonValue {
     if (
       metadata === undefined ||
@@ -93,6 +79,15 @@ export default class PaymentService {
         string,
         Prisma.InputJsonValue
       >;
+
+    /*
+     * SmartPOS supports several historical metadata
+     * aliases for crypto settlement destinations.
+     *
+     * Keep one canonical representation:
+     *
+     * metadata.cryptoDestination
+     */
 
     const destinationCandidates = [
       "cryptoDestination",
@@ -132,11 +127,22 @@ export default class PaymentService {
     return result;
   }
 
+  private normalizeOptionalJson(
+    value?: Prisma.JsonValue | null,
+  ):
+    | Prisma.InputJsonValue
+    | typeof Prisma.JsonNull {
+    return value === undefined ||
+      value === null
+      ? Prisma.JsonNull
+      : this.normalizeJson(value);
+  }
+
   /*
-  |--------------------------------------------------------------------------
-  | Payment Intent
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Payment Intent
+   * --------------------------------------------------------------------------
+   */
 
   async createPaymentIntent(
     data: {
@@ -150,16 +156,8 @@ export default class PaymentService {
       metadata?: Prisma.JsonValue;
       expiresAt?: Date;
     },
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
-    const metadata =
-      data.metadata !== undefined &&
-      data.metadata !== null
-        ? this.normalizeMetadata(
-            data.metadata
-          )
-        : Prisma.JsonNull;
-
     return this.db(tx).paymentIntent.create({
       data: {
         merchantId:
@@ -183,7 +181,10 @@ export default class PaymentService {
         description:
           data.description,
 
-        metadata,
+        metadata:
+          this.normalizeOptionalJson(
+            data.metadata,
+          ),
 
         clientSecret:
           this.generateClientSecret(),
@@ -198,7 +199,7 @@ export default class PaymentService {
   }
 
   async getPaymentIntent(
-    paymentIntentId: string
+    paymentIntentId: string,
   ) {
     return this.app.prisma.paymentIntent.findUnique({
       where: {
@@ -216,16 +217,23 @@ export default class PaymentService {
 
   async listPaymentIntents(
     page = 1,
-    limit = 10
+    limit = 10,
   ) {
+    const safePage =
+      Math.max(1, page);
+
+    const safeLimit =
+      Math.max(1, Math.min(limit, 100));
+
     const skip =
-      (page - 1) * limit;
+      (safePage - 1) *
+      safeLimit;
 
     const [items, total] =
       await this.app.prisma.$transaction([
         this.app.prisma.paymentIntent.findMany({
           skip,
-          take: limit,
+          take: safeLimit,
 
           include: {
             merchant: true,
@@ -244,11 +252,11 @@ export default class PaymentService {
       items,
 
       pagination: {
-        page,
-        limit,
+        page: safePage,
+        limit: safeLimit,
         total,
         pages: Math.ceil(
-          total / limit
+          total / safeLimit,
         ),
       },
     };
@@ -256,16 +264,23 @@ export default class PaymentService {
 
   async listTransactions(
     page = 1,
-    limit = 10
+    limit = 10,
   ) {
+    const safePage =
+      Math.max(1, page);
+
+    const safeLimit =
+      Math.max(1, Math.min(limit, 100));
+
     const skip =
-      (page - 1) * limit;
+      (safePage - 1) *
+      safeLimit;
 
     const [items, total] =
       await this.app.prisma.$transaction([
         this.app.prisma.transaction.findMany({
           skip,
-          take: limit,
+          take: safeLimit,
 
           orderBy: {
             createdAt: "desc",
@@ -284,11 +299,11 @@ export default class PaymentService {
       items,
 
       pagination: {
-        page,
-        limit,
+        page: safePage,
+        limit: safeLimit,
         total,
         pages: Math.ceil(
-          total / limit
+          total / safeLimit,
         ),
       },
     };
@@ -296,7 +311,7 @@ export default class PaymentService {
 
   async expirePaymentIntent(
     paymentIntentId: string,
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     return this.db(tx).paymentIntent.update({
       where: {
@@ -314,10 +329,10 @@ export default class PaymentService {
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Transaction
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Transaction
+   * --------------------------------------------------------------------------
+   */
 
   async createTransaction(
     data: {
@@ -334,19 +349,23 @@ export default class PaymentService {
       idempotencyKey?: string;
       metadata?: Prisma.JsonValue;
     },
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     const db =
       this.db(tx);
 
     /*
-    |--------------------------------------------------------------------------
-    | Idempotency
-    |--------------------------------------------------------------------------
-    */
+     * SmartPOS transaction creation is idempotent.
+     *
+     * This is important for:
+     * - POS retries
+     * - Flutterwave webhook retries
+     * - frontend retry requests
+     * - network timeouts after gateway acceptance
+     */
 
     if (data.idempotencyKey) {
-      const existingTransaction =
+      const existing =
         await db.transaction.findUnique({
           where: {
             idempotencyKey:
@@ -354,30 +373,10 @@ export default class PaymentService {
           },
         });
 
-      if (existingTransaction) {
-        return existingTransaction;
+      if (existing) {
+        return existing;
       }
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Metadata
-    |--------------------------------------------------------------------------
-    */
-
-    const metadata =
-      data.metadata !== undefined &&
-      data.metadata !== null
-        ? this.normalizeMetadata(
-            data.metadata
-          )
-        : Prisma.JsonNull;
-
-    /*
-    |--------------------------------------------------------------------------
-    | Create Transaction
-    |--------------------------------------------------------------------------
-    */
 
     const reference =
       this.generateReference();
@@ -411,7 +410,10 @@ export default class PaymentService {
         description:
           data.description,
 
-        metadata,
+        metadata:
+          this.normalizeOptionalJson(
+            data.metadata,
+          ),
 
         settlementStatus:
           SettlementStatus.PENDING,
@@ -431,10 +433,10 @@ export default class PaymentService {
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Payment Attempts
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Payment Attempts
+   * --------------------------------------------------------------------------
+   */
 
   async createPaymentAttempt(
     data: {
@@ -443,7 +445,7 @@ export default class PaymentService {
       amount: Prisma.Decimal;
       currency: any;
     },
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     return this.db(tx).paymentAttempt.create({
       data: {
@@ -468,15 +470,8 @@ export default class PaymentService {
   async completePaymentAttempt(
     paymentAttemptId: string,
     gatewayResponse: Prisma.JsonValue,
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
-    const normalizedGatewayResponse =
-      gatewayResponse !== null
-        ? this.normalizeJson(
-            gatewayResponse
-          )
-        : Prisma.JsonNull;
-
     return this.db(tx).paymentAttempt.update({
       where: {
         id: paymentAttemptId,
@@ -487,7 +482,9 @@ export default class PaymentService {
           PaymentStatus.CAPTURED,
 
         gatewayResponse:
-          normalizedGatewayResponse,
+          this.normalizeOptionalJson(
+            gatewayResponse,
+          ),
       },
     });
   }
@@ -496,16 +493,8 @@ export default class PaymentService {
     paymentAttemptId: string,
     errorMessage: string,
     gatewayResponse?: Prisma.JsonValue,
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
-    const normalizedGatewayResponse =
-      gatewayResponse !== undefined &&
-      gatewayResponse !== null
-        ? this.normalizeJson(
-            gatewayResponse
-          )
-        : Prisma.JsonNull;
-
     return this.db(tx).paymentAttempt.update({
       where: {
         id: paymentAttemptId,
@@ -518,16 +507,24 @@ export default class PaymentService {
         errorMessage,
 
         gatewayResponse:
-          normalizedGatewayResponse,
+          this.normalizeOptionalJson(
+            gatewayResponse,
+          ),
       },
     });
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Authorization
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Authorization
+   * --------------------------------------------------------------------------
+   *
+   * Provider-specific authorization data is deliberately stored here,
+   * while the actual gateway call remains inside the provider implementation.
+   *
+   * This allows Flutterwave card authorization to feed the normal SmartPOS
+   * authorization/capture lifecycle.
+   */
 
   async authorizeTransaction(
     data: {
@@ -538,19 +535,10 @@ export default class PaymentService {
       gatewayResponse?: Prisma.JsonValue;
       message?: string;
     },
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     const db =
       this.db(tx);
-
-    const gatewayResponse =
-      data.gatewayResponse !==
-        undefined &&
-      data.gatewayResponse !== null
-        ? this.normalizeJson(
-            data.gatewayResponse
-          )
-        : Prisma.JsonNull;
 
     return db.authorization.upsert({
       where: {
@@ -575,7 +563,10 @@ export default class PaymentService {
         message:
           data.message,
 
-        gatewayResponse,
+        gatewayResponse:
+          this.normalizeOptionalJson(
+            data.gatewayResponse,
+          ),
       },
 
       create: {
@@ -597,7 +588,10 @@ export default class PaymentService {
         message:
           data.message,
 
-        gatewayResponse,
+        gatewayResponse:
+          this.normalizeOptionalJson(
+            data.gatewayResponse,
+          ),
       },
     });
   }
@@ -606,16 +600,8 @@ export default class PaymentService {
     transactionId: string,
     message: string,
     gatewayResponse?: Prisma.JsonValue,
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
-    const normalizedGatewayResponse =
-      gatewayResponse !== undefined &&
-      gatewayResponse !== null
-        ? this.normalizeJson(
-            gatewayResponse
-          )
-        : Prisma.JsonNull;
-
     return this.db(tx).authorization.create({
       data: {
         transactionId,
@@ -632,7 +618,9 @@ export default class PaymentService {
         message,
 
         gatewayResponse:
-          normalizedGatewayResponse,
+          this.normalizeOptionalJson(
+            gatewayResponse,
+          ),
       },
     });
   }
@@ -640,7 +628,7 @@ export default class PaymentService {
   async listAuthorizationsForPaymentIntent(
     paymentIntentId: string,
     customerId?: string,
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     const db =
       this.db(tx);
@@ -680,7 +668,7 @@ export default class PaymentService {
     customerId: string | undefined,
     authorizationId?: string,
     authorizationCode?: string,
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     const db =
       this.db(tx);
@@ -717,10 +705,10 @@ export default class PaymentService {
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Capture
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Capture
+   * --------------------------------------------------------------------------
+   */
 
   async captureTransaction(
     data: {
@@ -729,19 +717,10 @@ export default class PaymentService {
       currency: any;
       gatewayResponse?: Prisma.JsonValue;
     },
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     const db =
       this.db(tx);
-
-    const gatewayResponse =
-      data.gatewayResponse !==
-        undefined &&
-      data.gatewayResponse !== null
-        ? this.normalizeJson(
-            data.gatewayResponse
-          )
-        : Prisma.JsonNull;
 
     return db.capture.create({
       data: {
@@ -757,16 +736,19 @@ export default class PaymentService {
         status:
           "completed",
 
-        gatewayResponse,
+        gatewayResponse:
+          this.normalizeOptionalJson(
+            data.gatewayResponse,
+          ),
       },
     });
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Reversal
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Reversal
+   * --------------------------------------------------------------------------
+   */
 
   async reverseTransaction(
     data: {
@@ -776,19 +758,10 @@ export default class PaymentService {
       reason?: string;
       gatewayResponse?: Prisma.JsonValue;
     },
-    tx?: PrismaTransactionClient
+    tx?: PrismaTransactionClient,
   ) {
     const db =
       this.db(tx);
-
-    const gatewayResponse =
-      data.gatewayResponse !==
-        undefined &&
-      data.gatewayResponse !== null
-        ? this.normalizeJson(
-            data.gatewayResponse
-          )
-        : Prisma.JsonNull;
 
     return db.reversal.create({
       data: {
@@ -807,19 +780,22 @@ export default class PaymentService {
         status:
           "completed",
 
-        gatewayResponse,
+        gatewayResponse:
+          this.normalizeOptionalJson(
+            data.gatewayResponse,
+          ),
       },
     });
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Find Transaction
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Find Transaction
+   * --------------------------------------------------------------------------
+   */
 
   async findTransactionById(
-    transactionId: string
+    transactionId: string,
   ) {
     return this.app.prisma.transaction.findUnique({
       where: {
@@ -837,16 +813,16 @@ export default class PaymentService {
   }
 
   /*
-  |--------------------------------------------------------------------------
-  | Void Transaction
-  |--------------------------------------------------------------------------
-  */
+   * --------------------------------------------------------------------------
+   * Void Transaction
+   * --------------------------------------------------------------------------
+   */
 
   async voidTransaction(
     data: {
       transactionId: string;
       reason?: string;
-    }
+    },
   ) {
     const transaction =
       await this.app.prisma.transaction.findUnique({
@@ -857,7 +833,7 @@ export default class PaymentService {
 
     if (!transaction) {
       throw new Error(
-        "Transaction not found."
+        "Transaction not found.",
       );
     }
 
@@ -866,7 +842,7 @@ export default class PaymentService {
       TransactionStatus.SETTLED
     ) {
       throw new Error(
-        "A settled transaction cannot be voided."
+        "A settled transaction cannot be voided.",
       );
     }
 
@@ -882,7 +858,7 @@ export default class PaymentService {
       typeof transaction.metadata ===
         "object" &&
       !Array.isArray(
-        transaction.metadata
+        transaction.metadata,
       )
         ? transaction.metadata
         : {};
