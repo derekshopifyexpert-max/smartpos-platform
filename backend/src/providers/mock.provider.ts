@@ -1,7 +1,9 @@
 import BaseProvider, {
   CreatePaymentInput,
+  CreateWithdrawalInput,
   RefundPaymentInput,
   VerifyPaymentInput,
+  VerifyWithdrawalInput,
   ProviderResponse,
 } from "./base.provider.js";
 
@@ -56,10 +58,13 @@ export default class MockProvider extends BaseProvider {
   ): Promise<ProviderResponse> {
     return {
       success: true,
-      message: "Mock authorization charge completed.",
+      message:
+        "Mock authorization charge completed.",
       reference: input.reference,
-      transactionId: "MOCK_AUTH_TX_" + Date.now(),
-      authorizationCode: input.authorizationCode,
+      transactionId:
+        "MOCK_AUTH_TX_" + Date.now(),
+      authorizationCode:
+        input.authorizationCode,
       raw: {
         provider: "mock",
         status: "approved",
@@ -78,6 +83,47 @@ export default class MockProvider extends BaseProvider {
       transactionId: input.transactionId,
       raw: {
         refunded: true,
+      },
+    };
+  }
+
+  async createWithdrawal(
+    input: CreateWithdrawalInput
+  ): Promise<ProviderResponse> {
+    return {
+      success: true,
+      message: "Mock withdrawal created.",
+      reference: input.reference,
+      withdrawalId:
+        "MOCK_WITHDRAWAL_" + Date.now(),
+      transactionId:
+        "MOCK_WITHDRAWAL_TX_" + Date.now(),
+      status: "PENDING",
+      raw: {
+        provider: "mock",
+        status: "PENDING",
+        amount: input.amount,
+        currency: input.currency,
+        destinationType:
+          input.destinationType,
+      },
+    };
+  }
+
+  async verifyWithdrawal(
+    input: VerifyWithdrawalInput
+  ): Promise<ProviderResponse> {
+    return {
+      success: true,
+      message: "Mock withdrawal verified.",
+      withdrawalId: input.withdrawalId,
+      transactionId: input.withdrawalId,
+      status: "SUCCESSFUL",
+      raw: {
+        provider: "mock",
+        status: "SUCCESSFUL",
+        withdrawalId:
+          input.withdrawalId,
       },
     };
   }
