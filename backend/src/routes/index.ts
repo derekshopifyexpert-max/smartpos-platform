@@ -1,9 +1,10 @@
 import { FastifyInstance } from "fastify";
 
+import healthRoutes from "./health.routes.js";
+import paymentRoutes from "./payment.routes.js";
 import metricsRoutes from "./metrics.routes.js";
 import walletRoutes from "./wallet.routes.js";
 import merchantRoutes from "./merchant.routes.js";
-import paymentRoutes from "./payment.routes.js";
 import transactionRoutes from "./transaction.routes.js";
 import blockchainRoutes from "./blockchain.routes.js";
 import exchangeRoutes from "./exchange.routes.js";
@@ -11,15 +12,14 @@ import gatewayRoutes from "./gateway.routes.js";
 import settlementRoutes from "./settlement.routes.js";
 import authRoutes from "./auth.routes.js";
 import terminalRoutes from "./terminal.routes.js";
-import healthRoutes from "./health.routes.js";
 import reconciliationRoutes from "./reconciliation.routes.js";
 import observabilityRoutes from "./observability.routes.js";
 import paymentProviderAccountRoutes from "./payment-provider-account.routes.js";
+import webhookRoutes from "./webhook.routes.js";
 
 export default async function registerRoutes(
   app: FastifyInstance
 ) {
-
   app.register(healthRoutes);
 
   app.register(paymentRoutes, {
@@ -75,6 +75,10 @@ export default async function registerRoutes(
   });
 
   app.register(paymentProviderAccountRoutes, {
+    prefix: "/api/v1"
+  });
+
+  app.register(webhookRoutes, {
     prefix: "/api/v1"
   });
 }
