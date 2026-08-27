@@ -1890,7 +1890,7 @@ model Webhook {
 
 model WebhookDelivery {
   id             String         @id @default(cuid())
-  webhookId      String
+  webhookId      String?
   event          String
   payload        Json
   status         WebhookStatus  @default(PENDING)
@@ -1904,7 +1904,7 @@ model WebhookDelivery {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   transaction    Transaction?   @relation(fields: [transactionId], references: [id])
-  webhook        Webhook        @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhook        Webhook?       @relation(fields: [webhookId], references: [id], onDelete: Cascade)
   retries        WebhookRetry[]
 
   @@index([webhookId])

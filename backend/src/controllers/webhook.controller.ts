@@ -1,6 +1,6 @@
 import {
   FastifyReply,
-  FastifyRequest
+  FastifyRequest,
 } from "fastify";
 
 import WebhookService from "../services/webhook.service.js";
@@ -8,15 +8,14 @@ import { enqueueWebhook } from "../queues/webhook.producer.js";
 
 export default class WebhookController {
   constructor(
-    private readonly webhookService: WebhookService
+    private readonly webhookService: WebhookService,
   ) {}
 
   receive = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
-    const body =
-      request.body as any;
+    const body = request.body as any;
 
     /*
      * Flutterwave V3 sends its configured webhook
@@ -33,7 +32,7 @@ export default class WebhookController {
     if (
       !webhookSecret ||
       typeof signature !== "string" ||
-      signature !== webhookSecret
+      signature.trim() !== webhookSecret.trim()
     ) {
       return reply
         .code(401)
@@ -42,7 +41,7 @@ export default class WebhookController {
           statusCode: 401,
           error: "Unauthorized",
           message:
-            "Invalid Flutterwave webhook signature."
+            "Invalid Flutterwave webhook signature.",
         });
     }
 
@@ -50,16 +49,20 @@ export default class WebhookController {
      * Flutterwave V3 webhook structure:
      *
      * {
+     *   id: "...",
      *   event: "...",
      *   data: {
      *     id: ...,
      *     status: "...",
      *     tx_ref: "..."
      *   }
-     * }
      *
-     * Map it into the existing SmartPOS
-     * WebhookService contract.
+     * The Flutterwave `data.id` is NOT the SmartPOS
+     * Transaction primary key.
+     *
+     * We correlate the webhook to SmartPOS using
+     * Flutterwave's `tx_ref`, which must correspond
+     * to the SmartPOS Transaction.reference.
      */
     const webhookId =
       body?.id
@@ -78,7 +81,7 @@ export default class WebhookController {
           statusCode: 400,
           error: "Bad Request",
           message:
-            "Flutterwave webhook ID is missing."
+            "Flutterwave webhook ID is missing.",
         });
     }
 
@@ -87,27 +90,77 @@ export default class WebhookController {
       body?.type ??
       "unknown";
 
-    const transactionId =
-      body?.data?.id
-        ? String(body.data.id)
-        : body?.data?.tx_ref
-          ? String(body.data.tx_ref)
-          : undefined;
+    const transactionReference =
+      body?.data?.tx_ref
+        ? String(body.data.tx_ref)
+        : undefined;
 
+    /*
+     * Resolve the Flutterwave transaction reference
+     * to the actual SmartPOS Transaction primary key.
+     *
+     * WebhookDelivery.transactionId is a foreign key
+     * to SmartPOS Transaction.id, so we must NEVER
+     * store Flutterwave's numeric data.id here.
+     */
+    let transactionId: string | undefined;
+
+    if (transactionReference) {
+      const transaction =
+        await request.server.prisma.transaction.findFirst({
+          where: {
+            reference: transactionReference,
+          },
+          select: {
+            id: true,
+          },
+        });
+
+      transactionId = transaction?.id;
+    }
+
+    /*
+     * Do not allow an unknown transaction reference
+     * to reach Prisma as a foreign key.
+     */
+    if (!transactionId) {
+      return reply
+        .code(404)
+        .send({
+          success: false,
+          statusCode: 404,
+          error: "Not Found",
+          message:
+            `No SmartPOS transaction found for Flutterwave tx_ref "${transactionReference ?? "missing"}".`,
+        });
+    }
+
+    /*
+     * Persist the webhook only after:
+     *
+     * 1. Signature validation
+     * 2. Webhook ID validation
+     * 3. Flutterwave tx_ref extraction
+     * 4. SmartPOS Transaction resolution
+     *
+     * This guarantees WebhookDelivery.transactionId
+     * satisfies the database foreign-key constraint.
+     */
     const webhook =
       await this.webhookService.receiveWebhook({
         webhookId,
         event,
         payload: body,
-        transactionId
+        transactionId,
       });
 
     /*
      * Queue processing after persistence.
      *
-     * Flutterwave expects a 200 response from the
-     * webhook endpoint. We therefore acknowledge
-     * immediately after safely persisting the event.
+     * Flutterwave expects a successful response from
+     * the webhook endpoint. A queue failure must not
+     * turn an already-persisted webhook into a failed
+     * HTTP delivery.
      */
     try {
       await enqueueWebhook(webhook.id);
@@ -115,9 +168,9 @@ export default class WebhookController {
       request.log.error(
         {
           error,
-          webhookId: webhook.id
+          webhookId: webhook.id,
         },
-        "Failed to enqueue Flutterwave webhook"
+        "Failed to enqueue Flutterwave webhook",
       );
     }
 
@@ -127,14 +180,14 @@ export default class WebhookController {
         success: true,
         data: {
           webhookId: webhook.id,
-          status: "QUEUED"
-        }
+          status: "QUEUED",
+        },
       });
   };
 
   process = async (
     request: FastifyRequest,
-    reply: FastifyReply
+    reply: FastifyReply,
   ) => {
     const { id } =
       request.params as {
@@ -153,8 +206,8 @@ export default class WebhookController {
         data: {
           jobId: job.id,
           webhookId: id,
-          status: "QUEUED"
-        }
+          status: "QUEUED",
+        },
       });
   };
 }
