@@ -15,8 +15,7 @@ import terminalRoutes from "./terminal.routes.js";
 import reconciliationRoutes from "./reconciliation.routes.js";
 import observabilityRoutes from "./observability.routes.js";
 import paymentProviderAccountRoutes from "./payment-provider-account.routes.js";
-import webhookRoutes from "./webhook.routes.js";
-
+import flutterwaveWebhookRoutes from "./flutterwave-webhook.routes.js";
 export default async function registerRoutes(
   app: FastifyInstance
 ) {
@@ -78,7 +77,7 @@ export default async function registerRoutes(
     prefix: "/api/v1"
   });
 
-  app.register(webhookRoutes, {
+  app.register(flutterwaveWebhookRoutes, {
     prefix: "/api/v1"
   });
 }

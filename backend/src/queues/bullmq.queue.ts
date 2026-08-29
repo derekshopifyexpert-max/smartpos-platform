@@ -3,84 +3,54 @@ import { Redis } from "ioredis";
 
 import env from "../config/env.js";
 
-const connection = new Redis(
-
-  env.REDIS_URL,
-
-  {
-
-    maxRetriesPerRequest: null,
-
-    enableReadyCheck: false
-
-  }
-
-);
+const connection =
+  new Redis(
+    env.REDIS_URL,
+    {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+    },
+  );
 
 export const BullConnection =
   connection;
 
 export const PaymentQueue =
   new Queue(
-
     "payments",
-
     {
-
-      connection
-
-    }
-
+      connection,
+    },
   );
 
 export const SettlementQueue =
   new Queue(
-
     "settlements",
-
     {
-
-      connection
-
-    }
-
+      connection,
+    },
   );
 
-export const WebhookQueue =
+export const FlutterwaveWebhookQueue =
   new Queue(
-
-    "webhooks",
-
+    "flutterwave-webhooks",
     {
-
-      connection
-
-    }
-
+      connection,
+    },
   );
 
 export const BlockchainQueue =
   new Queue(
-
     "blockchain",
-
     {
-
-      connection
-
-    }
-
+      connection,
+    },
   );
 
 export const NotificationQueue =
   new Queue(
-
     "notifications",
-
     {
-
-      connection
-
-    }
-
+      connection,
+    },
   );

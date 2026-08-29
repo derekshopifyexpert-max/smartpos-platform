@@ -6,8 +6,8 @@ import createBlockchainWorker from "./blockchain.queue.js";
 import SettlementService from "../services/settlement.service.js";
 import createSettlementWorker from "./settlement.queue.js";
 
-import WebhookService from "../services/webhook.service.js";
-import createWebhookWorker from "./webhook.queue.js";
+import FlutterwaveWebhookService from "../services/flutterwave-webhook.service.js";
+import createFlutterwaveWebhookWorker from "./flutterwave-webhook.queue.js";
 
 import createNotificationWorker from "./notification.queue.js";
 
@@ -15,27 +15,36 @@ import TransactionService from "../services/transaction.service.js";
 import createPaymentWorker from "./payment.queue.js";
 
 export default class QueueManager {
-
   private paymentWorker?: Worker;
+
   private settlementWorker?: Worker;
+
   private blockchainWorker?: Worker;
-  private webhookWorker?: Worker;
+
+  private flutterwaveWebhookWorker?: Worker;
+
   private notificationWorker?: Worker;
 
   constructor(
-    private readonly transactionService: TransactionService,
-    private readonly settlementService: SettlementService,
-    private readonly blockchainService: BlockchainService,
-    private readonly webhookService: WebhookService
+    private readonly transactionService:
+      TransactionService,
+
+    private readonly settlementService:
+      SettlementService,
+
+    private readonly blockchainService:
+      BlockchainService,
+
+    private readonly flutterwaveWebhookService:
+      FlutterwaveWebhookService,
   ) {}
 
   start() {
-
     if (
       this.paymentWorker ||
       this.settlementWorker ||
       this.blockchainWorker ||
-      this.webhookWorker ||
+      this.flutterwaveWebhookWorker ||
       this.notificationWorker
     ) {
       return;
@@ -43,22 +52,22 @@ export default class QueueManager {
 
     this.paymentWorker =
       createPaymentWorker(
-        this.transactionService
+        this.transactionService,
       );
 
     this.settlementWorker =
       createSettlementWorker(
-        this.settlementService
+        this.settlementService,
       );
 
     this.blockchainWorker =
       createBlockchainWorker(
-        this.blockchainService
+        this.blockchainService,
       );
 
-    this.webhookWorker =
-      createWebhookWorker(
-        this.webhookService
+    this.flutterwaveWebhookWorker =
+      createFlutterwaveWebhookWorker(
+        this.flutterwaveWebhookService,
       );
 
     this.notificationWorker =
@@ -66,32 +75,41 @@ export default class QueueManager {
   }
 
   async close() {
-
     const workers = [
       this.paymentWorker,
       this.settlementWorker,
       this.blockchainWorker,
-      this.webhookWorker,
-      this.notificationWorker
+      this.flutterwaveWebhookWorker,
+      this.notificationWorker,
     ];
 
     await Promise.all(
       workers
         .filter(
           (
-            worker
+            worker,
           ): worker is Worker =>
-            Boolean(worker)
+            Boolean(worker),
         )
         .map(
-          worker => worker.close()
-        )
+          (worker) =>
+            worker.close(),
+        ),
     );
 
-    this.paymentWorker = undefined;
-    this.settlementWorker = undefined;
-    this.blockchainWorker = undefined;
-    this.webhookWorker = undefined;
-    this.notificationWorker = undefined;
+    this.paymentWorker =
+      undefined;
+
+    this.settlementWorker =
+      undefined;
+
+    this.blockchainWorker =
+      undefined;
+
+    this.flutterwaveWebhookWorker =
+      undefined;
+
+    this.notificationWorker =
+      undefined;
   }
 }
