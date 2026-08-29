@@ -607,196 +607,207 @@ export default class PaymentOrchestratorService {
   */
 
   async checkoutPaymentIntent(
-    paymentIntentId: string,
-    customer: {
-      email?: string;
-      firstName?: string;
-      lastName?: string;
-      phone?: string;
-    } = {},
+  paymentIntentId: string,
+  customer: {
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    cryptoDestination?: {
+      asset?: string;
+      network?: string;
+      address?: string;
+      walletId?: string;
+      amount?: number;
+      currency?: string;
+      reference?: string;
+    };
+  } = {}
+) {
+  const paymentIntent =
+    await this.paymentService.getPaymentIntent(
+      paymentIntentId
+    );
+
+  if (!paymentIntent) {
+    throw new Error(
+      "Payment Intent not found."
+    );
+  }
+
+  if (
+    paymentIntent.status !== "PENDING"
   ) {
-    const paymentIntent =
-      await this.paymentService.getPaymentIntent(
-        paymentIntentId,
-      );
+    throw new Error(
+      `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`
+    );
+  }
 
-    if (!paymentIntent) {
-      throw new Error(
-        "Payment Intent not found.",
-      );
-    }
+  if (
+    paymentIntent.expiresAt &&
+    paymentIntent.expiresAt <=
+      new Date()
+  ) {
+    await this.paymentService.expirePaymentIntent(
+      paymentIntent.id
+    );
 
-    if (
-      paymentIntent.status !==
-      "PENDING"
-    ) {
-      throw new Error(
-        `Payment Intent is ${paymentIntent.status.toLowerCase()} and cannot be paid.`,
-      );
-    }
+    throw new Error(
+      "Payment Intent has expired."
+    );
+  }
 
-    if (
-      paymentIntent.expiresAt &&
-      paymentIntent.expiresAt <=
-        new Date()
-    ) {
-      await this.paymentService.expirePaymentIntent(
-        paymentIntent.id,
-      );
-
-      throw new Error(
-        "Payment Intent has expired.",
-      );
-    }
-
-    const paymentCustomer =
-      paymentIntent.customerId
-        ? await this.app.prisma.customer.findUnique({
+  const paymentCustomer =
+    paymentIntent.customerId
+      ? await this.app.prisma.customer.findUnique(
+          {
             where: {
-              id:
-                paymentIntent.customerId,
+              id: paymentIntent.customerId,
             },
-          })
-        : null;
+          }
+        )
+      : null;
 
-    const email =
-      customer.email ??
-      paymentCustomer?.email ??
-      undefined;
+  const email =
+    customer.email ??
+    paymentCustomer?.email ??
+    undefined;
 
-    if (!email) {
-      throw new Error(
-        "Customer email is required for payment.",
-      );
-    }
+  if (!email) {
+    throw new Error(
+      "Customer email is required for payment."
+    );
+  }
 
-    /*
-     * Keep merchant/payment-intent currency
-     * alignment behavior.
-     */
-    try {
-      const merchant =
-        await this.app.prisma.merchant.findUnique({
+  /*
+   * Keep merchant/payment-intent currency
+   * alignment behavior.
+   */
+  try {
+    const merchant =
+      await this.app.prisma.merchant.findUnique(
+        {
           where: {
-            id:
-              paymentIntent.merchantId,
+            id: paymentIntent.merchantId,
           },
-
           select: {
             id: true,
             currency: true,
           },
-        });
+        }
+      );
 
-      if (
-        merchant &&
-        String(
-          merchant.currency,
-        ) !==
-          String(
+    if (
+      merchant &&
+      String(merchant.currency) !==
+        String(paymentIntent.currency)
+    ) {
+      this.app.log.warn(
+        {
+          paymentIntentId:
+            paymentIntent.id,
+          merchantId:
+            merchant.id,
+          paymentIntentCurrency:
             paymentIntent.currency,
-          )
-      ) {
-        this.app.log.warn(
-          {
-            paymentIntentId:
-              paymentIntent.id,
+          merchantCurrency:
+            merchant.currency,
+        },
+        "Aligning payment intent currency with merchant currency"
+      );
 
-            merchantId:
-              merchant.id,
-
-            paymentIntentCurrency:
-              paymentIntent.currency,
-
-            merchantCurrency:
-              merchant.currency,
-          },
-
-          "Aligning payment intent currency with merchant currency",
-        );
-
-        await this.app.prisma.paymentIntent.update({
+      await this.app.prisma.paymentIntent.update(
+        {
           where: {
-            id:
-              paymentIntent.id,
+            id: paymentIntent.id,
           },
-
           data: {
             currency:
               merchant.currency,
           },
-        });
-
-        paymentIntent.currency =
-          merchant.currency as any;
-      }
-    } catch (error) {
-      this.app.log.warn(
-        {
-          error,
-          paymentIntentId,
-        },
-
-        "Failed to align payment intent currency with merchant",
+        }
       );
+
+      paymentIntent.currency =
+        merchant.currency as any;
     }
+  } catch (error) {
+    this.app.log.warn(
+      {
+        error,
+        paymentIntentId,
+      },
+      "Failed to align payment intent currency with merchant"
+    );
+  }
 
-    const checkoutMetadata =
-      this.normalizeCryptoDestinationMetadata(
-        paymentIntent.metadata,
-      );
+  const checkoutMetadata =
+    this.normalizeCryptoDestinationMetadata(
+      paymentIntent.metadata
+    );
 
-    const cryptoDestination =
-      checkoutMetadata &&
-      typeof checkoutMetadata ===
-        "object" &&
-      !Array.isArray(
-        checkoutMetadata,
-      ) &&
-      "cryptoDestination" in
-        checkoutMetadata &&
-      checkoutMetadata.cryptoDestination &&
-      typeof checkoutMetadata.cryptoDestination ===
-        "object" &&
-      !Array.isArray(
-        checkoutMetadata.cryptoDestination,
-      )
-        ? (
-            checkoutMetadata.cryptoDestination as Record<
-              string,
-              unknown
-            >
-          )
+  const metadataRecord =
+    checkoutMetadata &&
+    typeof checkoutMetadata ===
+      "object" &&
+    !Array.isArray(
+      checkoutMetadata
+    )
+      ? (checkoutMetadata as Record<
+          string,
+          unknown
+        >)
+      : {};
+
+  const cryptoDestination =
+    customer.cryptoDestination ??
+    (
+      metadataRecord
+        .cryptoDestination as
+        | Record<string, unknown>
+        | undefined
+    ) ??
+    (
+      metadataRecord
+        .crypto_destination as
+        | Record<string, unknown>
+        | undefined
+    ) ??
+    (
+      metadataRecord.destination as
+        | Record<string, unknown>
+        | undefined
+    );
+
+  if (cryptoDestination) {
+    const destinationAddress =
+      typeof cryptoDestination.address ===
+      "string"
+        ? cryptoDestination.address.trim()
         : undefined;
 
-    if (cryptoDestination) {
-      const destinationAddress =
-        typeof cryptoDestination.address ===
-          "string"
-          ? cryptoDestination.address.trim()
-          : undefined;
-
-      if (
-        cryptoDestination.address !==
-          undefined &&
-        !destinationAddress
-      ) {
-        throw new Error(
-          "Crypto destination address is required.",
-        );
-      }
-    }
-
-    const existingTransaction =
-      paymentIntent.transactions.find(
-        transaction =>
-          transaction.status ===
-          "INITIATED",
+    if (
+      cryptoDestination.address !==
+        undefined &&
+      !destinationAddress
+    ) {
+      throw new Error(
+        "Crypto destination address is required."
       );
+    }
+  }
 
-    const transaction =
-      existingTransaction ??
-      await this.paymentService.createTransaction({
+  const existingTransaction =
+    paymentIntent.transactions.find(
+      transaction =>
+        transaction.status ===
+        "INITIATED"
+    );
+
+  const transaction =
+    existingTransaction ??
+    await this.paymentService.createTransaction(
+      {
         merchantId:
           paymentIntent.merchantId,
 
@@ -825,20 +836,22 @@ export default class PaymentOrchestratorService {
 
         metadata:
           checkoutMetadata,
-      });
+      }
+    );
 
-    const existingAttempt =
-      paymentIntent.paymentAttempts.find(
-        attempt =>
-          attempt.transactionId ===
-            transaction.id &&
-          attempt.status ===
-            "PENDING",
-      );
+  const existingAttempt =
+    paymentIntent.paymentAttempts.find(
+      attempt =>
+        attempt.transactionId ===
+          transaction.id &&
+        attempt.status ===
+          "PENDING"
+    );
 
-    const paymentAttempt =
-      existingAttempt ??
-      await this.paymentService.createPaymentAttempt({
+  const paymentAttempt =
+    existingAttempt ??
+    await this.paymentService.createPaymentAttempt(
+      {
         paymentIntentId:
           paymentIntent.id,
 
@@ -850,59 +863,104 @@ export default class PaymentOrchestratorService {
 
         currency:
           paymentIntent.currency,
-      });
+      }
+    );
 
-    const providers =
-      await this.gatewayService.activeProviders();
-
-    const activeProviders =
-      providers
-        .filter(
-          provider =>
-            provider.isActive,
-        )
-        .sort(
-          (a, b) =>
-            a.priority -
-            b.priority,
-        );
-
-    const providerNames =
-      activeProviders.map(
+  /*
+   * IMPORTANT:
+   *
+   * This customer checkout is explicitly
+   * Flutterwave-only.
+   *
+   * Do not use generic provider failover here.
+   */
+  const flutterwaveProviders =
+    (
+      await this.gatewayService.activeProviders()
+    )
+      .filter(
         provider =>
-          provider.name,
+          provider.isActive &&
+          provider.name.toLowerCase() ===
+            "flutterwave"
+      )
+      .sort(
+        (a, b) =>
+          a.priority - b.priority
       );
 
-    if (!providerNames.length) {
-      throw new Error(
-        "No active payment provider configured.",
-      );
-    }
+  if (
+    flutterwaveProviders.length === 0
+  ) {
+    throw new Error(
+      "Flutterwave is not configured as an active payment provider."
+    );
+  }
 
-    const selectedProvider =
-      this.selector.select(
-        activeProviders,
-        {
-          merchantId:
-            paymentIntent.merchantId,
+  const selectedProvider =
+    flutterwaveProviders[0];
 
-          currency:
-            String(
-              paymentIntent.currency,
-            ),
+  const provider =
+    this.providerManager.getProvider(
+      "flutterwave"
+    );
 
-          amount:
-            Number(
-              paymentIntent.amount,
-            ),
+  if (!transaction.reference) {
+    throw new Error(
+      "Transaction reference is missing."
+    );
+  }
 
-          paymentMethod:
-            "card",
-        },
-      );
+  /*
+   * Build the URL Flutterwave should redirect
+   * the customer to after checkout.
+   *
+   * This should point to the public SmartPOS
+   * payment-result route.
+   */
+  const frontendBaseUrl =
+    String(
+      process.env.FRONTEND_URL ??
+        process.env.NEXT_PUBLIC_APP_URL ??
+        ""
+    ).replace(/\/+$/, "");
 
-    const gatewayRequest =
-      await this.gatewayService.createGatewayRequest({
+  if (!frontendBaseUrl) {
+    throw new Error(
+      "FRONTEND_URL or NEXT_PUBLIC_APP_URL is required for Flutterwave checkout redirects."
+    );
+  }
+
+  const redirectUrl =
+    `${frontendBaseUrl}/pay/${encodeURIComponent(
+      paymentIntent.id
+    )}/callback`;
+
+  const providerMetadata: Record<
+    string,
+    unknown
+  > = {
+    paymentIntentId:
+      paymentIntent.id,
+
+    transactionId:
+      transaction.id,
+
+    paymentAttemptId:
+      paymentAttempt.id,
+
+    redirectUrl,
+
+    provider:
+      "flutterwave",
+
+    cryptoDestination:
+      cryptoDestination ?? null,
+  };
+
+  const gatewayRequest =
+    await this.gatewayService.createGatewayRequest(
+      {
         providerId:
           selectedProvider.id,
 
@@ -911,98 +969,104 @@ export default class PaymentOrchestratorService {
 
         endpoint:
           selectedProvider.baseUrl ??
-          "/payment",
+          "https://api.flutterwave.com/v3/payments",
 
         method:
           "POST",
 
         requestBody: {
+          tx_ref:
+            transaction.reference,
+
           amount:
             paymentIntent.amount.toString(),
 
           currency:
             String(
-              paymentIntent.currency,
+              paymentIntent.currency
+            ),
+
+          redirect_url:
+            redirectUrl,
+
+          customer: {
+            email,
+          },
+
+          meta:
+            providerMetadata,
+        },
+
+        requestHeaders: {},
+      }
+    );
+
+  try {
+    const providerResponse =
+      await provider.createPayment(
+        {
+          amount:
+            Number(
+              paymentIntent.amount
+            ),
+
+          currency:
+            String(
+              paymentIntent.currency
             ),
 
           reference:
             transaction.reference,
 
-          customerEmail:
+          description:
+            paymentIntent.description ??
+            "SmartPOS Payment",
+
+          customer: {
             email,
-        },
 
-        requestHeaders:
-          {},
-      });
+            firstName:
+              customer.firstName ??
+              paymentCustomer?.firstName ??
+              undefined,
 
-    if (!transaction.reference) {
+            lastName:
+              customer.lastName ??
+              paymentCustomer?.lastName ??
+              undefined,
+
+            phone:
+              customer.phone ??
+              paymentCustomer?.phone ??
+              undefined,
+          },
+
+          metadata:
+            providerMetadata,
+        }
+      );
+
+    if (
+      !providerResponse.success
+    ) {
       throw new Error(
-        "Transaction reference is missing.",
+        providerResponse.message ??
+          "Flutterwave payment creation failed."
       );
     }
 
-    try {
-      const execution =
-        await this.failover.execute(
-          providerNames,
+    if (
+      !providerResponse.paymentUrl
+    ) {
+      throw new Error(
+        "Flutterwave did not return a hosted checkout URL."
+      );
+    }
 
-          async provider =>
-            provider.createPayment({
-              amount:
-                this.numericAmount(
-                  paymentIntent.amount,
-                ),
-
-              currency:
-                String(
-                  paymentIntent.currency,
-                ),
-
-              reference:
-                transaction.reference!,
-
-              description:
-                paymentIntent.description ??
-                undefined,
-
-              customer: {
-                email,
-
-                firstName:
-                  customer.firstName ??
-                  paymentCustomer?.firstName ??
-                  undefined,
-
-                lastName:
-                  customer.lastName ??
-                  paymentCustomer?.lastName ??
-                  undefined,
-
-                phone:
-                  customer.phone ??
-                  paymentCustomer?.phone ??
-                  undefined,
-              },
-
-              metadata:
-                this.normalizeProviderMetadata(
-                  checkoutMetadata,
-                ),
-            }),
-        );
-
-      const providerResponse =
-        execution.result;
-
-      const authorizationCode =
-        providerResponse.authorizationCode ??
-        null;
-
-      await this.app.prisma.transaction.update({
+    await this.app.prisma.transaction.update(
+      {
         where: {
-          id:
-            transaction.id,
+          id: transaction.id,
         },
 
         data: {
@@ -1012,41 +1076,13 @@ export default class PaymentOrchestratorService {
             null,
 
           gatewayProvider:
-            execution.providerName,
-
-          authCode:
-            authorizationCode,
-
-          approvalCode:
-            authorizationCode,
+            "flutterwave",
         },
-      });
-
-      if (authorizationCode) {
-        await this.paymentService.authorizeTransaction({
-          transactionId:
-            transaction.id,
-
-          amount:
-            paymentIntent.amount,
-
-          currency:
-            paymentIntent.currency,
-
-          authorizationCode,
-
-          gatewayResponse:
-            (
-              providerResponse.raw ??
-              providerResponse
-            ) as Prisma.JsonValue,
-
-          message:
-            "Provider authorization captured for reusable customer payment.",
-        });
       }
+    );
 
-      await this.gatewayService.createGatewayResponse({
+    await this.gatewayService.createGatewayResponse(
+      {
         gatewayRequestId:
           gatewayRequest.id,
 
@@ -1062,42 +1098,41 @@ export default class PaymentOrchestratorService {
 
         responseTime:
           0,
-      });
+      }
+    );
 
-      return {
-        paymentIntent,
+    return {
+      paymentIntent,
 
-        transaction,
+      transaction,
 
-        paymentAttempt,
+      paymentAttempt,
 
-        provider:
-          execution.providerName,
+      provider:
+        "flutterwave",
 
-        gateway: {
-          transactionId:
-            providerResponse.transactionId ??
-            providerResponse.reference ??
-            null,
+      gateway: {
+        transactionId:
+          providerResponse.transactionId ??
+          null,
 
-          paymentUrl:
-            providerResponse.paymentUrl ??
-            null,
+        paymentUrl:
+          providerResponse.paymentUrl ??
+          null,
 
-          accessCode:
-            providerResponse.accessCode ??
-            null,
+        accessCode:
+          null,
 
-          authorizationCode:
-            providerResponse.authorizationCode ??
-            null,
-        },
+        authorizationCode:
+          null,
+      },
 
-        response:
-          providerResponse,
-      };
-    } catch (error) {
-      await this.gatewayService.createGatewayResponse({
+      response:
+        providerResponse,
+    };
+  } catch (error) {
+    await this.gatewayService.createGatewayResponse(
+      {
         gatewayRequestId:
           gatewayRequest.id,
 
@@ -1113,12 +1148,13 @@ export default class PaymentOrchestratorService {
         error:
           error instanceof Error
             ? error.message
-            : "Payment failed",
-      });
+            : "Flutterwave payment failed",
+      }
+    );
 
-      throw error;
-    }
+    throw error;
   }
+}
 
   /*
   |--------------------------------------------------------------------------
