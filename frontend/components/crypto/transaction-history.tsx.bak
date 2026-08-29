@@ -129,9 +129,24 @@ export function TransactionHistory({ onSelectTransaction }: TransactionHistoryPr
               <div className="flex items-center gap-4 text-xs text-slate-500">
                 <span>{new Date(transaction.createdAt).toLocaleDateString()}</span>
                 {transaction.provider && <span>{transaction.provider}</span>}
+                {transaction.type === "BUY" && transaction.settlementStatus && (
+                  <span
+                    className={`px-2 py-0.5 rounded font-medium ${
+                      settlementStatusColors[transaction.settlementStatus] ||
+                      "bg-gray-100 text-gray-700"
+                    }`}
+                  >
+                    Settlement: {transaction.settlementStatus}
+                  </span>
+                )}
               </div>
 
               {/* Destination Wallet for BUY */}
+              {transaction.type === "BUY" && transaction.destinationWallet && (
+                <p className="text-xs text-slate-500 mt-2">
+                  → {transaction.destinationWallet.name} ({transaction.destinationWallet.network})
+                </p>
+              )}
             </div>
 
             <ChevronRight className="h-5 w-5 text-slate-400 mt-1 flex-shrink-0 group-hover:text-slate-600 transition-colors" />

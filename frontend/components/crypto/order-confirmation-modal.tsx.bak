@@ -63,7 +63,7 @@ export function OrderConfirmationModal({
                   {displayLabel}
                 </p>
                 <p className="text-lg font-bold text-slate-900">
-                  {formatFiat(String(displayAmount), 2)} {displayCurrency}
+                  {formatFiat(displayAmount, 2)} {displayCurrency}
                 </p>
               </div>
 
@@ -76,7 +76,7 @@ export function OrderConfirmationModal({
                 <p className="text-lg font-bold text-slate-900">
                   {order.side === "BUY"
                     ? formatCrypto(order.estimatedCrypto || "0", 2)
-                    : formatFiat(String(order.estimatedFiat ?? "0"), 2)}{" "}
+                    : formatFiat(order.estimatedFiat || "0", 2)}{" "}
                   {order.side === "BUY" ? "USDT" : order.currency}
                 </p>
               </div>

@@ -102,7 +102,7 @@ export function SellUsdtForm({ onSuccess }: SellUsdtFormProps) {
         baseAsset: "USDT",
         quoteAsset: selectedCurrency,
         amount: cryptoAmount,
-        quoteId: quote.quoteId,
+        quoteId: quote.id,
         clientOrderId,
       };
 
@@ -122,7 +122,7 @@ export function SellUsdtForm({ onSuccess }: SellUsdtFormProps) {
   };
 
   const estimatedFiat = quote
-    ? calculateEstimatedFiat(cryptoAmount, (Number(quote.quoteAmount) / Number(quote.amount)))
+    ? calculateEstimatedFiat(cryptoAmount, quote.rate)
     : 0;
 
   return (
@@ -175,7 +175,7 @@ export function SellUsdtForm({ onSuccess }: SellUsdtFormProps) {
             <div>
               <p className="text-xs text-slate-600 uppercase tracking-wide">Price</p>
               <p className="text-lg font-bold text-slate-900 mt-1">
-                {formatCrypto((Number(quote.quoteAmount) / Number(quote.amount)), 4)} {selectedCurrency} / USDT
+                {formatCrypto(quote.rate, 4)} {selectedCurrency} / USDT
               </p>
             </div>
 
