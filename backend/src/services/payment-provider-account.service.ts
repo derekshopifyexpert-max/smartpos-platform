@@ -279,11 +279,9 @@ export default class PaymentProviderAccountService {
      * First attempt:
      *
      * If secretKeyRef is something like:
-     *
-     * PAYSTACK_SECRET_KEY
-     *
-     * then process.env.PAYSTACK_SECRET_KEY will be checked.
-     */
+     * The secretKeyRef is resolved dynamically from the environment.
+     * For Flutterwave, this will normally be FLUTTERWAVE_SECRET_KEY.
+     * The reference itself is never treated as the secret value.
     const envKey = process.env[secretKeyRef];
 
     if (envKey) {
