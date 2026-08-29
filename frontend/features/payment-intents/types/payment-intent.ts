@@ -45,52 +45,41 @@ export interface PaymentIntentTransaction {
   terminalId?: string | null;
   customerId?: string | null;
   walletId?: string | null;
-
   amount: number | string;
   currency: string;
   status: string;
   type?: string | null;
-
   reference?: string | null;
   description?: string | null;
   paymentMethod?: string | null;
-
   createdAt: string;
   updatedAt?: string | null;
 }
 
 export interface PaymentIntent {
   id: string;
-
   merchantId?: string | null;
   customerId?: string | null;
   paymentMethodId?: string | null;
-
   amount: number | string;
   currency: string;
   status: string;
-
   description?: string | null;
   clientSecret?: string | null;
   metadata?: unknown;
-
   createdAt: string;
   updatedAt?: string | null;
   expiresAt?: string | null;
-
   merchant?: PaymentIntentMerchant | null;
   customer?: PaymentIntentCustomer | null;
-
   paymentAttempts?: PaymentAttempt[];
   transactions?: PaymentIntentTransaction[];
 }
 
 export interface PaymentIntentResponse {
   success: boolean;
-
   data: {
     items: PaymentIntent[];
-
     pagination: {
       page: number;
       limit: number;
@@ -132,17 +121,19 @@ export interface CustomerPaymentMethod {
   createdAt?: string | null;
 }
 
+export interface PaymentGatewayResponse {
+  transactionId: string | null;
+  paymentUrl: string | null;
+  accessCode: string | null;
+  authorizationCode: string | null;
+}
+
 export interface CheckoutPaymentIntentResponse {
   paymentIntent: PaymentIntent;
   transaction: PaymentIntentTransaction;
   paymentAttempt: PaymentAttempt;
   provider: string;
-  gateway: {
-    transactionId: string | null;
-    paymentUrl: string | null;
-    accessCode: string | null;
-    authorizationCode: string | null;
-  };
+  gateway: PaymentGatewayResponse;
   response?: unknown;
 }
 
@@ -165,12 +156,7 @@ export interface ChargeSavedAuthorizationResponse {
   paymentAttempt: PaymentAttempt;
   authorization: PaymentIntentAuthorization;
   provider: string;
-  gateway: {
-    transactionId: string | null;
-    paymentUrl: string | null;
-    accessCode: string | null;
-    authorizationCode: string | null;
-  };
+  gateway: PaymentGatewayResponse;
   response?: unknown;
   duplicate?: boolean;
 }

@@ -15,6 +15,10 @@ export function useCheckoutPaymentIntent() {
     }: {
       id: string;
       payload: CheckoutPaymentIntentPayload;
-    }) => checkoutPaymentIntent(id, payload),
+    }) =>
+      checkoutPaymentIntent(
+        id,
+        payload,
+      ),
   });
 }
