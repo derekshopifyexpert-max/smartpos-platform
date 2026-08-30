@@ -1,35 +1,15 @@
 export {
-
-  default as BaseProvider
-
+  default as BaseProvider,
 } from "./base.provider.js";
 
 export {
-
-  default as ProviderFactory
-
+  default as ProviderFactory,
 } from "./provider.factory.js";
 
 export {
-
-  default as ProviderManager
-
+  default as ProviderManager,
 } from "./provider.manager.js";
 
 export {
-
-  default as FlutterwaveProvider
-
+  default as FlutterwaveProvider,
 } from "./flutterwave.provider.js";
-
-export {
-
-  default as CoinbaseProvider
-
-} from "./coinbase.provider.js";
-
-export {
-
-  default as BinanceProvider
-
-} from "./binance.provider.js";
