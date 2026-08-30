@@ -120,27 +120,29 @@ export const env = {
     process.env.S3_BUCKET ||
     "",
 
-  // ========== EXCHANGE PROVIDER (Crypto Liquidity) ==========
-  EXCHANGE_PROVIDER_NAME:
-    process.env.EXCHANGE_PROVIDER_NAME ||
-    "",
-
-  EXCHANGE_PROVIDER_BASE_URL:
-    process.env.EXCHANGE_PROVIDER_BASE_URL ||
-    "",
-
-  EXCHANGE_PROVIDER_API_KEY:
-    process.env.EXCHANGE_PROVIDER_API_KEY ||
-    "",
-
-  EXCHANGE_PROVIDER_API_SECRET:
-    process.env.EXCHANGE_PROVIDER_API_SECRET ||
-    "",
-
     SMARTPOS_WEBHOOK_SECRET:
     process.env.SMARTPOS_WEBHOOK_SECRET ||
     "",
 
+
+  // ========== QUIDAX EXCHANGE ==========
+  QUIDAX_API_KEY:
+    process.env.QUIDAX_API_KEY ||
+    "",
+
+  QUIDAX_BASE_URL:
+    process.env.QUIDAX_BASE_URL ||
+    "https://openapi.quidax.io/exchange-open-api/api/v1",
+
+  QUIDAX_ENVIRONMENT:
+    process.env.QUIDAX_ENVIRONMENT ||
+    "sandbox",
+
+  QUIDAX_TIMEOUT_MS:
+    Number(
+      process.env.QUIDAX_TIMEOUT_MS ||
+      15000
+    ),
 
   // ========== BLOCKCHAIN & SETTLEMENT ==========
   BLOCKCHAIN_NETWORK:

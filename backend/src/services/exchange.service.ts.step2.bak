@@ -6,7 +6,6 @@ import { FastifyInstance } from "fastify";
 
 import QuoteValidatorService from "./quote-validator.service.js";
 import type { IExchangeProvider } from "../providers/exchange-provider.interface.js";
-import { QuidaxProviderAdapter } from "../providers/quidax/quidax.provider.js";
 
 /**
  * Local provider contracts.
@@ -372,14 +371,29 @@ export default class ExchangeService {
    * this service.
    */
   async getExchangeProvider(): Promise<IExchangeProvider> {
-    const config = await import("../config/env.js").then((m) => m.default);
+    const config =
+      await import(
+        "../config/env.js"
+      ).then(
+        (m) => m.default,
+      );
 
-    return new QuidaxProviderAdapter({
-      apiKey: config.QUIDAX_API_KEY,
-      baseUrl: config.QUIDAX_BASE_URL,
-      timeoutMs: config.QUIDAX_TIMEOUT_MS,
-      environment: config.QUIDAX_ENVIRONMENT,
-    });
+    const providerName =
+      String(
+        config.EXCHANGE_PROVIDER_NAME ?? "",
+      )
+        .trim()
+        .toUpperCase();
+
+    if (!providerName) {
+      throw new Error(
+        "Exchange provider is not configured.",
+      );
+    }
+
+    throw new Error(
+      `Exchange provider "${providerName}" is configured but its adapter is not installed.`,
+    );
   }
 
   async getProviderAssets() {
