@@ -76,7 +76,6 @@ export function ProviderBalanceDisplay({
           </div>
         )}
 
-        )}
       </div>
     </div>
   );
