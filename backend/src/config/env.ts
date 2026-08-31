@@ -66,12 +66,6 @@ export const env = {
     process.env.FLUTTERWAVE_SECRET_KEY ||
     "",
 
-    "",
-
-    "",
-
-    "",
-
   SMTP_HOST:
     process.env.SMTP_HOST ||
     "",
