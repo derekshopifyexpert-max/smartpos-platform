@@ -1,31 +1,66 @@
 import type { DashboardMetrics } from "../types/metrics"
+import { api } from "@/lib/api/client"
+import { ENDPOINTS } from "@/lib/api/endpoints"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
-
-if (!API_URL) {
-  throw new Error("NEXT_PUBLIC_API_URL is not configured")
+interface ObservabilityDashboardResponse {
+  timestamp: string
+  health: {
+    status: string
+    uptime: number
+  }
+  payments: Record<string, number>
+  conversions: Record<string, number>
+  blockchainTransactions: Record<string, number>
 }
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
-  const response = await fetch(`${API_URL}/metrics`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
+  const response = await api.get<ObservabilityDashboardResponse>(
+    ENDPOINTS.dashboard.metrics
+  )
+
+  const data = response.data
+
+  const transactionsToday = Object.values(data.payments)
+    .reduce((total, count) => total + Number(count), 0)
+
+  const totalMerchants = 0
+  const activeTerminals = 0
+  const terminalCoverage = 0
+
+  const revenue = 0
+
+  const transactionStatusBreakdown = Object.entries(data.payments).map(
+    ([status, count]) => ({
+      status,
+      count: Number(count),
+    })
+  )
+
+  return {
+    revenue,
+    transactionsToday,
+    totalMerchants,
+    activeTerminals,
+    terminalCoverage,
+
+    platformActivity: {
+      date: data.timestamp,
+      totalTransactions: transactionsToday,
+      hourly: [],
     },
-    cache: "no-store",
-  })
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch dashboard metrics: ${response.status} ${response.statusText}`
-    )
+    merchantInfrastructure: {
+      registeredMerchants: totalMerchants,
+      activeTerminals,
+      terminalCoverage,
+    },
+
+    revenueSummary: {
+      date: data.timestamp,
+      revenue,
+      currency: "USD",
+    },
+
+    transactionStatusBreakdown,
   }
-
-  const result = await response.json()
-
-  if (!result.success || !result.data) {
-    throw new Error("Invalid dashboard metrics response")
-  }
-
-  return result.data
 }

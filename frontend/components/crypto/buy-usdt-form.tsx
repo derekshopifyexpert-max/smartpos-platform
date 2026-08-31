@@ -123,7 +123,7 @@ export function BuyUsdtForm({ onSuccess }: BuyUsdtFormProps) {
   };
 
   const estimatedCrypto = quote
-    ? calculateEstimatedCrypto(fiatAmount, (Number(quote.amount) / Number(quote.quoteAmount)))
+    ? calculateEstimatedCrypto(fiatAmount, (Number(quote.price)))
     : 0;
 
   return (
@@ -176,7 +176,7 @@ export function BuyUsdtForm({ onSuccess }: BuyUsdtFormProps) {
             <div>
               <p className="text-xs text-slate-600 uppercase tracking-wide">Price</p>
               <p className="text-lg font-bold text-slate-900 mt-1">
-                {formatCrypto((Number(quote.amount) / Number(quote.quoteAmount)), 4)} {selectedCurrency} / USDT
+                {formatCrypto((Number(quote.price)), 4)} {selectedCurrency} / USDT
               </p>
             </div>
 

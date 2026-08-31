@@ -6,7 +6,7 @@ export const ENDPOINTS = {
   },
 
   dashboard: {
-    metrics: "/observability/dashboard",
+    metrics: "/metrics",
   },
 
   merchants: {
