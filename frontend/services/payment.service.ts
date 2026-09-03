@@ -7,7 +7,6 @@ import type {
 } from "@/types/payment";
 
 export interface CreatePaymentIntentPayload {
-  merchantId: string;
   amount: number;
   currency: string;
   customerId?: string;

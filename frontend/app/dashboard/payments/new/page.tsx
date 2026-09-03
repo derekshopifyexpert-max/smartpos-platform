@@ -11,7 +11,6 @@ import { createPaymentIntent } from "@/services/payment.service";
 export default function NewPaymentPage() {
   const router = useRouter();
 
-  const [merchantId, setMerchantId] = useState("");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("NGN");
   const [description, setDescription] = useState("");
@@ -20,11 +19,6 @@ export default function NewPaymentPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!merchantId.trim()) {
-      toast.error("Merchant ID is required.");
-      return;
-    }
 
     const numericAmount = Number(amount);
 
@@ -42,7 +36,6 @@ export default function NewPaymentPage() {
       setSubmitting(true);
 
       const paymentIntent = await createPaymentIntent({
-        merchantId: merchantId.trim(),
         amount: numericAmount,
         currency: currency.trim().toUpperCase(),
         description: description.trim() || undefined,
@@ -95,7 +88,7 @@ export default function NewPaymentPage() {
         </h1>
 
         <p className="mt-1 text-sm text-slate-500">
-          Create a payment intent for a merchant.
+          Create a payment intent.
         </p>
       </div>
 
@@ -103,30 +96,6 @@ export default function NewPaymentPage() {
         onSubmit={handleSubmit}
         className="max-w-2xl space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
       >
-        <div className="space-y-2">
-          <label
-            htmlFor="merchantId"
-            className="text-sm font-medium text-slate-700"
-          >
-            Merchant ID
-          </label>
-
-          <input
-            id="merchantId"
-            value={merchantId}
-            onChange={(event) =>
-              setMerchantId(event.target.value)
-            }
-            placeholder="e.g. cmsxkjeu3000fc1ts5o2zrciu"
-            className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            disabled={submitting}
-          />
-
-          <p className="text-xs text-slate-500">
-            Enter the merchant that should own this payment.
-          </p>
-        </div>
-
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="space-y-2">
             <label

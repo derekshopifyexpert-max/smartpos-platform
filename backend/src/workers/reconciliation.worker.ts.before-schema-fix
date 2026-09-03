@@ -8,7 +8,7 @@ export default function createReconciliationWorker(app: any) {
   const timer = setInterval(async () => {
     try {
       // Find payment intents that are CAPTURED but have no
-      // crypto conversion or blockchain transaction.
+      // crypto conversion or blockchain transfer.
       const stale = await app.prisma.paymentIntent.findMany({
         where: {
           status: PaymentStatus.CAPTURED,
@@ -18,24 +18,17 @@ export default function createReconciliationWorker(app: any) {
         },
         include: {
           paymentAttempts: true,
-          transactions: {
-            orderBy: {
-              createdAt: "desc",
-            },
-            take: 1,
-            include: {
-              cryptoConversion: true,
-              blockchainTransaction: true,
-            },
-          },
+          transaction: true,
         },
       });
 
       for (const paymentIntent of stale) {
-        const transaction = paymentIntent.transactions[0] ?? null;
-        const conversion = transaction?.cryptoConversion ?? null;
-        const blockchainTransaction =
-          transaction?.blockchainTransaction ?? null;
+        const conversion =
+          await app.prisma.cryptoConversion.findFirst({
+            where: {
+              paymentIntentId: paymentIntent.id,
+            },
+          });
 
         if (!conversion) {
           app.log.warn(
@@ -43,7 +36,6 @@ export default function createReconciliationWorker(app: any) {
               paymentIntentId: paymentIntent.id,
               amount: paymentIntent.amount,
               currency: paymentIntent.currency,
-              transactionId: transaction?.id,
             },
             "Captured payment without conversion - reconciliation required",
           );
@@ -51,12 +43,20 @@ export default function createReconciliationWorker(app: any) {
           continue;
         }
 
+        const blockchainTransaction =
+          conversion.blockchainTransactionId
+            ? await app.prisma.blockchainTransaction.findUnique({
+                where: {
+                  id: conversion.blockchainTransactionId,
+                },
+              })
+            : null;
+
         if (!blockchainTransaction) {
           app.log.warn(
             {
               paymentIntentId: paymentIntent.id,
               conversionId: conversion.id,
-              transactionId: transaction?.id,
             },
             "Conversion exists but no blockchain transaction recorded",
           );

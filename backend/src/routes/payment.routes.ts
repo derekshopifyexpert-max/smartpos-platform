@@ -1,5 +1,7 @@
 import { FastifyInstance } from "fastify";
 
+import { authMiddleware } from "../middleware/auth.middleware.js";
+
 import PaymentService from "../services/payment.service.js";
 import PaymentOrchestratorService from "../services/payment-orchestrator.service.js";
 import PaymentController from "../controllers/payment.controller.js";
@@ -7,7 +9,7 @@ import PaymentController from "../controllers/payment.controller.js";
 import {
   validateBody,
   validateParams,
-  validateQuery
+  validateQuery,
 } from "../middleware/validate.js";
 
 import {
@@ -19,201 +21,105 @@ import {
   paymentIntentListQuerySchema,
   paymentMethodChargeSchema,
   paymentMethodIdSchema,
-  paymentMethodListQuerySchema
+  paymentMethodListQuerySchema,
 } from "../validators/payment.validator.js";
 
-export default async function paymentRoutes(
-  app: FastifyInstance
-) {
+export default async function paymentRoutes(app: FastifyInstance) {
+  const service = new PaymentService(app);
+  const orchestrator = new PaymentOrchestratorService(app);
+  const controller = new PaymentController(service, orchestrator);
 
-  const service =
-    new PaymentService(app);
-
-  const orchestrator =
-    new PaymentOrchestratorService(app);
-
-  const controller =
-    new PaymentController(
-      service,
-      orchestrator
-    );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Create Payment
-  |--------------------------------------------------------------------------
-  */
-
-  app.post(
-    "/payments",
-    controller.createPayment
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Create Payment Intent
-  |--------------------------------------------------------------------------
-  */
+  app.post("/payments", controller.createPayment);
 
   app.post(
     "/payment-intents",
     {
-      preHandler: validateBody(
-        createPaymentIntentSchema
-      )
-    },
-    controller.createPaymentIntent
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Checkout Payment Intent
-  |--------------------------------------------------------------------------
-  */
-
-  app.post(
-    "/payment-intents/:id/checkout",
-    {
       preHandler: [
-        validateParams(
-          paymentIntentIdSchema
-        ),
-        validateBody(
-          paymentIntentCheckoutSchema
-        )
-      ]
+        authMiddleware,
+        validateBody(createPaymentIntentSchema),
+      ],
     },
-    controller.checkoutPaymentIntent
+    controller.createPaymentIntent,
   );
-
-  /*
-  |--------------------------------------------------------------------------
-  | List Payment Intents
-  |--------------------------------------------------------------------------
-  */
 
   app.get(
     "/payment-intents",
     {
-      preHandler: validateQuery(
-        paymentIntentListQuerySchema
-      )
+      preHandler: validateQuery(paymentIntentListQuerySchema),
     },
-    controller.listPaymentIntents
+    controller.listPaymentIntents,
   );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Get Payment Intent
-  |--------------------------------------------------------------------------
-  */
 
   app.get(
     "/payment-intents/:id",
     {
-      preHandler: validateParams(
-        paymentIntentIdSchema
-      )
+      preHandler: validateParams(paymentIntentIdSchema),
     },
-    controller.getPaymentIntent
+    controller.getPaymentIntent,
   );
-
-  /*
-  |--------------------------------------------------------------------------
-  | List Saved Authorizations
-  |--------------------------------------------------------------------------
-  */
 
   app.get(
     "/payment-intents/:id/authorizations",
     {
-      preHandler: validateParams(
-        paymentIntentIdSchema
-      )
+      preHandler: validateParams(paymentIntentIdSchema),
     },
-    controller.getPaymentIntentAuthorizations
+    controller.getPaymentIntentAuthorizations,
   );
 
-  /*
-  |--------------------------------------------------------------------------
-  | Charge Saved Authorization
-  |--------------------------------------------------------------------------
-  */
+  app.get(
+    "/customers/:customerId/payment-methods",
+    {
+      preHandler: validateParams(paymentIntentIdSchema),
+    },
+    controller.listCustomerPaymentMethods,
+  );
 
   app.post(
     "/payment-intents/:id/authorizations/:authorizationId/charge",
     {
       preHandler: [
-        validateParams(
-          paymentIntentIdSchema
-        ),
-        validateParams(
-          paymentAuthorizationIdSchema
-        ),
-        validateBody(
-          paymentIntentAuthorizationChargeSchema
-        )
-      ]
+        validateParams(paymentAuthorizationIdSchema),
+        validateBody(paymentIntentAuthorizationChargeSchema),
+      ],
     },
-    controller.chargeSavedAuthorization
+    controller.chargeSavedAuthorization,
   );
-
-  /*
-  |--------------------------------------------------------------------------
-  | List Reusable Customer Payment Methods
-  |--------------------------------------------------------------------------
-  */
-
-  app.get(
-    "/payment-methods",
-    {
-      preHandler: validateQuery(
-        paymentMethodListQuerySchema
-      )
-    },
-    controller.listCustomerPaymentMethods
-  );
-
-  /*
-  |--------------------------------------------------------------------------
-  | Charge Reusable Customer Payment Method
-  |--------------------------------------------------------------------------
-  */
 
   app.post(
-    "/payment-methods/:id/charge",
+    "/customers/:customerId/payment-methods/:paymentMethodId/charge",
     {
       preHandler: [
-        validateParams(
-          paymentMethodIdSchema
-        ),
-        validateBody(
-          paymentMethodChargeSchema
-        )
-      ]
+        validateParams(paymentMethodIdSchema),
+        validateBody(paymentMethodChargeSchema),
+      ],
     },
-    controller.chargeCustomerPaymentMethod
+    controller.chargeCustomerPaymentMethod,
   );
 
-  /*
-  |--------------------------------------------------------------------------
-  | Expire Payment Intent
-  |--------------------------------------------------------------------------
-  */
+  app.post(
+    "/payment-intents/:id/checkout",
+    {
+      preHandler: [
+        validateParams(paymentIntentIdSchema),
+        validateBody(paymentIntentCheckoutSchema),
+      ],
+    },
+    controller.checkoutPaymentIntent,
+  );
 
   app.post(
     "/payment-intents/:id/crypto-settlement",
-    controller.processCryptoSettlement
+    {
+      preHandler: validateParams(paymentIntentIdSchema),
+    },
+    controller.processCryptoSettlement,
   );
 
-  app.patch(
+  app.post(
     "/payment-intents/:id/expire",
     {
-      preHandler: validateParams(
-        paymentIntentIdSchema
-      )
+      preHandler: validateParams(paymentIntentIdSchema),
     },
-    controller.expirePaymentIntent
+    controller.expirePaymentIntent,
   );
-
 }
