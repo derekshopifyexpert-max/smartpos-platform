@@ -1,48 +1,38 @@
 import { FastifyInstance } from "fastify";
 
+import PaymentService from "../services/payment.service.js";
+import PaymentOrchestratorService from "../services/payment-orchestrator.service.js";
 import PaymentController from "../controllers/payment.controller.js";
-import { authMiddleware } from "../middleware/auth.middleware.js";
+
+import {
+  validateBody,
+  validateParams,
+  validateQuery,
+} from "../middleware/validate.js";
+
 import {
   createPaymentIntentSchema,
-  paymentIntentAuthorizationChargeSchema,
-  paymentIntentCheckoutSchema,
   paymentIntentIdSchema,
-  paymentAuthorizationIdSchema,
-  paymentMethodChargeSchema,
-  paymentMethodIdSchema,
-  paymentMethodListQuerySchema,
   paymentIntentListQuerySchema,
 } from "../validators/payment.validator.js";
 
-export default async function paymentRoutes(app: FastifyInstance) {
-  const controller = app.paymentController as PaymentController;
+export default async function paymentRoutes(
+  app: FastifyInstance,
+) {
+  const service = new PaymentService(app);
+  const orchestrator = new PaymentOrchestratorService(app);
 
-  app.post(
-    "/payments",
-    {
-      preHandler: [
-        authMiddleware,
-      ],
-    },
-    controller.createPayment,
+  const controller = new PaymentController(
+    service,
+    orchestrator,
   );
 
   app.post(
     "/payment-intents",
     {
-      preHandler: [
-        async (request, reply) => {
-          try {
-            await app.validateBody(
-              request,
-              reply,
-              createPaymentIntentSchema,
-            );
-          } catch (error) {
-            throw error;
-          }
-        },
-      ],
+      preHandler: validateBody(
+        createPaymentIntentSchema,
+      ),
     },
     controller.createPaymentIntent,
   );
@@ -50,12 +40,9 @@ export default async function paymentRoutes(app: FastifyInstance) {
   app.get(
     "/payment-intents",
     {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        querystring: paymentIntentListQuerySchema,
-      },
+      preHandler: validateQuery(
+        paymentIntentListQuerySchema,
+      ),
     },
     controller.listPaymentIntents,
   );
@@ -63,152 +50,19 @@ export default async function paymentRoutes(app: FastifyInstance) {
   app.get(
     "/payment-intents/:id",
     {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        params: paymentIntentIdSchema,
-      },
+      preHandler: validateParams(
+        paymentIntentIdSchema,
+      ),
     },
     controller.getPaymentIntent,
   );
 
-  app.post(
-    "/payment-intents/:id/checkout",
-    {
-      preHandler: [
-        authMiddleware,
-        async (request, reply) => {
-          await app.validateBody(
-            request,
-            reply,
-            paymentIntentCheckoutSchema,
-          );
-        },
-      ],
-      schema: {
-        params: paymentIntentIdSchema,
-      },
-    },
-    controller.checkoutPaymentIntent,
-  );
-
-  app.get(
-    "/payment-intents/:id/authorizations",
-    {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        params: paymentIntentIdSchema,
-      },
-    },
-    controller.getPaymentIntentAuthorizations,
-  );
-
-  app.get(
-    "/payment-intents/:id/authorizations/:authorizationId",
-    {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        params: paymentAuthorizationIdSchema,
-      },
-    },
-    controller.getPaymentIntentAuthorization,
-  );
-
-  app.post(
-    "/payment-intents/:id/authorizations/:authorizationId/charge",
-    {
-      preHandler: [
-        authMiddleware,
-        async (request, reply) => {
-          await app.validateBody(
-            request,
-            reply,
-            paymentIntentAuthorizationChargeSchema,
-          );
-        },
-      ],
-      schema: {
-        params: paymentAuthorizationIdSchema,
-      },
-    },
-    controller.chargePaymentIntentAuthorization,
-  );
-
-  app.get(
-    "/customers/:customerId/payment-methods",
-    {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        params: {
-          customerId: {
-            type: "string",
-          },
-        },
-        querystring: paymentMethodListQuerySchema,
-      },
-    },
-    controller.listCustomerPaymentMethods,
-  );
-
-  app.get(
-    "/customers/:customerId/payment-methods/:id",
-    {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        params: {
-          customerId: {
-            type: "string",
-          },
-          id: paymentMethodIdSchema.shape.id,
-        },
-      },
-    },
-    controller.getCustomerPaymentMethod,
-  );
-
-  app.post(
-    "/customers/:customerId/payment-methods/:id/charge",
-    {
-      preHandler: [
-        authMiddleware,
-        async (request, reply) => {
-          await app.validateBody(
-            request,
-            reply,
-            paymentMethodChargeSchema,
-          );
-        },
-      ],
-      schema: {
-        params: {
-          customerId: {
-            type: "string",
-          },
-          id: paymentMethodIdSchema.shape.id,
-        },
-      },
-    },
-    controller.chargeCustomerPaymentMethod,
-  );
-
-  app.post(
+  app.patch(
     "/payment-intents/:id/expire",
     {
-      preHandler: [
-        authMiddleware,
-      ],
-      schema: {
-        params: paymentIntentIdSchema,
-      },
+      preHandler: validateParams(
+        paymentIntentIdSchema,
+      ),
     },
     controller.expirePaymentIntent,
   );
