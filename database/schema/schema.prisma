@@ -1250,7 +1250,7 @@ model GasHistory {
 
 model Transaction {
   id                      String                     @id @default(cuid())
-  merchantId              String
+  merchantId              String?
   terminalId              String?
   customerId              String?
   walletId                String?
@@ -1302,7 +1302,7 @@ model Transaction {
   blockchainTransaction   BlockchainTransaction?     @relation(fields: [blockchainTransactionId], references: [id])
   cryptoConversion        CryptoConversion?          @relation("TransactionCryptoConversion", fields: [cryptoConversionId], references: [id])
   customer                Customer?                  @relation(fields: [customerId], references: [id])
-  merchant                Merchant                   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant                Merchant?                  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   paymentIntent           PaymentIntent?             @relation(fields: [paymentIntentId], references: [id])
   terminal                Terminal?                  @relation(fields: [terminalId], references: [id])
   wallet                  Wallet?                    @relation(fields: [walletId], references: [id])

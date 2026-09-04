@@ -323,7 +323,7 @@ export default class PaymentService {
 
   async createTransaction(
     data: {
-      merchantId: string;
+      merchantId?: string;
       terminalId?: string;
       customerId?: string;
       walletId?: string;
@@ -368,10 +368,10 @@ export default class PaymentService {
     const reference =
       this.generateReference();
 
-    return db.transaction.create({
-      data: {
-        merchantId:
-          data.merchantId,
+    const transactionData: any = {
+        ...(data.merchantId
+          ? { merchantId: data.merchantId }
+          : {}),
 
         terminalId:
           data.terminalId,
@@ -415,7 +415,10 @@ export default class PaymentService {
 
         paymentIntentId:
           data.paymentIntentId,
-      },
+    };
+
+    return db.transaction.create({
+      data: transactionData,
     });
   }
 

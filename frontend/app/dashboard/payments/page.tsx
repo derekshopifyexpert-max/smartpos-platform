@@ -7,11 +7,12 @@ import {
   Plus,
   Wallet,
 } from "lucide-react";
-import { useSettlements } from "@/features/exchange/hooks/use-settlements";
-import { SettlementStatusBadge } from "@/components/settlements/settlement-status-badge";
+import { usePaymentIntents } from "@/features/payment-intents/hooks/use-payment-intents";
 
 export default function PaymentsPage() {
-  const { data: settlements, isLoading: settlementsLoading } = useSettlements();
+  const { data: paymentIntents, isLoading: paymentsLoading } = usePaymentIntents();
+
+  const payments = paymentIntents?.data || [];
 
   return (
     <div className="space-y-6 bg-slate-50">
@@ -26,10 +27,7 @@ export default function PaymentsPage() {
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Create customer payments and
-            configure the saved settlement
-            destination used by the payment
-            flow.
+            Create customer payments and send customers to secure Flutterwave card checkout.
           </p>
         </div>
 
@@ -55,10 +53,7 @@ export default function PaymentsPage() {
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Set the amount, fiat currency,
-                crypto asset, network, customer
-                email, and saved destination
-                wallet.
+                Set the amount, fiat currency, and customer details for the payment request.
               </p>
 
               <Link
@@ -100,7 +95,65 @@ export default function PaymentsPage() {
           </div>
         </section>
       </div>
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <h2 className="text-lg font-semibold text-slate-900">Payment History</h2>
+          <p className="mt-1 text-sm text-slate-500">Recent payments you've created</p>
+        </div>
 
+        {paymentsLoading && (
+          <div className="p-8 text-center text-sm text-slate-500">Loading payments...</div>
+        )}
+
+        {!paymentsLoading && (!payments || payments.length === 0) && (
+          <div className="p-8 text-center text-sm text-slate-500">
+            <p>No payments yet. Create your first payment to get started.</p>
+            <Link href="/dashboard/payments/new" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-800">
+              <Plus className="h-4 w-4" />
+              Create Payment
+            </Link>
+          </div>
+        )}
+
+        {!paymentsLoading && payments && payments.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-slate-200 bg-slate-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">ID</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Amount</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Status</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">Created</th>
+                  <th className="px-6 py-4 text-right text-sm font-semibold text-slate-700">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {payments.map((payment: any) => (
+                  <tr key={payment.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-mono text-sm font-medium text-slate-900">{payment.id.slice(0, 8)}...</p>
+                    </td>
+                    <td className="px-6 py-4 text-sm font-semibold text-slate-900">
+                      {payment.amount} {payment.currency}
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={payment.status} />
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-600">
+                      {new Date(payment.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Link href={`/dashboard/payment-intents/${payment.id}`} className="text-sm font-medium text-blue-700 hover:text-blue-800">
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -109,52 +162,37 @@ export default function PaymentsPage() {
             </h2>
 
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              SmartPOS creates the payment session
-              using the merchant's selected saved
-              wallet. The destination address comes
-              from the backend wallet record.
+              SmartPOS creates the payment session and sends the customer to Flutterwave for card payment.
             </p>
           </div>
 
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            Saved wallet required
+            Card checkout via Flutterwave
           </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Crypto settlement operations</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              Payments with real crypto settlement records appear here with their current backend status.
-            </p>
-          </div>
-          <Link href="/dashboard/settlements" className="text-sm font-medium text-blue-700 hover:text-blue-800">
-            Open all settlements
-          </Link>
-        </div>
-
-        {settlementsLoading && <p className="mt-5 text-sm text-slate-500">Loading settlement status...</p>}
-        {!settlementsLoading && settlements?.length === 0 && <p className="mt-5 text-sm text-slate-500">No crypto settlement records for these payments.</p>}
-        {!settlementsLoading && settlements && settlements.length > 0 && (
-          <div className="mt-5 grid gap-3">
-            {settlements.slice(0, 5).map((settlement) => (
-              <Link key={settlement.id} href={`/dashboard/settlements/${settlement.id}`} className="flex flex-col gap-3 rounded-lg border border-slate-200 p-4 hover:border-blue-300 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Payment {settlement.payment.id}</p>
-                  <p className="mt-1 text-xs text-slate-500">Payment status: {settlement.payment.status}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500">Settlement</span>
-                  <SettlementStatusBadge status={settlement.settlement.status} />
-                  <ArrowRight className="h-4 w-4 text-slate-400" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
     </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const normalizedStatus = status.toUpperCase();
+  
+  const statusStyles =
+    normalizedStatus === 'SETTLED' || normalizedStatus === 'CAPTURED' || normalizedStatus === 'AUTHORIZED'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : normalizedStatus === 'PENDING'
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : normalizedStatus === 'FAILED'
+      ? 'border-red-200 bg-red-50 text-red-700'
+      : normalizedStatus === 'CANCELLED'
+      ? 'border-slate-200 bg-slate-100 text-slate-700'
+      : 'border-blue-200 bg-blue-50 text-blue-700';
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusStyles}`}>
+      {normalizedStatus}
+    </span>
   );
 }

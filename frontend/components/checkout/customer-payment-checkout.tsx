@@ -38,51 +38,6 @@ type PaymentViewState =
   | "failed"
   | "expired";
 
-type PaymentMethodType =
-  | "card"
-  | "bank-transfer"
-  | "ussd";
-
-function readMetadataValue(
-  metadata: unknown,
-  keys: string[],
-): unknown {
-  if (
-    !metadata ||
-    typeof metadata !== "object"
-  ) {
-    return undefined;
-  }
-
-  const record =
-    metadata as Record<string, unknown>;
-
-  for (const key of keys) {
-    const direct = record[key];
-
-    if (direct !== undefined) {
-      return direct;
-    }
-
-    const normalized =
-      key
-        .replace(/[-_\s]+/g, "")
-        .toLowerCase();
-
-    for (const entryKey of Object.keys(record)) {
-      if (
-        entryKey
-          .replace(/[-_\s]+/g, "")
-          .toLowerCase() === normalized
-      ) {
-        return record[entryKey];
-      }
-    }
-  }
-
-  return undefined;
-}
-
 export default function CustomerPaymentCheckout() {
   const params = useParams();
   const id = String(params.id);
@@ -108,20 +63,6 @@ export default function CustomerPaymentCheckout() {
 
   const [phone, setPhone] =
     useState("");
-
-  const [cryptoAsset, setCryptoAsset] =
-    useState("USDT");
-
-  const [cryptoNetwork, setCryptoNetwork] =
-    useState("TRON");
-
-  const [
-    cryptoDestinationAddress,
-    setCryptoDestinationAddress,
-  ] = useState("");
-
-  const [selectedMethod, setSelectedMethod] =
-    useState<PaymentMethodType>("card");
 
   const [paymentState, setPaymentState] =
     useState<PaymentViewState>("initial");
@@ -210,231 +151,6 @@ export default function CustomerPaymentCheckout() {
     }
   }, [intent]);
 
-  const metadata = useMemo(() => {
-    if (!intent) {
-      return {} as Record<string, unknown>;
-    }
-
-    return (
-      (intent.metadata as Record<string, unknown>) ??
-      {}
-    );
-  }, [intent]);
-
-  useEffect(() => {
-    const destination =
-      (
-        metadata.cryptoDestination as
-          | Record<string, unknown>
-          | undefined
-      ) ??
-      (
-        metadata.crypto_destination as
-          | Record<string, unknown>
-          | undefined
-      ) ??
-      (
-        metadata.destination as
-          | Record<string, unknown>
-          | undefined
-      );
-
-    if (
-      !destination ||
-      typeof destination !== "object"
-    ) {
-      return;
-    }
-
-    const asset =
-      typeof destination.asset === "string"
-        ? destination.asset
-        : "USDT";
-
-    const network =
-      typeof destination.network === "string"
-        ? destination.network
-        : "TRON";
-
-    const address =
-      typeof destination.address === "string"
-        ? destination.address
-        : "";
-
-    setCryptoAsset(
-      asset.toUpperCase(),
-    );
-
-    setCryptoNetwork(
-      network.toUpperCase(),
-    );
-
-    if (address) {
-      setCryptoDestinationAddress(
-        address,
-      );
-    }
-  }, [metadata]);
-
-  const quoteDisplay = useMemo(() => {
-    const destination =
-      (
-        metadata.cryptoDestination as
-          | Record<string, unknown>
-          | undefined
-      ) ??
-      (
-        metadata.crypto_destination as
-          | Record<string, unknown>
-          | undefined
-      ) ??
-      (
-        metadata.destination as
-          | Record<string, unknown>
-          | undefined
-      );
-
-    const quoteAmount =
-      typeof destination?.quoteAmount ===
-      "number"
-        ? destination.quoteAmount
-        : typeof destination?.cryptoAmount ===
-            "number"
-          ? destination.cryptoAmount
-          : null;
-
-    if (
-      quoteAmount === null ||
-      quoteAmount <= 0
-    ) {
-      return `Quote pending · ${cryptoAsset}`;
-    }
-
-    return `≈ ${quoteAmount.toFixed(2)} ${cryptoAsset}`;
-  }, [
-    cryptoAsset,
-    metadata,
-  ]);
-
-  const methodAvailability =
-    useMemo(() => {
-      const bankTransferAvailable =
-        Boolean(
-          readMetadataValue(
-            metadata,
-            [
-              "bankTransfer",
-              "bank_transfer",
-              "bankTransferDetails",
-              "transferDetails",
-            ],
-          ) ||
-          readMetadataValue(
-            metadata,
-            [
-              "bankAccount",
-              "bankName",
-              "accountNumber",
-              "accountName",
-            ],
-          ),
-        );
-
-      const ussdAvailable =
-        Boolean(
-          readMetadataValue(
-            metadata,
-            [
-              "ussd",
-              "ussdDetails",
-              "ussdCode",
-              "ussdCodeDetails",
-            ],
-          ) ||
-          readMetadataValue(
-            metadata,
-            [
-              "ussdBank",
-              "ussdBankCode",
-              "ussdInstructions",
-            ],
-          ),
-        );
-
-      return {
-        card: true,
-        "bank-transfer":
-          bankTransferAvailable,
-        ussd: ussdAvailable,
-      } as const;
-    }, [metadata]);
-
-  const bankTransferDetails =
-    useMemo(() => {
-      const nested =
-        metadata as Record<string, unknown>;
-
-      const candidate =
-        nested.bankTransfer ??
-        nested.bank_transfer ??
-        nested.transferDetails ??
-        nested.bankTransferDetails;
-
-      return candidate &&
-        typeof candidate === "object"
-        ? (candidate as Record<
-            string,
-            unknown
-          >)
-        : {};
-    }, [metadata]);
-
-  const ussdDetails =
-    useMemo(() => {
-      const nested =
-        metadata as Record<string, unknown>;
-
-      const candidate =
-        nested.ussd ??
-        nested.ussdDetails ??
-        nested.ussdCode ??
-        nested.ussdInstructions;
-
-      return candidate &&
-        typeof candidate === "object"
-        ? (candidate as Record<
-            string,
-            unknown
-          >)
-        : {};
-    }, [metadata]);
-
-  function handleMethodSelect(
-    method: PaymentMethodType,
-  ) {
-    setSelectedMethod(method);
-    setPaymentError("");
-    setPaymentReference("");
-
-    if (method === "card") {
-      setPaymentState("input-required");
-      return;
-    }
-
-    if (
-      methodAvailability[method]
-    ) {
-      setPaymentState("method-selected");
-      return;
-    }
-
-    setPaymentState("failed");
-
-    setPaymentError(
-      "This payment method is not currently available for this payment request.",
-    );
-  }
-
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -463,38 +179,9 @@ export default function CustomerPaymentCheckout() {
       return;
     }
 
-    if (
-      !cryptoDestinationAddress.trim()
-    ) {
-      setPaymentError(
-        "Destination wallet address is required.",
-      );
-      setPaymentState(
-        "input-required",
-      );
-      return;
-    }
-
     setPaymentState("submitting");
 
     try {
-      const destination =
-        (
-          metadata.cryptoDestination as
-            | Record<string, unknown>
-            | undefined
-        ) ??
-        (
-          metadata.crypto_destination as
-            | Record<string, unknown>
-            | undefined
-        ) ??
-        (
-          metadata.destination as
-            | Record<string, unknown>
-            | undefined
-        );
-
       const result =
         await checkoutMutation.mutateAsync({
           id: intent.id,
@@ -506,72 +193,6 @@ export default function CustomerPaymentCheckout() {
               lastName.trim() || undefined,
             phone:
               phone.trim() || undefined,
-            cryptoDestination: {
-              asset:
-                cryptoAsset ||
-                (
-                  typeof destination ===
-                    "object" &&
-                  typeof destination.asset ===
-                    "string"
-                    ? destination.asset
-                    : undefined
-                ),
-
-              network:
-                cryptoNetwork ||
-                (
-                  typeof destination ===
-                    "object" &&
-                  typeof destination.network ===
-                    "string"
-                    ? destination.network
-                    : undefined
-                ),
-
-              address:
-                cryptoDestinationAddress.trim() ||
-                (
-                  typeof destination ===
-                    "object" &&
-                  typeof destination.address ===
-                    "string"
-                    ? destination.address
-                    : undefined
-                ),
-
-              walletId:
-                typeof destination ===
-                    "object" &&
-                typeof destination.walletId ===
-                    "string"
-                  ? destination.walletId
-                  : undefined,
-
-              amount:
-                typeof destination ===
-                    "object" &&
-                typeof destination.amount ===
-                    "number"
-                  ? destination.amount
-                  : undefined,
-
-              currency:
-                typeof destination ===
-                    "object" &&
-                typeof destination.currency ===
-                    "string"
-                  ? destination.currency
-                  : undefined,
-
-              reference:
-                typeof destination ===
-                    "object" &&
-                typeof destination.reference ===
-                    "string"
-                  ? destination.reference
-                  : undefined,
-            },
           },
         });
 
@@ -626,7 +247,6 @@ export default function CustomerPaymentCheckout() {
   async function handleTryAgain() {
     setPaymentError("");
     setPaymentReference("");
-    setSelectedMethod("card");
     setPaymentState("initial");
 
     await refetch();
@@ -789,62 +409,6 @@ export default function CustomerPaymentCheckout() {
   const isProcessing =
     paymentState === "processing";
 
-  const methodOptions: Array<{
-    id: PaymentMethodType;
-    label: string;
-    detail: string;
-    available: boolean;
-    icon: typeof CreditCard;
-  }> = [
-    {
-      id: "card",
-      label: "Card",
-      detail:
-        "Pay securely with your card via Flutterwave.",
-      available:
-        methodAvailability.card,
-      icon: CreditCard,
-    },
-    {
-      id: "bank-transfer",
-      label: "Bank Transfer",
-      detail:
-        "Use transfer instructions provided by the merchant.",
-      available:
-        methodAvailability[
-          "bank-transfer"
-        ],
-      icon: ShieldCheck,
-    },
-    {
-      id: "ussd",
-      label: "USSD",
-      detail:
-        "Complete payment using a supported USSD flow.",
-      available:
-        methodAvailability.ussd,
-      icon: LockKeyhole,
-    },
-  ];
-
-  const selectedMethodDetails =
-    (() => {
-      if (
-        selectedMethod ===
-        "bank-transfer"
-      ) {
-        return bankTransferDetails;
-      }
-
-      if (
-        selectedMethod === "ussd"
-      ) {
-        return ussdDetails;
-      }
-
-      return {};
-    })();
-
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto max-w-5xl">
@@ -886,68 +450,16 @@ export default function CustomerPaymentCheckout() {
                 Choose how to pay
               </p>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                {methodOptions.map(
-                  (method) => {
-                    const Icon =
-                      method.icon;
-
-                    const isSelected =
-                      selectedMethod ===
-                      method.id;
-
-                    return (
-                      <button
-                        key={method.id}
-                        type="button"
-                        onClick={() =>
-                          method.available &&
-                          handleMethodSelect(
-                            method.id,
-                          )
-                        }
-                        disabled={
-                          !method.available
-                        }
-                        className={`rounded-xl border px-3 py-3 text-left transition ${
-                          isSelected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : method.available
-                              ? "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                              : "cursor-not-allowed border-dashed border-slate-200 bg-slate-50 text-slate-400"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`rounded-lg p-2 ${
-                              isSelected
-                                ? "bg-white/10"
-                                : "bg-slate-100"
-                            }`}
-                          >
-                            <Icon size={15} />
-                          </div>
-
-                          <span className="text-sm font-semibold">
-                            {method.label}
-                          </span>
-                        </div>
-
-                        <p
-                          className={`mt-2 text-xs leading-5 ${
-                            isSelected
-                              ? "text-slate-200"
-                              : "text-slate-500"
-                          }`}
-                        >
-                          {method.available
-                            ? method.detail
-                            : "Unavailable for this request"}
-                        </p>
-                      </button>
-                    );
-                  },
-                )}
+              <div className="mt-3 rounded-xl border border-primary bg-primary px-3 py-3 text-primary-foreground">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-white/10 p-2">
+                    <CreditCard size={15} />
+                  </div>
+                  <span className="text-sm font-semibold">Card</span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-200">
+                  Pay securely with your card via Flutterwave.
+                </p>
               </div>
             </div>
 
@@ -957,114 +469,7 @@ export default function CustomerPaymentCheckout() {
               </div>
             ) : null}
 
-            <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Receive crypto
-                  </p>
-
-                  <p className="mt-2 text-lg font-semibold text-slate-900">
-                    {quoteDisplay}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="crypto-asset"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Asset
-                  </label>
-
-                  <select
-                    id="crypto-asset"
-                    value={cryptoAsset}
-                    onChange={(event) =>
-                      setCryptoAsset(
-                        event.target.value.toUpperCase(),
-                      )
-                    }
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
-                  >
-                    <option value="USDT">
-                      USDT
-                    </option>
-                    <option value="USDC">
-                      USDC
-                    </option>
-                    <option value="ETH">
-                      ETH
-                    </option>
-                    <option value="BTC">
-                      BTC
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="crypto-network"
-                    className="mb-2 block text-sm font-medium text-slate-700"
-                  >
-                    Network
-                  </label>
-
-                  <select
-                    id="crypto-network"
-                    value={cryptoNetwork}
-                    onChange={(event) =>
-                      setCryptoNetwork(
-                        event.target.value.toUpperCase(),
-                      )
-                    }
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
-                  >
-                    <option value="TRON">
-                      TRON
-                    </option>
-                    <option value="ETHEREUM">
-                      ETHEREUM
-                    </option>
-                    <option value="BSC">
-                      BSC
-                    </option>
-                    <option value="SOLANA">
-                      SOLANA
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <label
-                  htmlFor="crypto-destination"
-                  className="mb-2 block text-sm font-medium text-slate-700"
-                >
-                  Destination wallet
-                </label>
-
-                <input
-                  id="crypto-destination"
-                  value={
-                    cryptoDestinationAddress
-                  }
-                  onChange={(event) =>
-                    setCryptoDestinationAddress(
-                      event.target.value,
-                    )
-                  }
-                  className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-950 focus:ring-2 focus:ring-slate-950/10"
-                  placeholder="T or wallet address"
-                />
-              </div>
-            </div>
-
-            {selectedMethod ===
-            "card" ? (
-              <form
+            <form
                 onSubmit={handleSubmit}
                 className="space-y-5"
               >
@@ -1222,98 +627,6 @@ export default function CustomerPaymentCheckout() {
                   Secure checkout powered by Flutterwave
                 </div>
               </form>
-            ) : (
-              <div className="space-y-5">
-                {selectedMethod ===
-                "bank-transfer" ? (
-                  methodAvailability[
-                    "bank-transfer"
-                  ] &&
-                  Object.keys(
-                    selectedMethodDetails,
-                  ).length > 0 ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        Bank transfer details
-                      </p>
-
-                      <div className="mt-4 space-y-3 text-sm text-slate-600">
-                        {Object.entries(
-                          selectedMethodDetails,
-                        ).map(
-                          ([key, value]) => (
-                            <div
-                              key={key}
-                              className="flex items-start justify-between gap-4 rounded-lg bg-white p-3"
-                            >
-                              <span className="font-medium capitalize text-slate-500">
-                                {key}
-                              </span>
-
-                              <span className="text-right font-medium text-slate-900">
-                                {String(
-                                  value,
-                                )}
-                              </span>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-800">
-                      Bank transfer details are not
-                      available for this payment request.
-                      Please use a supported payment
-                      method.
-                    </div>
-                  )
-                ) : null}
-
-                {selectedMethod ===
-                "ussd" ? (
-                  methodAvailability.ussd &&
-                  Object.keys(
-                    selectedMethodDetails,
-                  ).length > 0 ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm font-semibold text-slate-900">
-                        USSD payment details
-                      </p>
-
-                      <div className="mt-4 space-y-3 text-sm text-slate-600">
-                        {Object.entries(
-                          selectedMethodDetails,
-                        ).map(
-                          ([key, value]) => (
-                            <div
-                              key={key}
-                              className="flex items-start justify-between gap-4 rounded-lg bg-white p-3"
-                            >
-                              <span className="font-medium capitalize text-slate-500">
-                                {key}
-                              </span>
-
-                              <span className="text-right font-medium text-slate-900">
-                                {String(
-                                  value,
-                                )}
-                              </span>
-                            </div>
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-800">
-                      USSD instructions are not
-                      available for this payment request.
-                      Please choose another method.
-                    </div>
-                  )
-                ) : null}
-              </div>
-            )}
           </section>
 
           <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
@@ -1331,45 +644,6 @@ export default function CustomerPaymentCheckout() {
               </p>
             </div>
 
-            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500">
-                  Receive
-                </span>
-
-                <span className="font-semibold text-slate-900">
-                  {quoteDisplay}
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500">
-                  Network
-                </span>
-
-                <span className="font-medium text-slate-900">
-                  {cryptoNetwork}
-                </span>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                <span className="text-slate-500">
-                  Destination
-                </span>
-
-                <span
-                  className="max-w-[180px] truncate font-medium text-slate-900"
-                  title={
-                    cryptoDestinationAddress ||
-                    "Not provided"
-                  }
-                >
-                  {cryptoDestinationAddress ||
-                    "Not provided"}
-                </span>
-              </div>
-            </div>
-
             <div className="mt-5 space-y-4">
               <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
                 <div className="rounded-lg bg-white p-2 text-slate-700">
@@ -1382,13 +656,7 @@ export default function CustomerPaymentCheckout() {
                   </p>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    {
-                      methodOptions.find(
-                        (item) =>
-                          item.id ===
-                          selectedMethod,
-                      )?.label
-                    }
+                    Card via Flutterwave
                   </p>
                 </div>
               </div>

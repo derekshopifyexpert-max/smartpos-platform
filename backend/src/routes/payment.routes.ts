@@ -12,6 +12,7 @@ import {
 
 import {
   createPaymentIntentSchema,
+  paymentIntentCheckoutSchema,
   paymentIntentIdSchema,
   paymentIntentListQuerySchema,
 } from "../validators/payment.validator.js";
@@ -55,6 +56,18 @@ export default async function paymentRoutes(
       ),
     },
     controller.getPaymentIntent,
+  );
+
+  app.post(
+    "/payment-intents/:id/checkout",
+    {
+      preHandler: [
+        validateBody(
+          paymentIntentCheckoutSchema,
+        ),
+      ],
+    },
+    controller.checkoutPaymentIntent,
   );
 
   app.patch(

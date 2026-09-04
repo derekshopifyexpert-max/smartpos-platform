@@ -652,12 +652,6 @@ export default class PaymentOrchestratorService {
       );
     }
 
-      if (!paymentIntent.merchantId) {
-      throw new Error(
-        "A merchant is required to process this payment.",
-      );
-    }
-
     const paymentCustomer =
       paymentIntent.customerId
         ? await this.app.prisma.customer.findUnique(
@@ -687,18 +681,20 @@ export default class PaymentOrchestratorService {
      */
     try {
       const merchant =
-        await this.app.prisma.merchant.findUnique(
-          {
-            where: {
-              id: paymentIntent.merchantId,
-            },
+        paymentIntent.merchantId
+          ? await this.app.prisma.merchant.findUnique(
+              {
+                where: {
+                  id: paymentIntent.merchantId,
+                },
 
-            select: {
-              id: true,
-              currency: true,
-            },
-          },
-        );
+                select: {
+                  id: true,
+                  currency: true,
+                },
+              },
+            )
+          : null;
 
       if (
         merchant &&
@@ -789,24 +785,6 @@ export default class PaymentOrchestratorService {
           | Record<string, unknown>
           | undefined
       );
-
-    if (cryptoDestination) {
-      const destinationAddress =
-        typeof cryptoDestination.address ===
-        "string"
-          ? cryptoDestination.address.trim()
-          : undefined;
-
-      if (
-        cryptoDestination.address !==
-          undefined &&
-        !destinationAddress
-      ) {
-        throw new Error(
-          "Crypto destination address is required.",
-        );
-      }
-    }
 
     const existingTransaction =
       paymentIntent.transactions.find(
