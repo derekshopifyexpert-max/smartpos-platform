@@ -652,6 +652,12 @@ export default class PaymentOrchestratorService {
       );
     }
 
+      if (!paymentIntent.merchantId) {
+      throw new Error(
+        "A merchant is required to process this payment.",
+      );
+    }
+
     const paymentCustomer =
       paymentIntent.customerId
         ? await this.app.prisma.customer.findUnique(
@@ -1303,6 +1309,12 @@ export default class PaymentOrchestratorService {
 
       throw new Error(
         "Payment Intent has expired.",
+      );
+    }
+
+    if (!paymentIntent.merchantId) {
+      throw new Error(
+        "A merchant is required to process this payment.",
       );
     }
 

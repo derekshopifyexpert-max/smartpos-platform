@@ -1728,7 +1728,7 @@ model PaymentMethod {
 
 model PaymentIntent {
   id                       String                  @id @default(cuid())
-  merchantId               String
+  merchantId               String?
   customerId               String?
   paymentMethodId          String?
   paymentProviderAccountId String?
@@ -1743,7 +1743,7 @@ model PaymentIntent {
   expiresAt                DateTime?
   paymentAttempts          PaymentAttempt[]
   customer                 Customer?               @relation(fields: [customerId], references: [id])
-  merchant                 Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant                 Merchant?               @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   paymentMethod            PaymentMethod?          @relation(fields: [paymentMethodId], references: [id])
   paymentProviderAccount   PaymentProviderAccount? @relation(fields: [paymentProviderAccountId], references: [id])
   transactions             Transaction[]

@@ -144,9 +144,9 @@ export default class PaymentService {
    * --------------------------------------------------------------------------
    */
 
-  async createPaymentIntent(
+    async createPaymentIntent(
     data: {
-      merchantId: string;
+      merchantId?: string;
       customerId?: string;
       paymentMethodId?: string;
       paymentProviderAccountId?: string;
@@ -158,43 +158,30 @@ export default class PaymentService {
     },
     tx?: PrismaTransactionClient,
   ) {
+    const createDataInput: any = {
+      amount: data.amount,
+      currency: data.currency,
+      description: data.description,
+      metadata: this.normalizeOptionalJson(data.metadata),
+      clientSecret: this.generateClientSecret(),
+      expiresAt: data.expiresAt,
+      status: PaymentStatus.PENDING,
+      ...(data.merchantId && {
+        merchant: { connect: { id: data.merchantId } },
+      }),
+      ...(data.customerId && {
+        customer: { connect: { id: data.customerId } },
+      }),
+      ...(data.paymentMethodId && {
+        paymentMethod: { connect: { id: data.paymentMethodId } },
+      }),
+      ...(data.paymentProviderAccountId && {
+        paymentProviderAccount: { connect: { id: data.paymentProviderAccountId } },
+      }),
+    };
+
     return this.db(tx).paymentIntent.create({
-      data: {
-        merchantId:
-          data.merchantId,
-
-        customerId:
-          data.customerId,
-
-        paymentMethodId:
-          data.paymentMethodId,
-
-        paymentProviderAccountId:
-          data.paymentProviderAccountId,
-
-        amount:
-          data.amount,
-
-        currency:
-          data.currency,
-
-        description:
-          data.description,
-
-        metadata:
-          this.normalizeOptionalJson(
-            data.metadata,
-          ),
-
-        clientSecret:
-          this.generateClientSecret(),
-
-        expiresAt:
-          data.expiresAt,
-
-        status:
-          PaymentStatus.PENDING,
-      },
+      data: createDataInput,
     });
   }
 

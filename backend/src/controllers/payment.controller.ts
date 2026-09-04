@@ -80,7 +80,7 @@ export default class PaymentController {
     reply: FastifyReply,
   ) => {
     const body = request.body as {
-      merchantId: string;
+      merchantId?: string;
       customerId?: string;
       paymentMethodId?: string;
       paymentProviderAccountId?: string;
