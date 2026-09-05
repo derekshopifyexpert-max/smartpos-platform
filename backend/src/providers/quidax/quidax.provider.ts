@@ -456,7 +456,7 @@ export class QuidaxProviderAdapter
 
     if (!this.config.rampPrivateKey) {
       throw new QuidaxConfigurationError(
-        "QUIDAX_PRIVATE_KEY is not configured.",
+        "QUIDAX_RAMP_PRIVATE_KEY is not configured.",
       );
     }
 

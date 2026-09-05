@@ -1027,8 +1027,13 @@ export default class ExchangeController {
           provider:
             "QUIDAX",
           environment:
-            configuration.NODE_ENV,
+            configuration.QUIDAX_ENVIRONMENT,
           connected: true,
+          exchangeConnected: true,
+          rampConfigured: Boolean(
+            configuration.QUIDAX_RAMP_BASE_URL &&
+              configuration.QUIDAX_RAMP_PRIVATE_KEY,
+          ),
           accountId:
             account.accountId,
         },
@@ -1042,8 +1047,13 @@ export default class ExchangeController {
             provider:
               "QUIDAX",
             environment:
-              configuration.NODE_ENV,
+              configuration.QUIDAX_ENVIRONMENT,
             connected: false,
+            exchangeConnected: false,
+            rampConfigured: Boolean(
+              configuration.QUIDAX_RAMP_BASE_URL &&
+                configuration.QUIDAX_RAMP_PRIVATE_KEY,
+            ),
             error:
               errorMessage(
                 error,

@@ -5,7 +5,6 @@ import {
   ArrowRight,
   CreditCard,
   Plus,
-  Wallet,
 } from "lucide-react";
 import { usePaymentIntents } from "@/features/payment-intents/hooks/use-payment-intents";
 
@@ -67,33 +66,6 @@ export default function PaymentsPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-700">
-              <Wallet className="h-5 w-5" />
-            </div>
-
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-slate-900">
-                Saved wallets
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Manage the existing public wallet
-                addresses used as crypto
-                settlement destinations.
-              </p>
-
-              <Link
-                href="/dashboard/wallets"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-800"
-              >
-                Open wallets
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-        </section>
       </div>
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-5">

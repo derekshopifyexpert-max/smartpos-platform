@@ -132,6 +132,14 @@ export const env = {
       15000
     ),
 
+  QUIDAX_RAMP_BASE_URL:
+    process.env.QUIDAX_RAMP_BASE_URL ||
+    "",
+
+  QUIDAX_RAMP_PRIVATE_KEY:
+    process.env.QUIDAX_RAMP_PRIVATE_KEY ||
+    "",
+
   // ========== BLOCKCHAIN & SETTLEMENT ==========
   BLOCKCHAIN_NETWORK:
     (process.env.BLOCKCHAIN_NETWORK || process.env.BLOCKCHAIN_NETWORK_NAME || "ETHEREUM").trim().toUpperCase(),

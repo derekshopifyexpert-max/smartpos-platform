@@ -4,9 +4,6 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CreditCard,
-  ExternalLink,
-  Store,
-  Terminal,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 
@@ -101,7 +98,7 @@ export default function TransactionDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2">
         <SummaryCard
           label="Amount"
           value={formatAmount(
@@ -109,16 +106,6 @@ export default function TransactionDetailPage() {
             transaction.currency
           )}
           icon={<CreditCard size={20} />}
-        />
-
-        <SummaryCard
-          label="Merchant"
-          value={
-            transaction.merchant?.name ??
-            transaction.merchantId ??
-            "-"
-          }
-          icon={<Store size={20} />}
         />
 
         <SummaryCard
@@ -150,29 +137,6 @@ export default function TransactionDetailPage() {
             label="Reference"
             value={transaction.reference ?? "-"}
             mono
-          />
-
-          <InfoItem
-            label="Merchant"
-            value={
-              transaction.merchant?.name ??
-              transaction.merchantId ??
-              "-"
-            }
-          />
-
-          <InfoItem
-            label="Terminal ID"
-            value={
-              transaction.terminal?.serialNumber ??
-              transaction.terminalId ??
-              "-"
-            }
-          />
-
-          <InfoItem
-            label="Customer ID"
-            value={transaction.customerId ?? "-"}
           />
 
           <InfoItem
@@ -210,25 +174,6 @@ export default function TransactionDetailPage() {
           />
 
           <InfoItem
-            label="Gateway"
-            value={transaction.gatewayProvider ?? "-"}
-          />
-
-          <InfoItem
-            label="Gateway Transaction"
-            value={transaction.gatewayTransactionId ?? "-"}
-            mono
-          />
-
-          <InfoItem
-            label="Payment URL"
-            value={
-              transaction.gatewayRequest?.response?.responseBody
-                ?.paymentUrl ?? "-"
-            }
-          />
-
-          <InfoItem
             label="Created"
             value={formatDate(transaction.createdAt)}
           />
@@ -242,144 +187,8 @@ export default function TransactionDetailPage() {
             }
           />
 
-          <InfoItem
-            label="Settlement Status"
-            value={transaction.settlementStatus ?? "-"}
-          />
-
-          <InfoItem
-            label="Settlement Amount"
-            value={
-              transaction.settlementAmount != null
-                ? formatAmount(
-                    transaction.settlementAmount,
-                    transaction.settlementCurrency ??
-                      transaction.currency
-                  )
-                : "-"
-            }
-          />
-
-          <InfoItem
-            label="Settlement Date"
-            value={
-              transaction.settlementDate
-                ? formatDate(transaction.settlementDate)
-                : "-"
-            }
-          />
         </div>
       </section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                <Store size={20} />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  Merchant
-                </h2>
-
-                <p className="text-sm text-slate-500">
-                  Merchant associated with this transaction.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-5 p-6">
-            <InfoItem
-              label="Business Name"
-              value={transaction.merchant?.name ?? "-"}
-            />
-
-            <InfoItem
-              label="Merchant ID"
-              value={transaction.merchantId ?? "-"}
-              mono
-            />
-
-            <InfoItem
-              label="Email"
-              value={
-                transaction.merchant?.email ??
-                transaction.merchant?.contactEmail ??
-                "-"
-              }
-            />
-
-            <InfoItem
-              label="Phone"
-              value={
-                transaction.merchant?.phone ??
-                transaction.merchant?.contactPhone ??
-                "-"
-              }
-            />
-
-            {transaction.merchantId && (
-              <Link
-                href={`/dashboard/merchants/${transaction.merchantId}`}
-                className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800"
-              >
-                View Merchant
-                <ExternalLink size={14} />
-              </Link>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-slate-100 p-2 text-slate-700">
-                <Terminal size={20} />
-              </div>
-
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  Terminal
-                </h2>
-
-                <p className="text-sm text-slate-500">
-                  POS terminal associated with this transaction.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-5 p-6">
-            <InfoItem
-              label="Terminal"
-              value={
-                transaction.terminal?.serialNumber ??
-                transaction.terminalId ??
-                "-"
-              }
-            />
-
-            <InfoItem
-              label="Terminal ID"
-              value={transaction.terminalId ?? "-"}
-              mono
-            />
-
-            <InfoItem
-              label="Status"
-              value="-"
-            />
-
-            <InfoItem
-              label="Transaction Created"
-              value={formatDate(transaction.createdAt)}
-            />
-          </div>
-        </section>
-      </div>
 
       {transaction.description && (
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm">

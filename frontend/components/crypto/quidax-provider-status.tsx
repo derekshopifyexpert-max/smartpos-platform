@@ -18,9 +18,10 @@ export function QuidaxProviderStatus() {
       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
         <div><p className="text-xs text-slate-500">Provider</p><p className="mt-1 font-medium text-slate-900">Quidax</p></div>
         <div><p className="text-xs text-slate-500">Environment</p><p className="mt-1 font-medium capitalize text-slate-900">{data?.environment || "Unavailable"}</p></div>
-        <div><p className="text-xs text-slate-500">Connection</p><p className="mt-1 font-medium text-slate-900">{data?.connected ? "Connected" : "Unavailable"}</p></div>
+        <div><p className="text-xs text-slate-500">Exchange API</p><p className="mt-1 font-medium text-slate-900">{(data?.exchangeConnected ?? data?.connected) ? "Connected" : "Unavailable"}</p></div>
+        <div><p className="text-xs text-slate-500">Ramp quotes</p><p className="mt-1 font-medium text-slate-900">{data?.rampConfigured ? "Configured" : "Credentials required"}</p></div>
       </div>
-      {(error || data?.error) && <p className="mt-4 text-sm text-amber-700">{data?.error || "Quidax connection unavailable."}</p>}
+      {(error || data?.error || data?.rampConfigured === false) && <p className="mt-4 text-sm text-amber-700">{data?.error || (!data?.rampConfigured ? "Quidax Exchange is connected, but Ramp quote credentials are not configured." : "Quidax connection unavailable.")}</p>}
     </section>
   );
 }

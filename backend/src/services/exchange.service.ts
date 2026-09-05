@@ -378,6 +378,8 @@ export default class ExchangeService {
       apiKey: config.QUIDAX_API_KEY,
       baseUrl: config.QUIDAX_BASE_URL,
       timeoutMs: config.QUIDAX_TIMEOUT_MS,
+      rampBaseUrl: config.QUIDAX_RAMP_BASE_URL,
+      rampPrivateKey: config.QUIDAX_RAMP_PRIVATE_KEY,
       environment: config.QUIDAX_ENVIRONMENT,
     });
   }

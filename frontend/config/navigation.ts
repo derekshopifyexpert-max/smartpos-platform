@@ -2,11 +2,7 @@ import {
   CreditCard,
   LayoutDashboard,
   ReceiptText,
-  ListChecks,
   Settings,
-  Wallet,
-  TrendingUp,
-  Coins,
 } from "lucide-react";
 
 export interface NavigationItem {
@@ -26,26 +22,6 @@ export const navigation: NavigationItem[] = [
     title: "Payments",
     href: "/dashboard/payments",
     icon: CreditCard,
-  },
-  {
-    title: "Crypto Trading",
-    href: "/dashboard/crypto",
-    icon: TrendingUp,
-  },
-  {
-    title: "Buy Crypto",
-    href: "/dashboard/buy-crypto",
-    icon: Coins,
-  },
-  {
-    title: "Settlements",
-    href: "/dashboard/settlements",
-    icon: ListChecks,
-  },
-  {
-    title: "Wallets",
-    href: "/dashboard/wallets",
-    icon: Wallet,
   },
   {
     title: "Transactions",

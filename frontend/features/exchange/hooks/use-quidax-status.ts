@@ -7,6 +7,8 @@ export interface QuidaxStatus {
   provider: "QUIDAX";
   environment: string;
   connected: boolean;
+  exchangeConnected?: boolean;
+  rampConfigured?: boolean;
   accountId?: string;
   error?: string;
 }
