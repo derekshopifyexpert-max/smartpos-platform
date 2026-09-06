@@ -14,18 +14,6 @@ export default async function settlementRoutes(
   const controller =
     new SettlementController(service);
 
-  app.get(
-    "/crypto-settlements",
-    { preHandler: authMiddleware },
-    controller.cryptoSettlements
-  );
-
-  app.get(
-    "/crypto-settlements/:id",
-    { preHandler: authMiddleware },
-    controller.cryptoSettlement
-  );
-
   app.post(
     "/settlements",
     controller.createSettlement

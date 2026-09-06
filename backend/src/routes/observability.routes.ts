@@ -2,17 +2,57 @@ import { FastifyInstance } from "fastify";
 
 export default async function observabilityRoutes(app: FastifyInstance) {
   app.get('/observability/dashboard', async (request, reply) => {
+    // Calculate today's date range
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const successfulStatuses = ['AUTHORIZED', 'CAPTURED', 'SETTLED', 'APPROVED'];
+    const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const successfulTransactions = await app.prisma.transaction.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: successfulStatuses as any },
+        createdAt: { gte: today, lt: tomorrow },
+      },
+      select: { amount: true, currency: true },
+    });
+
+    const settledTransactions = await app.prisma.transaction.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: successfulStatuses as any },
+        settlementStatus: 'COMPLETED',
+        createdAt: { gte: last24Hours },
+      },
+      select: { amount: true, currency: true },
+    });
+
+    const currencyMetrics = new Map<string, { revenue: number; transactions: number }>();
+
+    for (const transaction of successfulTransactions) {
+      const current = currencyMetrics.get(transaction.currency) ?? { revenue: 0, transactions: 0 };
+      current.transactions += 1;
+      currencyMetrics.set(transaction.currency, current);
+    }
+
+    for (const transaction of settledTransactions) {
+      const current = currencyMetrics.get(transaction.currency) ?? { revenue: 0, transactions: 0 };
+      current.revenue += Number(transaction.amount);
+      currencyMetrics.set(transaction.currency, current);
+    }
+
+    const currencySummaries = Array.from(currencyMetrics.entries()).map(
+      ([currency, metrics]) => ({ currency, ...metrics })
+    );
+
+    const transactionsToday = successfulTransactions.length;
+    const revenue = currencySummaries.reduce((total, item) => total + item.revenue, 0);
+
+    // Get payment status breakdown
     const payments = await app.prisma.paymentIntent.groupBy({
-      by: ['status'],
-      _count: { id: true },
-    });
-
-    const conversions = await app.prisma.cryptoConversion.groupBy({
-      by: ['status'],
-      _count: { id: true },
-    });
-
-    const blockchainTxs = await app.prisma.blockchainTransaction.groupBy({
       by: ['status'],
       _count: { id: true },
     });
@@ -22,22 +62,15 @@ export default async function observabilityRoutes(app: FastifyInstance) {
       return acc;
     }, {});
 
-    const conversionStats = conversions.reduce((acc: any, c) => {
-      acc[c.status] = c._count.id;
-      return acc;
-    }, {});
-
-    const blockchainStats = blockchainTxs.reduce((acc: any, b) => {
-      acc[b.status] = b._count.id;
-      return acc;
-    }, {});
-
     return reply.send({
       timestamp: new Date(),
       health: { status: 'operational', uptime: process.uptime() },
+      revenue,
+      transactionsToday,
+      currencySummaries,
       payments: paymentStats,
-      conversions: conversionStats,
-      blockchainTransactions: blockchainStats,
+      conversions: {},
+      blockchainTransactions: {},
     });
   });
 

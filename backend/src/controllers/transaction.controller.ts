@@ -1,6 +1,10 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 
 import TransactionService from "../services/transaction.service.js";
+import {
+  isTransactionRetentionEnabled,
+  setTransactionRetentionEnabled,
+} from "../services/transaction-retention.service.js";
 
 export default class TransactionController {
   constructor(
@@ -133,4 +137,40 @@ export default class TransactionController {
   });
 
 };
+
+  delete = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    const result = await this.transactionService.deleteTransactions(
+      request.body as any
+    );
+
+    return reply.send({
+      success: true,
+      data: result,
+    });
+  };
+
+  retentionStatus = async (
+    _request: FastifyRequest,
+    reply: FastifyReply
+  ) => reply.send({
+    success: true,
+    data: { enabled: isTransactionRetentionEnabled(), retentionDays: 7 },
+  });
+
+  setRetention = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    setTransactionRetentionEnabled(
+      (request.body as { enabled: boolean }).enabled
+    );
+
+    return reply.send({
+      success: true,
+      data: { enabled: isTransactionRetentionEnabled(), retentionDays: 7 },
+    });
+  };
 }

@@ -66,6 +66,40 @@ export async function getTransaction(
   return response.data.data;
 }
 
+export async function deleteTransactions(payload: {
+  currentEmail: string;
+  currentPassword: string;
+  ids?: string[];
+  deleteAll?: boolean;
+}) {
+  const response = await api.delete<{
+    success: boolean;
+    data: { deleted: number };
+  }>(ENDPOINTS.transactions.list, {
+    data: payload,
+  });
+
+  return response.data.data;
+}
+
+export async function getTransactionRetention() {
+  const response = await api.get<{
+    success: boolean;
+    data: { enabled: boolean; retentionDays: number };
+  }>(`${ENDPOINTS.transactions.list}/retention`);
+
+  return response.data.data;
+}
+
+export async function setTransactionRetention(enabled: boolean) {
+  const response = await api.patch<{
+    success: boolean;
+    data: { enabled: boolean; retentionDays: number };
+  }>(`${ENDPOINTS.transactions.list}/retention`, { enabled });
+
+  return response.data.data;
+}
+
 
 /*
 |--------------------------------------------------------------------------

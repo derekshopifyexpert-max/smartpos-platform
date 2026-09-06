@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
+  X,
 } from "lucide-react";
 
 import { navigation } from "@/config/navigation";
@@ -37,24 +38,41 @@ export function Sidebar() {
       (state) => state.collapsed
     );
 
+  const mobileOpen = useSidebarStore(
+    (state) => state.mobileOpen
+  );
+
+  const setMobileOpen = useSidebarStore(
+    (state) => state.setMobileOpen
+  );
+
+  const showLabels = !collapsed || mobileOpen;
+
   const [openGroup, setOpenGroup] =
     useState<string | null>("Operations");
 
   return (
+    <>
+      {mobileOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/30 md:hidden"
+        />
+      )}
 
     <aside
-      className={`sticky top-0 flex h-screen flex-col border-r border-slate-200 bg-white transition-all duration-300 ${
-        collapsed
-          ? "w-20"
-          : "w-64"
-      }`}
+      className={`fixed inset-y-0 left-0 z-50 flex w-[min(18rem,88vw)] flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-300 md:sticky md:z-auto md:h-screen md:w-auto md:shrink-0 md:translate-x-0 md:shadow-none ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      } ${collapsed ? "md:w-20" : "md:w-64"}`}
     >
 
       {/* Logo */}
 
-      <div className="flex h-16 items-center border-b border-slate-200 px-6">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 sm:px-6">
 
-        {collapsed ? (
+        {!showLabels ? (
 
           <div className="mx-auto text-xl font-bold text-blue-600">
             SP
@@ -76,6 +94,15 @@ export function Sidebar() {
 
         )}
 
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close sidebar"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 md:hidden"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
       </div>
 
       {/* Navigation */}
@@ -96,9 +123,10 @@ export function Sidebar() {
 
               return (
 
-                <Link
+                  <Link
                   key={item.title}
                   href={item.href}
+                    onClick={() => setMobileOpen(false)}
                   className={`flex h-11 items-center gap-3 rounded-xl px-3 transition ${
                     active
                       ? "bg-blue-600 text-white shadow-sm"
@@ -108,7 +136,7 @@ export function Sidebar() {
 
                   <Icon size={19} />
 
-                  {!collapsed && (
+                  {showLabels && (
 
                     <span className="truncate text-sm font-medium">
 
@@ -146,7 +174,7 @@ export function Sidebar() {
 
                     <Icon size={19} />
 
-                    {!collapsed && (
+                    {showLabels && (
 
                       <span className="truncate text-sm font-medium">
 
@@ -158,7 +186,7 @@ export function Sidebar() {
 
                   </div>
 
-                  {!collapsed && (
+                  {showLabels && (
 
                     opened
                       ? <ChevronDown size={16} />
@@ -168,7 +196,7 @@ export function Sidebar() {
 
                 </button>
 
-                {!collapsed &&
+                {showLabels &&
                   opened && (
 
                     <div className="ml-7 mt-1 border-l border-slate-200 pl-3">
@@ -186,6 +214,7 @@ export function Sidebar() {
                           <Link
                             key={child.title}
                             href={child.href}
+                            onClick={() => setMobileOpen(false)}
                             className={`mb-1 flex h-10 items-center gap-3 rounded-lg px-3 transition ${
                               active
                                 ? "bg-blue-50 font-medium text-blue-600"
@@ -232,7 +261,7 @@ export function Sidebar() {
 
           <LogOut size={19} />
 
-          {!collapsed && (
+          {showLabels && (
 
             <span className="font-medium">
 
@@ -247,6 +276,8 @@ export function Sidebar() {
       </div>
 
     </aside>
+
+    </>
 
   );
 

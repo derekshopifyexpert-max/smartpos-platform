@@ -13,7 +13,7 @@ export default function DashboardLayout({
       <section className="min-w-0 flex-1 bg-slate-50">
         <Topbar />
 
-        <div className="p-6 lg:p-8">
+        <div className="min-w-0 p-4 sm:p-6 lg:p-8">
           {children}
         </div>
       </section>

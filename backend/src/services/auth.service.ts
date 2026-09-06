@@ -7,6 +7,8 @@ import {
   verifyRefreshToken,
 } from "../utils/token.js";
 
+import type { ChangeCredentialsDto } from "../validators/auth.validator.js";
+
 const REFRESH_TOKEN_DAYS = 30;
 
 function createStatusError(
@@ -307,6 +309,55 @@ export default class AuthService {
     return this.createTokens(
       record.user
     );
+  }
+
+  async changeCredentials(
+    data: ChangeCredentialsDto
+  ) {
+    const user = await this.app.prisma.user.findUnique({
+      where: { email: data.currentEmail.trim().toLowerCase() },
+    });
+
+    if (!user?.passwordHash) {
+      throw createStatusError("Account not found.", 404);
+    }
+
+    const currentPasswordValid = await bcrypt.compare(
+      data.currentPassword,
+      user.passwordHash
+    );
+
+    if (!currentPasswordValid) {
+      throw createStatusError("Current password is incorrect.", 401);
+    }
+
+    const newEmail = data.newEmail?.trim().toLowerCase();
+
+    if (newEmail && newEmail !== user.email) {
+      const existingUser = await this.app.prisma.user.findUnique({
+        where: { email: newEmail },
+      });
+
+      if (existingUser && existingUser.id !== user.id) {
+        throw createStatusError("Email already exists.", 409);
+      }
+    }
+
+    const passwordHash = await bcrypt.hash(data.newPassword, 12);
+
+    await this.app.prisma.$transaction([
+      this.app.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          ...(newEmail ? { email: newEmail } : {}),
+        },
+      }),
+      this.app.prisma.refreshToken.updateMany({
+        where: { userId: user.id, revoked: false },
+        data: { revoked: true },
+      }),
+    ]);
   }
 
   async logout(

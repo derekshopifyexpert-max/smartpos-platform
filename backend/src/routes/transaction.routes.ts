@@ -18,7 +18,9 @@ import {
   SettlementTransactionSchema,
   FailTransactionSchema,
   transactionIdSchema,
-  transactionListQuerySchema
+  transactionListQuerySchema,
+  deleteTransactionsSchema,
+  transactionRetentionSchema
 } from "../validators/transaction.validator.js";
 
 export default async function transactionRoutes(
@@ -199,6 +201,31 @@ export default async function transactionRoutes(
 
     controller.list
 
+  );
+
+  app.delete(
+    "/transactions",
+    {
+      preHandler: validateBody(deleteTransactionsSchema)
+    },
+    controller.delete
+  );
+
+  app.get(
+    "/transactions/retention",
+    { preHandler: authMiddleware },
+    controller.retentionStatus
+  );
+
+  app.patch(
+    "/transactions/retention",
+    {
+      preHandler: [
+        authMiddleware,
+        validateBody(transactionRetentionSchema),
+      ],
+    },
+    controller.setRetention
   );
 
 

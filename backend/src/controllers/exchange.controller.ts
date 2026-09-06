@@ -1006,14 +1006,6 @@ export default class ExchangeController {
     _request: FastifyRequest,
     reply: FastifyReply,
   ) => {
-    const configuration =
-      await import(
-        "../config/env.js"
-      ).then(
-        (module) =>
-          module.default,
-      );
-
     try {
       const provider =
         await this.exchangeService.getExchangeProvider();
@@ -1024,18 +1016,12 @@ export default class ExchangeController {
       return reply.send({
         success: true,
         data: {
-          provider:
-            "QUIDAX",
-          environment:
-            configuration.QUIDAX_ENVIRONMENT,
+          provider: "disabled",
+          environment: "production",
           connected: true,
-          exchangeConnected: true,
-          rampConfigured: Boolean(
-            configuration.QUIDAX_RAMP_BASE_URL &&
-              configuration.QUIDAX_RAMP_PRIVATE_KEY,
-          ),
-          accountId:
-            account.accountId,
+          exchangeConnected: false,
+          rampConfigured: false,
+          accountId: account.accountId,
         },
       });
     } catch (error) {
@@ -1044,20 +1030,15 @@ export default class ExchangeController {
         .send({
           success: true,
           data: {
-            provider:
-              "QUIDAX",
-            environment:
-              configuration.QUIDAX_ENVIRONMENT,
+            provider: "disabled",
+            environment: "production",
             connected: false,
             exchangeConnected: false,
-            rampConfigured: Boolean(
-              configuration.QUIDAX_RAMP_BASE_URL &&
-                configuration.QUIDAX_RAMP_PRIVATE_KEY,
-            ),
+            rampConfigured: false,
             error:
               errorMessage(
                 error,
-                "Quidax unavailable.",
+                "Exchange provider disabled. SmartPOS uses Flutterwave only.",
               ),
           },
         });

@@ -1,0 +1,1 @@
+# SmartPOS release rules.

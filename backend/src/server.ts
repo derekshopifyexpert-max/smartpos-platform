@@ -2,6 +2,7 @@ import "dotenv/config";
 import buildApp from "./app.js";
 import createConfirmationWorker from "./workers/confirmation.worker.js";
 import createReconciliationWorker from "./workers/reconciliation.worker.js";
+import { archiveExpiredTransactions } from "./services/transaction-retention.service.js";
 
 async function start() {
   const app =
@@ -19,6 +20,7 @@ async function start() {
   let shuttingDown = false;
   let confirmationWorker: { stop: () => Promise<void> } | null = null;
   let reconciliationWorker: { stop: () => Promise<void> } | null = null;
+  let transactionRetentionTimer: NodeJS.Timeout | null = null;
 
   const shutdown = async (
     signal: NodeJS.Signals
@@ -50,6 +52,10 @@ async function start() {
         } catch (err) {
           console.error('Error stopping reconciliation worker', err);
         }
+      }
+
+      if (transactionRetentionTimer) {
+        clearInterval(transactionRetentionTimer);
       }
 
       console.log(
@@ -119,6 +125,12 @@ async function start() {
         app.log.error({ err }, 'Failed to start reconciliation worker');
       }
     }
+
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    void archiveExpiredTransactions(app);
+    transactionRetentionTimer = setInterval(() => {
+      void archiveExpiredTransactions(app);
+    }, sevenDays);
   } catch (error) {
     app.log.error(error);
 

@@ -5,19 +5,21 @@ import {
   CreditCard,
   Plus,
   RefreshCw,
-  Store,
-  Terminal,
   TrendingUp,
 } from "lucide-react";
 
 import { useDashboardMetrics } from "@/features/dashboard/hooks/use-dashboard-metrics";
 
 function formatCurrency(amount: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${amount.toLocaleString()} ${currency}`;
+  }
 }
 
 function StatCard({
@@ -112,7 +114,10 @@ export default function DashboardPage() {
     );
   }
 
-  const currency = metrics.revenueSummary?.currency || "USD";
+  const platformStatus = metrics.apiConnected ? "Connected" : "Unavailable";
+  const platformStatusClasses = metrics.apiConnected
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-red-200 bg-red-50 text-red-700";
 
   return (
     <div className="space-y-6">
@@ -150,33 +155,31 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
         <StatCard
-          title="Today's Revenue"
-          value={formatCurrency(metrics.revenue, currency)}
-          description="Settled revenue today"
+          title="Settled Revenue"
+          value={
+            metrics.currencySummaries.length > 0
+              ? metrics.currencySummaries
+                  .map((summary) => formatCurrency(summary.revenue, summary.currency))
+                  .join(" | ")
+              : "No settled revenue"
+          }
+          description="Settled revenue in last 24 hours"
           icon={TrendingUp}
         />
 
         <StatCard
           title="Transactions Today"
-          value={metrics.transactionsToday.toLocaleString()}
-          description="Payments processed today"
+          value={
+            metrics.currencySummaries.length > 0
+              ? metrics.currencySummaries
+                  .map((summary) => `${summary.transactions.toLocaleString()} ${summary.currency}`)
+                  .join(" | ")
+              : "0"
+          }
+          description="Successful payments today by currency"
           icon={CreditCard}
-        />
-
-        <StatCard
-          title="Total Merchants"
-          value={metrics.totalMerchants.toLocaleString()}
-          description="Registered merchants"
-          icon={Store}
-        />
-
-        <StatCard
-          title="Active Terminals"
-          value={metrics.activeTerminals.toLocaleString()}
-          description={`${metrics.terminalCoverage}% terminal coverage`}
-          icon={Terminal}
         />
       </div>
 
@@ -192,41 +195,33 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <span className="inline-flex w-fit items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-            Operational
+          <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-semibold ${platformStatusClasses}`}>
+            {platformStatus}
           </span>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg bg-slate-50 p-4">
-            <p className="text-xs font-medium text-slate-500">
-              Revenue
-            </p>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {metrics.currencySummaries.length === 0 ? (
+            <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500 sm:col-span-2 lg:col-span-3">
+              No successful transactions recorded today.
+            </div>
+          ) : (
+            metrics.currencySummaries.map((summary) => (
+              <div key={summary.currency} className="rounded-lg bg-slate-50 p-4">
+                <p className="text-xs font-medium text-slate-500">
+                  {summary.currency}
+                </p>
 
-            <p className="mt-1 text-lg font-semibold text-slate-900">
-              {formatCurrency(metrics.revenue, currency)}
-            </p>
-          </div>
+                <p className="mt-1 text-lg font-semibold text-slate-900">
+                  {formatCurrency(summary.revenue, summary.currency)}
+                </p>
 
-          <div className="rounded-lg bg-slate-50 p-4">
-            <p className="text-xs font-medium text-slate-500">
-              Transactions
-            </p>
-
-            <p className="mt-1 text-lg font-semibold text-slate-900">
-              {metrics.transactionsToday.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="rounded-lg bg-slate-50 p-4">
-            <p className="text-xs font-medium text-slate-500">
-              Terminal coverage
-            </p>
-
-            <p className="mt-1 text-lg font-semibold text-slate-900">
-              {metrics.terminalCoverage}%
-            </p>
-          </div>
+                <p className="mt-1 text-sm text-slate-600">
+                  {summary.transactions.toLocaleString()} successful transactions
+                </p>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import {
 import AuthService from "../services/auth.service.js";
 
 import type {
+  ChangeCredentialsDto,
   LoginRequest,
   RegisterRequest,
 } from "../types/auth.types.js";
@@ -75,6 +76,22 @@ export default class AuthController {
     return reply.send({
       success: true,
       data: result,
+    });
+  };
+
+  changeCredentials = async (
+    request: FastifyRequest,
+    reply: FastifyReply
+  ) => {
+    const body = request.body as ChangeCredentialsDto;
+
+    await this.authService.changeCredentials(body);
+
+    return reply.send({
+      success: true,
+      data: {
+        message: "Credentials updated. Please sign in again.",
+      },
     });
   };
 

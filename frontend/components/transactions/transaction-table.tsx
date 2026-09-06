@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RefreshCw, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
+import {
+  getTransactionRetention,
+  setTransactionRetention,
+} from "@/features/transactions/services/transaction.service";
 
 export function TransactionTable() {
   const router = useRouter();
@@ -12,6 +16,8 @@ export function TransactionTable() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const [retentionEnabled, setRetentionEnabled] = useState(true);
+  const [isUpdatingRetention, setIsUpdatingRetention] = useState(false);
 
   const limit = 10;
 
@@ -25,6 +31,12 @@ export function TransactionTable() {
 
   const transactions = data?.items ?? [];
   const pagination = data?.pagination;
+
+  useEffect(() => {
+    void getTransactionRetention()
+      .then((settings) => setRetentionEnabled(settings.enabled))
+      .catch(() => setRetentionEnabled(true));
+  }, []);
 
   const filteredTransactions = (() => {
     const query = search.trim().toLowerCase();
@@ -45,8 +57,6 @@ export function TransactionTable() {
       const searchableValues = [
         transaction.id,
         transaction.reference,
-        transaction.merchant?.name,
-        transaction.merchantId,
         transaction.type,
         transaction.paymentMethod,
         transaction.status,
@@ -73,6 +83,18 @@ export function TransactionTable() {
   ) {
     setStatusFilter(value);
     setPage(1);
+  }
+
+  async function handleRetentionToggle() {
+    setIsUpdatingRetention(true);
+    try {
+      const settings = await setTransactionRetention(!retentionEnabled);
+      setRetentionEnabled(settings.enabled);
+    } catch {
+      // Keep the displayed state unchanged when the API cannot update it.
+    } finally {
+      setIsUpdatingRetention(false);
+    }
   }
 
   function formatAmount(
@@ -128,7 +150,7 @@ export function TransactionTable() {
           Unable to load transactions.
         </p>
         <p className="mt-2 text-sm text-red-600">
-          The transaction API is unavailable or the merchant session is not authorized.
+          The transaction API is unavailable or the current session is not authorized.
         </p>
 
         <button
@@ -225,6 +247,29 @@ export function TransactionTable() {
 
           Refresh
         </button>
+
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-amber-900">
+          {retentionEnabled
+            ? "Transactions are automatically deleted after 7 days."
+            : "Automatic deletion is turned off. Transactions will remain until manually deleted."}
+        </p>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={retentionEnabled}
+          onClick={() => void handleRetentionToggle()}
+          disabled={isUpdatingRetention}
+          className={`inline-flex items-center gap-2 text-sm font-semibold ${retentionEnabled ? "text-amber-800" : "text-slate-700"}`}
+        >
+          <span className={`relative h-6 w-11 rounded-full transition ${retentionEnabled ? "bg-amber-600" : "bg-slate-300"}`}>
+            <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${retentionEnabled ? "left-6" : "left-1"}`} />
+          </span>
+          {retentionEnabled ? "On" : "Off"}
+        </button>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -234,10 +279,6 @@ export function TransactionTable() {
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Transaction
-                </th>
-
-                <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Merchant
                 </th>
 
                 <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -266,7 +307,7 @@ export function TransactionTable() {
               {filteredTransactions.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={6}
                     className="px-6 py-12 text-center"
                   >
                     <p className="text-sm font-medium text-slate-700">
@@ -299,12 +340,6 @@ export function TransactionTable() {
                         <p className="mt-1 max-w-[220px] truncate font-mono text-xs text-slate-500">
                           {transaction.id}
                         </p>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                        {transaction.merchant?.name ??
-                          transaction.merchantId ??
-                          "-"}
                       </td>
 
                       <td className="px-6 py-4 text-sm font-semibold text-slate-900">
@@ -413,6 +448,7 @@ export function TransactionTable() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

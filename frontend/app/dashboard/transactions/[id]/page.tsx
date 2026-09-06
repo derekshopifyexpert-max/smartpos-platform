@@ -4,14 +4,30 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CreditCard,
+  Loader2,
+  Trash2,
 } from "lucide-react";
 import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { useTransaction } from "@/features/transactions/hooks/use-transaction";
+import { deleteTransactions } from "@/features/transactions/services/transaction.service";
+import { getApiErrorMessage } from "@/lib/api/client";
+import { useAuthStore } from "@/store/auth.store";
 
 export default function TransactionDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const id = String(params.id);
+  const user = useAuthStore((state) => state.user);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteEmail, setDeleteEmail] = useState(user?.email ?? "");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const {
     data: transaction,
@@ -56,6 +72,36 @@ export default function TransactionDetailPage() {
 
   const status = transaction.status?.toUpperCase() ?? "UNKNOWN";
 
+  async function handleDelete() {
+    if (!deleteEmail.trim() || deletePassword.length < 8) {
+      setDeleteError("Enter your current email and password.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteTransactions({
+        currentEmail: deleteEmail.trim(),
+        currentPassword: deletePassword,
+        ids: [id],
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: ["transactions"],
+      });
+      queryClient.removeQueries({
+        queryKey: ["transaction", id],
+      });
+
+      router.replace("/dashboard/transactions");
+    } catch (requestError) {
+      setDeleteError(getApiErrorMessage(requestError, "Unable to delete transaction."));
+      setIsDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -95,6 +141,20 @@ export default function TransactionDetailPage() {
               {formatDate(transaction.createdAt)}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteEmail(user?.email ?? "");
+              setDeletePassword("");
+              setDeleteError(null);
+              setShowDeleteDialog(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete transaction
+          </button>
         </div>
       </div>
 
@@ -202,6 +262,69 @@ export default function TransactionDetailPage() {
             {transaction.description}
           </div>
         </section>
+      )}
+
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-transaction-title"
+            className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl"
+          >
+            <h2 id="delete-transaction-title" className="text-lg font-semibold text-slate-900">
+              Delete this transaction?
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500">
+              Enter your current login details to confirm this deletion.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <input
+                type="email"
+                value={deleteEmail}
+                onChange={(event) => setDeleteEmail(event.target.value)}
+                placeholder="Current email"
+                autoComplete="email"
+                autoFocus
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+                placeholder="Current password"
+                autoComplete="current-password"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+
+            {deleteError && <p className="mt-3 text-sm text-red-600" role="alert">{deleteError}</p>}
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={isDeleting}
+                className="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete transaction
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

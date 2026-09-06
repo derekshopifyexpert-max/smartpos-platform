@@ -3,6 +3,7 @@ import {
   TransactionStatus,
   SettlementStatus,
 } from "@prisma/client";
+import bcrypt from "bcrypt";
 
 import { FastifyInstance } from "fastify";
 
@@ -1287,6 +1288,10 @@ async listTransactions(
 
       this.app.prisma.transaction.findMany({
 
+        where: {
+          deletedAt: null,
+        },
+
         skip,
 
         take: limit,
@@ -1313,7 +1318,11 @@ async listTransactions(
 
       }),
 
-      this.app.prisma.transaction.count(),
+      this.app.prisma.transaction.count({
+        where: {
+          deletedAt: null,
+        },
+      }),
 
     ]);
 
@@ -1338,6 +1347,44 @@ async listTransactions(
   };
 
 }
+
+  async deleteTransactions(data: {
+    currentEmail: string;
+    currentPassword: string;
+    ids?: string[];
+    deleteAll?: boolean;
+  }) {
+    const user = await this.app.prisma.user.findUnique({
+      where: { email: data.currentEmail.trim().toLowerCase() },
+      select: { passwordHash: true },
+    });
+
+    if (!user?.passwordHash) {
+      throw new Error("Account not found.");
+    }
+
+    const validPassword = await bcrypt.compare(
+      data.currentPassword,
+      user.passwordHash
+    );
+
+    if (!validPassword) {
+      throw new Error("Current password is incorrect.");
+    }
+
+    if (!data.deleteAll && (!data.ids || data.ids.length === 0)) {
+      throw new Error("Select transactions to delete.");
+    }
+
+    const result = await this.app.prisma.transaction.updateMany({
+      where: data.deleteAll
+        ? { deletedAt: null }
+        : { id: { in: data.ids }, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+
+    return { deleted: result.count };
+  }
 
 }
 

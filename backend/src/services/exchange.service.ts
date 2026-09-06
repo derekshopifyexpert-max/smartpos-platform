@@ -6,7 +6,6 @@ import { FastifyInstance } from "fastify";
 
 import QuoteValidatorService from "./quote-validator.service.js";
 import type { IExchangeProvider } from "../providers/exchange-provider.interface.js";
-import { QuidaxProviderAdapter } from "../providers/quidax/quidax.provider.js";
 
 /**
  * Local provider contracts.
@@ -372,16 +371,7 @@ export default class ExchangeService {
    * this service.
    */
   async getExchangeProvider(): Promise<IExchangeProvider> {
-    const config = await import("../config/env.js").then((m) => m.default);
-
-    return new QuidaxProviderAdapter({
-      apiKey: config.QUIDAX_API_KEY,
-      baseUrl: config.QUIDAX_BASE_URL,
-      timeoutMs: config.QUIDAX_TIMEOUT_MS,
-      rampBaseUrl: config.QUIDAX_RAMP_BASE_URL,
-      rampPrivateKey: config.QUIDAX_RAMP_PRIVATE_KEY,
-      environment: config.QUIDAX_ENVIRONMENT,
-    });
+    throw new Error("Exchange provider disabled. SmartPOS uses Flutterwave only.");
   }
 
   async getProviderAssets() {

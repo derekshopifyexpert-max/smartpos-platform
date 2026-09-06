@@ -11,9 +11,6 @@ export default function TransactionsPage() {
           Transactions
         </h1>
 
-        <p className="mt-2 text-slate-500">
-          Monitor and manage platform payment transactions.
-        </p>
       </div>
 
       <TransactionTable />

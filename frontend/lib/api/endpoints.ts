@@ -3,6 +3,7 @@ export const ENDPOINTS = {
     login: "/auth/login",
     me: "/auth/me",
     logout: "/auth/logout",
+    credentials: "/auth/credentials",
   },
 
   dashboard: {

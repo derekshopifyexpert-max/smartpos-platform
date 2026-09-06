@@ -24,9 +24,17 @@ export interface TransactionStatusBreakdown {
   count: number
 }
 
+export interface CurrencySummary {
+  currency: string
+  revenue: number
+  transactions: number
+}
+
 export interface DashboardMetrics {
+  apiConnected: boolean
   revenue: number
   transactionsToday: number
+  currencySummaries: CurrencySummary[]
   totalMerchants: number
   activeTerminals: number
   terminalCoverage: number

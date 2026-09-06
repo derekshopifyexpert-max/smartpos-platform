@@ -17,9 +17,19 @@ export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(20),
 });
 
+export const changeCredentialsSchema = z.object({
+  currentEmail: z.string().email(),
+  currentPassword: z.string().min(8).max(100),
+  newPassword: z.string().min(8).max(100),
+  newEmail: z.string().email().optional(),
+});
+
 export type LoginDto = z.infer<typeof loginSchema>;
 
 export type RegisterDto = z.infer<typeof registerSchema>;
 
 export type RefreshTokenDto =
   z.infer<typeof refreshTokenSchema>;
+
+export type ChangeCredentialsDto =
+  z.infer<typeof changeCredentialsSchema>;

@@ -8,6 +8,13 @@ interface ObservabilityDashboardResponse {
     status: string
     uptime: number
   }
+  revenue: number
+  transactionsToday: number
+  currencySummaries: Array<{
+    currency: string
+    revenue: number
+    transactions: number
+  }>
   payments: Record<string, number>
   conversions: Record<string, number>
   blockchainTransactions: Record<string, number>
@@ -20,16 +27,11 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
 
   const data = response.data
 
-  const transactionsToday = Object.values(data.payments)
-    .reduce((total, count) => total + Number(count), 0)
+  const revenue = data.revenue || 0
+  const transactionsToday = data.transactionsToday || 0
+  const currencySummaries = data.currencySummaries || []
 
-  const totalMerchants = 0
-  const activeTerminals = 0
-  const terminalCoverage = 0
-
-  const revenue = 0
-
-  const transactionStatusBreakdown = Object.entries(data.payments).map(
+  const transactionStatusBreakdown = Object.entries(data.payments || {}).map(
     ([status, count]) => ({
       status,
       count: Number(count),
@@ -37,11 +39,13 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
   )
 
   return {
+    apiConnected: data.health.status === "operational",
     revenue,
     transactionsToday,
-    totalMerchants,
-    activeTerminals,
-    terminalCoverage,
+    currencySummaries,
+    totalMerchants: 0,
+    activeTerminals: 0,
+    terminalCoverage: 0,
 
     platformActivity: {
       date: data.timestamp,
@@ -50,9 +54,9 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
     },
 
     merchantInfrastructure: {
-      registeredMerchants: totalMerchants,
-      activeTerminals,
-      terminalCoverage,
+      registeredMerchants: 0,
+      activeTerminals: 0,
+      terminalCoverage: 0,
     },
 
     revenueSummary: {

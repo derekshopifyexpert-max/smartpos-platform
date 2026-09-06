@@ -7,7 +7,6 @@ import walletRoutes from "./wallet.routes.js";
 import merchantRoutes from "./merchant.routes.js";
 import transactionRoutes from "./transaction.routes.js";
 import blockchainRoutes from "./blockchain.routes.js";
-import exchangeRoutes from "./exchange.routes.js";
 import gatewayRoutes from "./gateway.routes.js";
 import settlementRoutes from "./settlement.routes.js";
 import authRoutes from "./auth.routes.js";
@@ -42,10 +41,6 @@ export default async function registerRoutes(
   });
 
   app.register(blockchainRoutes, {
-    prefix: "/api/v1"
-  });
-
-  app.register(exchangeRoutes, {
     prefix: "/api/v1"
   });
 

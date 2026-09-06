@@ -7,23 +7,6 @@ import { useState } from "react";
 
 import { usePaymentIntent } from "@/features/payment-intents/hooks/use-payment-intent";
 
-interface PaymentAttempt {
-  id: string;
-  status?: string | null;
-  createdAt?: string | null;
-}
-
-interface PaymentIntentTransaction {
-  id: string;
-  reference?: string | null;
-  amount: number | string;
-  currency: string;
-  type?: string | null;
-  paymentMethod?: string | null;
-  status: string;
-  createdAt: string;
-}
-
 export default function PaymentIntentDetailPage() {
   const params = useParams();
   const [showCheckout, setShowCheckout] = useState(false);
@@ -72,11 +55,6 @@ export default function PaymentIntentDetailPage() {
     );
   }
 
-  const transactions =
-    (intent.transactions ?? []) as PaymentIntentTransaction[];
-
-  const paymentAttempts =
-    (intent.paymentAttempts ?? []) as PaymentAttempt[];
   const isPaymentCompleted = intent.status === 'SETTLED' || intent.status === 'CAPTURED' || intent.status === 'AUTHORIZED';
   const canProceedToPayment = !isPaymentCompleted && intent.status !== 'FAILED' && intent.status !== 'CANCELLED';
   return (
@@ -96,10 +74,6 @@ export default function PaymentIntentDetailPage() {
               <h1 className="text-3xl font-bold tracking-tight text-slate-900">
                 Payment Intent
               </h1>
-
-              <PaymentIntentStatus
-                status={intent.status}
-              />
             </div>
 
             <p className="mt-2 break-all font-mono text-sm text-slate-500">
@@ -160,15 +134,6 @@ export default function PaymentIntentDetailPage() {
         />
 
         <SummaryCard
-          label="Merchant"
-          value={
-            intent.merchant?.name ??
-            intent.merchantId ??
-            "-"
-          }
-        />
-
-        <SummaryCard
           label="Description"
           value={intent.description ?? "-"}
         />
@@ -211,34 +176,12 @@ export default function PaymentIntentDetailPage() {
             Payment Intent Information
           </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Core information associated with this payment request.
-          </p>
         </div>
 
         <div className="grid gap-6 p-6 sm:grid-cols-2 lg:grid-cols-3">
           <InfoItem
             label="Payment Intent ID"
             value={intent.id}
-          />
-
-          <InfoItem
-            label="Merchant"
-            value={
-              intent.merchant?.name ??
-              intent.merchantId ??
-              "-"
-            }
-          />
-
-          <InfoItem
-            label="Customer ID"
-            value={intent.customerId ?? "-"}
-          />
-
-          <InfoItem
-            label="Payment Method ID"
-            value={intent.paymentMethodId ?? "-"}
           />
 
           <InfoItem
@@ -255,11 +198,6 @@ export default function PaymentIntentDetailPage() {
           />
 
           <InfoItem
-            label="Status"
-            value={intent.status}
-          />
-
-          <InfoItem
             label="Created"
             value={formatDate(intent.createdAt)}
           />
@@ -270,229 +208,10 @@ export default function PaymentIntentDetailPage() {
           />
 
           <InfoItem
-            label="Expires"
-            value={formatDate(intent.expiresAt)}
-          />
-
-          <InfoItem
-            label="Payment Attempts"
-            value={String(paymentAttempts.length)}
-          />
-
-          <InfoItem
-            label="Transactions"
-            value={String(transactions.length)}
+            label="Description"
+            value={intent.description ?? "-"}
           />
         </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-6 py-5">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Merchant
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Merchant associated with this payment intent.
-          </p>
-        </div>
-
-        <div className="grid gap-6 p-6 sm:grid-cols-2 lg:grid-cols-3">
-          <InfoItem
-            label="Business Name"
-            value={intent.merchant?.name ?? "-"}
-          />
-
-          <InfoItem
-            label="Merchant ID"
-            value={intent.merchant?.id ?? intent.merchantId ?? "-"}
-          />
-
-          <InfoItem
-            label="Business Type"
-            value={intent.merchant?.businessType ?? "-"}
-          />
-
-          <InfoItem
-            label="Email"
-            value={intent.merchant?.email ?? "-"}
-          />
-
-          <InfoItem
-            label="Phone"
-            value={intent.merchant?.phone ?? "-"}
-          />
-
-          <InfoItem
-            label="Status"
-            value={intent.merchant?.status ?? "-"}
-          />
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-6 py-5">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Payment Attempts
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Attempts made to process this payment intent.
-          </p>
-        </div>
-
-        {paymentAttempts.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No payment attempts found.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-slate-200 bg-slate-50">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    ID
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Status
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Created
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-200">
-                {paymentAttempts.map(
-                  (attempt) => (
-                    <tr key={attempt.id}>
-                      <td className="px-6 py-4 font-mono text-sm text-slate-700">
-                        {attempt.id}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <PaymentIntentStatus
-                          status={
-                            attempt.status ?? "UNKNOWN"
-                          }
-                        />
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600">
-                        {formatDate(
-                          attempt.createdAt
-                        )}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-6 py-5">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Linked Transactions
-          </h2>
-
-          <p className="mt-1 text-sm text-slate-500">
-            Transactions associated with this payment intent.
-          </p>
-        </div>
-
-        {transactions.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No transactions found.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-slate-200 bg-slate-50">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Reference
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Amount
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Type
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Payment Method
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Status
-                  </th>
-
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700">
-                    Date
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-200">
-                {transactions.map(
-                  (transaction) => (
-                    <tr
-                      key={transaction.id}
-                      className="transition-colors hover:bg-slate-50"
-                    >
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {transaction.reference ?? "-"}
-                        </p>
-
-                        <p className="mt-1 font-mono text-xs text-slate-500">
-                          {transaction.id}
-                        </p>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm font-semibold text-slate-900">
-                        {formatAmount(
-                          transaction.amount,
-                          transaction.currency
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {transaction.type ?? "-"}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-700">
-                        {transaction.paymentMethod ?? "-"}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <PaymentIntentStatus
-                          status={
-                            transaction.status ??
-                            "UNKNOWN"
-                          }
-                        />
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-slate-600">
-                        {formatDate(
-                          transaction.createdAt
-                        )}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
     </div>
   );

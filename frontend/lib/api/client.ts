@@ -218,6 +218,28 @@ if (
     }
   }
 
+  if (data.details && typeof data.details === "object") {
+    const details = data.details as Record<string, unknown>;
+    const fieldErrors = details.fieldErrors;
+
+    if (fieldErrors && typeof fieldErrors === "object") {
+      const messages = Object.entries(fieldErrors)
+        .flatMap(([field, value]) => {
+          if (!Array.isArray(value)) {
+            return [];
+          }
+
+          return value
+            .filter((message): message is string => typeof message === "string")
+            .map((message) => `${field}: ${message}`);
+        });
+
+      if (messages.length > 0) {
+        return messages.join(", ");
+      }
+    }
+  }
+
   if (
     typeof data.detail === "string" &&
     data.detail.trim()

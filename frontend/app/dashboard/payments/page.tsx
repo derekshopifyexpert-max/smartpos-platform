@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import {
-  ArrowRight,
-  CreditCard,
   Plus,
 } from "lucide-react";
 import { usePaymentIntents } from "@/features/payment-intents/hooks/use-payment-intents";
@@ -11,23 +9,15 @@ import { usePaymentIntents } from "@/features/payment-intents/hooks/use-payment-
 export default function PaymentsPage() {
   const { data: paymentIntents, isLoading: paymentsLoading } = usePaymentIntents();
 
-  const payments = paymentIntents?.data || [];
+  const payments = paymentIntents?.items ?? [];
 
   return (
     <div className="space-y-6 bg-slate-50">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-blue-700">
-            SmartPOS
-          </p>
-
           <h1 className="mt-1 text-3xl font-bold text-slate-900">
             Payments
           </h1>
-
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-            Create customer payments and send customers to secure Flutterwave card checkout.
-          </p>
         </div>
 
         <Link
@@ -39,51 +29,14 @@ export default function PaymentsPage() {
         </Link>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start gap-4">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
-              <CreditCard className="h-5 w-5" />
-            </div>
-
-            <div className="min-w-0">
-              <h2 className="text-base font-semibold text-slate-900">
-                Create a payment
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Set the amount, fiat currency, and customer details for the payment request.
-              </p>
-
-              <Link
-                href="/dashboard/payments/new"
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-800"
-              >
-                Start a payment
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
-        </section>
-
-      </div>
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-6 py-5">
-          <h2 className="text-lg font-semibold text-slate-900">Payment History</h2>
-          <p className="mt-1 text-sm text-slate-500">Recent payments you've created</p>
-        </div>
-
         {paymentsLoading && (
           <div className="p-8 text-center text-sm text-slate-500">Loading payments...</div>
         )}
 
         {!paymentsLoading && (!payments || payments.length === 0) && (
           <div className="p-8 text-center text-sm text-slate-500">
-            <p>No payments yet. Create your first payment to get started.</p>
-            <Link href="/dashboard/payments/new" className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-800">
-              <Plus className="h-4 w-4" />
-              Create Payment
-            </Link>
+            No payments yet.
           </div>
         )}
 
@@ -125,23 +78,6 @@ export default function PaymentsPage() {
             </table>
           </div>
         )}
-      </section>
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">
-              Payment workflow
-            </h2>
-
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              SmartPOS creates the payment session and sends the customer to Flutterwave for card payment.
-            </p>
-          </div>
-
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            Card checkout via Flutterwave
-          </div>
-        </div>
       </section>
 
     </div>

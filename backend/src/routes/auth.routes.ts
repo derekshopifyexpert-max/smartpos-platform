@@ -7,6 +7,7 @@ import { authMiddleware } from "../middleware/auth.middleware.js";
 import { validateBody } from "../middleware/validate.js";
 
 import {
+  changeCredentialsSchema,
   loginSchema,
   registerSchema,
   refreshTokenSchema,
@@ -46,6 +47,14 @@ export default async function authRoutes(
       ),
     },
     controller.refresh
+  );
+
+  app.patch(
+    "/auth/credentials",
+    {
+      preHandler: validateBody(changeCredentialsSchema),
+    },
+    controller.changeCredentials
   );
 
   app.post(

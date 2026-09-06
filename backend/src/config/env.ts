@@ -113,33 +113,6 @@ export const env = {
     "",
 
 
-  // ========== QUIDAX EXCHANGE ==========
-  QUIDAX_API_KEY:
-    process.env.QUIDAX_API_KEY ||
-    "",
-
-  QUIDAX_BASE_URL:
-    process.env.QUIDAX_BASE_URL ||
-    "https://openapi.quidax.io/exchange-open-api/api/v1",
-
-  QUIDAX_ENVIRONMENT:
-    process.env.QUIDAX_ENVIRONMENT ||
-    "sandbox",
-
-  QUIDAX_TIMEOUT_MS:
-    Number(
-      process.env.QUIDAX_TIMEOUT_MS ||
-      15000
-    ),
-
-  QUIDAX_RAMP_BASE_URL:
-    process.env.QUIDAX_RAMP_BASE_URL ||
-    "",
-
-  QUIDAX_RAMP_PRIVATE_KEY:
-    process.env.QUIDAX_RAMP_PRIVATE_KEY ||
-    "",
-
   // ========== BLOCKCHAIN & SETTLEMENT ==========
   BLOCKCHAIN_NETWORK:
     (process.env.BLOCKCHAIN_NETWORK || process.env.BLOCKCHAIN_NETWORK_NAME || "ETHEREUM").trim().toUpperCase(),

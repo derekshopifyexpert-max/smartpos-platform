@@ -169,6 +169,17 @@ export const transactionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10)
 });
 
+export const deleteTransactionsSchema = z.object({
+  currentEmail: z.string().email(),
+  currentPassword: z.string().min(8).max(100),
+  ids: z.array(z.string().min(1)).max(1000).optional(),
+  deleteAll: z.boolean().optional(),
+});
+
+export const transactionRetentionSchema = z.object({
+  enabled: z.boolean(),
+});
+
 export type StartTransactionInput =
   z.infer<
     typeof StartTransactionSchema
