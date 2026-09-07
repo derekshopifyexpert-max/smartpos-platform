@@ -651,6 +651,16 @@ export default class TransactionService {
 
     }
 
+    if (!transaction.merchantId) {
+
+      throw new Error(
+        "Transaction merchant is required for settlement."
+      );
+
+    }
+
+    const merchantId = transaction.merchantId;
+
     /*
     ----------------------------------------
     Wallet Transfer
