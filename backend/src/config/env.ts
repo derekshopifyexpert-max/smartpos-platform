@@ -12,6 +12,13 @@ function required(key: string): string {
   return value;
 }
 
+function normalizeRedisUrl(value: string): string {
+  return value.replace(
+    /^(rediss?:\/\/[^@]+)@\/+/, 
+    "$1@",
+  );
+}
+
 export const env = {
   NODE_ENV:
     process.env.NODE_ENV ||
@@ -58,9 +65,7 @@ export const env = {
     "30d",
 
   REDIS_URL:
-    required(
-      "REDIS_URL"
-    ),
+    normalizeRedisUrl(required("REDIS_URL")),
 
   FLUTTERWAVE_SECRET_KEY:
     process.env.FLUTTERWAVE_SECRET_KEY ||

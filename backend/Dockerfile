@@ -72,4 +72,4 @@ USER node
 WORKDIR /app/backend
 EXPOSE 4000
 
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --schema ../database/schema/schema.prisma && node dist/server.js"]
