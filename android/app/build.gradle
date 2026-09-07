@@ -13,7 +13,7 @@ android {
         versionCode 1
         versionName "1.0.0"
 
-        def webUrl = project.findProperty("SMARTPOS_WEB_URL") ?: "https://app.example.com"
+        def webUrl = project.findProperty("SMARTPOS_WEB_URL") ?: "https://frontend.smartpos-webhooks.workers.dev"
         buildConfigField "String", "SMARTPOS_WEB_URL", "\"${webUrl}\""
     }
 

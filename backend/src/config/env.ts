@@ -13,10 +13,7 @@ function required(key: string): string {
 }
 
 function normalizeRedisUrl(value: string): string {
-  return value.replace(
-    /^(rediss?:\/\/[^@]+)@\/+/, 
-    "$1@",
-  );
+  return value.replace(/@\/+/, "@");
 }
 
 export const env = {
