@@ -19,12 +19,13 @@ android {
     defaultConfig {
         applicationId "com.smartpos.sunmi"
         minSdk 23
-        targetSdk 30
+        targetSdk 34
         versionCode 1
         versionName "1.0.0"
 
-        def webUrl = project.findProperty("SMARTPOS_WEB_URL") ?: "https://frontend.smartpos-webhooks.workers.dev"
-        buildConfigField "String", "SMARTPOS_WEB_URL", "\"${webUrl}\""
+        def webUrl = (project.findProperty("SMARTPOS_WEB_URL") ?: "https://frontend.smartpos-webhooks.workers.dev").toString()
+        def escapedWebUrl = webUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField "String", "SMARTPOS_WEB_URL", "\"${escapedWebUrl}\""
     }
 
     buildTypes {
