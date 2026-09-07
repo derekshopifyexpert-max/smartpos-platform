@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "dev": "npm --workspace backend run dev",
-    "build": "npm --workspace backend run build",
+    "build": "npm --workspace backend run prisma:generate && npm --workspace backend run build",
     "start": "npm --workspace backend run start",
     "typecheck": "npm --workspace backend run typecheck",
     "lint": "npm --workspace backend run lint",
