@@ -9,6 +9,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "prebuild": "prisma generate --schema ../database/schema/schema.prisma",
     "build": "tsc",
     "start": "node dist/server.js",
     "clean": "rimraf dist",
