@@ -798,7 +798,8 @@ export default class PaymentOrchestratorService {
       await this.paymentService.createTransaction(
         {
           merchantId:
-            paymentIntent.merchantId,
+            paymentIntent.merchantId ??
+            undefined,
 
           customerId:
             paymentIntent.customerId ??

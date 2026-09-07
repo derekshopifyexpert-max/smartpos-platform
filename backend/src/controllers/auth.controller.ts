@@ -6,10 +6,10 @@ import {
 import AuthService from "../services/auth.service.js";
 
 import type {
-  ChangeCredentialsDto,
   LoginRequest,
   RegisterRequest,
 } from "../types/auth.types.js";
+import type { ChangeCredentialsDto } from "../validators/auth.validator.js";
 
 export default class AuthController {
   constructor(

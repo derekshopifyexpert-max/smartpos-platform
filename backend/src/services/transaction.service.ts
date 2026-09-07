@@ -561,8 +561,14 @@ export default class TransactionService {
       transaction.amount
     );
 
+    if (!transaction.merchantId) {
+      throw new Error("Transaction merchant is required for settlement.");
+    }
+
+    const merchantId = transaction.merchantId;
+
     const conversion = await this.exchangeService.createConversion({
-      merchantId: transaction.merchantId,
+      merchantId,
       transactionId: transaction.id,
       fromCurrency: data.fromCurrency ?? transaction.currency,
       toCurrency: data.toCurrency ?? transaction.currency,
@@ -656,7 +662,7 @@ export default class TransactionService {
         .createWalletTransfer({
 
           merchantId:
-            transaction.merchantId,
+            merchantId,
 
           fromWalletId:
             data.merchantWalletId,
@@ -732,7 +738,7 @@ export default class TransactionService {
         .createSettlement({
 
           merchantId:
-            transaction.merchantId,
+            merchantId,
 
           walletId:
             data.merchantWalletId,
