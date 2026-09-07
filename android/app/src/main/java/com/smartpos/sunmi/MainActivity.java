@@ -12,6 +12,8 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 public class MainActivity extends Activity implements NfcAdapter.ReaderCallback {
+    private static final String SMARTPOS_WEB_URL =
+            "https://frontend.smartpos-webhooks.workers.dev";
     private WebView webView;
     private SunmiHardware hardware;
     private NfcAdapter nfcAdapter;
@@ -34,7 +36,7 @@ public class MainActivity extends Activity implements NfcAdapter.ReaderCallback 
         hardware = new SunmiHardware(this, webView);
         webView.addJavascriptInterface(hardware, "SmartPOSHardware");
         setContentView(webView);
-        webView.loadUrl(BuildConfig.SMARTPOS_WEB_URL);
+        webView.loadUrl(SMARTPOS_WEB_URL);
 
         nfcAdapter = NfcAdapter.getDefaultAdapter(this);
     }

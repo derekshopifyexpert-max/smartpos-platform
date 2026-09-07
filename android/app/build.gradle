@@ -23,9 +23,6 @@ android {
         versionCode 1
         versionName "1.0.0"
 
-        def webUrl = (project.findProperty("SMARTPOS_WEB_URL") ?: "https://frontend.smartpos-webhooks.workers.dev").toString()
-        def escapedWebUrl = webUrl.replace("\\", "\\\\").replace("\"", "\\\"")
-        buildConfigField "String", "SMARTPOS_WEB_URL", "\"${escapedWebUrl}\""
     }
 
     buildTypes {
@@ -36,16 +33,13 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 
-    buildFeatures {
-        buildConfig true
-    }
 }
 
 dependencies {
-    implementation "androidx.appcompat:appcompat:1.7.0"
-    implementation "androidx.core:core:1.13.1"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "androidx.core:core:1.10.1"
 }
