@@ -47,6 +47,8 @@ COPY --from=deps /app ./
 # cannot clobber what npm ci already installed above.
 COPY . .
 
+RUN mkdir -p /app/prisma && cp -R /app/database/migrations /app/prisma/migrations
+
 # Generate the Prisma client exactly as the backend script does,
 # from backend/, so the relative path resolves the same as on host.
 WORKDIR /app/backend
@@ -72,4 +74,4 @@ USER node
 WORKDIR /app/backend
 EXPOSE 4000
 
-CMD ["sh", "-c", "npx prisma migrate deploy --schema ../database/schema/schema.prisma && node dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy --config /app/prisma.config.ts && node dist/server.js"]
