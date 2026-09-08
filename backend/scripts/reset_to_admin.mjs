@@ -5,7 +5,11 @@ const prisma = new PrismaClient();
 
 async function main() {
   const adminEmail = 'admin@smartpos.com';
-  const adminPassword = 'Admin@12345';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    throw new Error('Set ADMIN_PASSWORD to the desired admin password before running this destructive script.');
+  }
 
   console.log('Starting reset: removing non-admin users, merchants, wallets, and transactions.');
 

@@ -14,8 +14,12 @@ import bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
 
-const ADMIN_EMAIL = "admin@smartpos.com";
-const ADMIN_PASSWORD = "Admin@12345";
+const ADMIN_EMAIL =
+  process.env.ADMIN_EMAIL?.trim().toLowerCase() ||
+  "admin@smartpos.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const RESET_ADMIN_PASSWORD =
+  process.env.ADMIN_RESET_PASSWORD === "true";
 const MERCHANT_EMAIL = "merchant@smartpos.com";
 const TERMINAL_SERIAL = "TERM-1001";
 const PAYMENT_CLIENT_SECRET = "pi_demo_secret";
@@ -23,11 +27,6 @@ const TRANSACTION_REFERENCE = "TX-DEMO-001";
 
 async function main() {
   console.log("Starting SmartPOS database seed...");
-
-  const passwordHash = await bcrypt.hash(
-    ADMIN_PASSWORD,
-    12
-  );
 
   /*
    * --------------------------------------------------------------------------
@@ -79,6 +78,26 @@ async function main() {
    * The user is explicitly attached to the merchant above.
    */
 
+  const existingAdmin = await prisma.user.findUnique({
+    where: {
+      email: ADMIN_EMAIL,
+    },
+    select: {
+      id: true,
+      passwordHash: true,
+    },
+  });
+
+  if ((!existingAdmin || RESET_ADMIN_PASSWORD) && !ADMIN_PASSWORD) {
+    throw new Error(
+      "ADMIN_PASSWORD is required to create or reset the admin account."
+    );
+  }
+
+  const passwordHash = ADMIN_PASSWORD
+    ? await bcrypt.hash(ADMIN_PASSWORD, 12)
+    : undefined;
+
   const user = await prisma.user.upsert({
     where: {
       email: ADMIN_EMAIL,
@@ -87,20 +106,22 @@ async function main() {
       firstName: "Admin",
       lastName: "User",
       displayName: "SmartPOS Admin",
-      passwordHash,
       role: UserRole.SUPER_ADMIN,
       status: UserStatus.ACTIVE,
       isActive: true,
       isVerified: true,
       merchantId: merchant.id,
       deletedAt: null,
+      ...(RESET_ADMIN_PASSWORD || !existingAdmin?.passwordHash
+        ? { passwordHash }
+        : {}),
     },
     create: {
       email: ADMIN_EMAIL,
       firstName: "Admin",
       lastName: "User",
       displayName: "SmartPOS Admin",
-      passwordHash,
+      ...(passwordHash ? { passwordHash } : {}),
       role: UserRole.SUPER_ADMIN,
       status: UserStatus.ACTIVE,
       isActive: true,
@@ -116,6 +137,17 @@ async function main() {
   console.log(
     `Admin merchantId: ${user.merchantId ?? "NONE"}`
   );
+
+  if (existingAdmin && !existingAdmin.passwordHash && passwordHash) {
+    await prisma.user.update({
+      where: {
+        id: existingAdmin.id,
+      },
+      data: {
+        passwordHash,
+      },
+    });
+  }
 
   /*
    * --------------------------------------------------------------------------

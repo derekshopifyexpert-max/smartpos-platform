@@ -67,9 +67,6 @@ ENV NODE_ENV=production
 # integrity reason as the build stage.
 COPY --from=build --chown=node:node /app ./
 
-# Strip devDependencies across the whole workspace tree.
-RUN npm prune --omit=dev
-
 USER node
 WORKDIR /app/backend
 EXPOSE 4000

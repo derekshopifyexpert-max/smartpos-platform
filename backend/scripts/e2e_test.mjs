@@ -1,4 +1,9 @@
 const BASE = 'http://127.0.0.1:4000/api/v1';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!ADMIN_PASSWORD) {
+  throw new Error('Set ADMIN_PASSWORD to the current admin password before running this script.');
+}
 
 // Node 18+ provides a global `fetch`. If it's not available, the script will
 // fail and the user can install `node-fetch` or run tests from a newer Node.
@@ -10,7 +15,7 @@ async function run() {
     const loginRes = await fetch(`${BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'admin@smartpos.com', password: 'Admin@12345' }),
+      body: JSON.stringify({ email: 'admin@smartpos.com', password: ADMIN_PASSWORD }),
     });
 
     const loginJson = await loginRes.json();
