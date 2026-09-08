@@ -11,6 +11,7 @@
     "dev": "tsx watch src/server.ts",
     "prebuild": "prisma generate --schema ../database/schema/schema.prisma",
     "build": "tsc",
+    "prestart": "npm run prisma:generate && npm run prisma:deploy && npm run prisma:seed",
     "start": "node dist/server.js",
     "clean": "rimraf dist",
     "lint": "eslint .",
