@@ -318,7 +318,7 @@ async function main() {
   console.log("SmartPOS seed completed successfully.");
   console.log("----------------------------------------");
   console.log(`Admin email:    ${ADMIN_EMAIL}`);
-  console.log(`Admin password: ${ADMIN_PASSWORD}`);
+  console.log("Admin password: configured securely");
   console.log(`Admin user ID:  ${verifiedAdmin.id}`);
   console.log(`Merchant ID:    ${merchant.id}`);
   console.log(`Admin role:     ${verifiedAdmin.role}`);
