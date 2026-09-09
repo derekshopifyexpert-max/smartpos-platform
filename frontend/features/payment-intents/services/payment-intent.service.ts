@@ -156,3 +156,19 @@ export async function chargeSavedAuthorization(
 
   return response.data.data;
 }
+
+export async function deletePaymentIntents(payload: {
+  currentEmail: string;
+  currentPassword: string;
+  ids?: string[];
+  deleteAll?: boolean;
+}): Promise<{ deleted: number }> {
+  const response = await api.delete<{
+    success: boolean;
+    data: { deleted: number };
+  }>(ENDPOINTS.paymentIntents.list, {
+    data: payload,
+  });
+
+  return response.data.data;
+}

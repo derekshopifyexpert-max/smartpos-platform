@@ -10,8 +10,11 @@ import {
   validateQuery,
 } from "../middleware/validate.js";
 
+import { authMiddleware } from "../middleware/auth.middleware.js";
+
 import {
   createPaymentIntentSchema,
+  deletePaymentIntentsSchema,
   paymentIntentCheckoutSchema,
   paymentIntentIdSchema,
   paymentIntentListQuerySchema,
@@ -56,6 +59,17 @@ export default async function paymentRoutes(
       ),
     },
     controller.getPaymentIntent,
+  );
+
+  app.delete(
+    "/payment-intents",
+    {
+      preHandler: [
+        authMiddleware,
+        validateBody(deletePaymentIntentsSchema),
+      ],
+    },
+    controller.deletePaymentIntents,
   );
 
   app.post(

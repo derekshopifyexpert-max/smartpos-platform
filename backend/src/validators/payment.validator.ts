@@ -63,6 +63,13 @@ export const paymentIntentListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });
 
+export const deletePaymentIntentsSchema = z.object({
+  currentEmail: z.string().email(),
+  currentPassword: z.string().min(8).max(100),
+  ids: z.array(z.string().min(1)).max(1000).optional(),
+  deleteAll: z.boolean().optional(),
+});
+
 export type CreatePaymentIntentDto =
   z.infer<typeof createPaymentIntentSchema>;
 

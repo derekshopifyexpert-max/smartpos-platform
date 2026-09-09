@@ -4,6 +4,7 @@ import {
   TransactionStatus,
   SettlementStatus,
 } from "@prisma/client";
+import bcrypt from "bcrypt";
 import { FastifyInstance } from "fastify";
 import crypto from "crypto";
 
@@ -247,6 +248,59 @@ export default class PaymentService {
         ),
       },
     };
+  }
+
+  async deletePaymentIntents(data: {
+    currentEmail: string;
+    currentPassword: string;
+    ids?: string[];
+    deleteAll?: boolean;
+  }) {
+    const user = await this.app.prisma.user.findUnique({
+      where: { email: data.currentEmail.trim().toLowerCase() },
+      select: { passwordHash: true },
+    });
+
+    if (!user?.passwordHash) {
+      throw new Error("Account not found.");
+    }
+
+    const validPassword = await bcrypt.compare(
+      data.currentPassword,
+      user.passwordHash,
+    );
+
+    if (!validPassword) {
+      throw new Error("Current password is incorrect.");
+    }
+
+    if (!data.deleteAll && (!data.ids || data.ids.length === 0)) {
+      throw new Error("Select payment intents to delete.");
+    }
+
+    const targetIds = data.deleteAll
+      ? (await this.app.prisma.paymentIntent.findMany({
+          select: { id: true },
+        })).map((paymentIntent) => paymentIntent.id)
+      : data.ids ?? [];
+
+    if (targetIds.length === 0) {
+      return { deleted: 0 };
+    }
+
+    await this.app.prisma.transaction.deleteMany({
+      where: { paymentIntentId: { in: targetIds } },
+    });
+
+    await this.app.prisma.paymentAttempt.deleteMany({
+      where: { paymentIntentId: { in: targetIds } },
+    });
+
+    const result = await this.app.prisma.paymentIntent.deleteMany({
+      where: { id: { in: targetIds } },
+    });
+
+    return { deleted: result.count };
   }
 
   async listTransactions(

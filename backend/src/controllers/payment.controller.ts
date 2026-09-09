@@ -151,6 +151,20 @@ export default class PaymentController {
     });
   };
 
+  deletePaymentIntents = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const result = await this.paymentService.deletePaymentIntents(
+      request.body as any,
+    );
+
+    return reply.send({
+      success: true,
+      data: result,
+    });
+  };
+
   /**
    * Get one PaymentIntent.
    */

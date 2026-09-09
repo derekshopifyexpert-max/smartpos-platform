@@ -1,3 +1,5 @@
+import bcrypt from "bcrypt";
+
 import prisma from "../helpers/test-db";
 
 import PaymentService from "../../src/services/payment.service";
@@ -99,6 +101,35 @@ describe(
           currency: "USDT",
         })
       ).rejects.toThrow(/real blockchain broadcast|RPC_URL|BROADCAST_PRIVATE_KEY/i);
+    });
+
+    it("should delete payment intents after verifying current password", async () => {
+      const passwordHash = await bcrypt.hash("correct-password", 10);
+
+      const serviceWithMocks = new PaymentService({
+        prisma: {
+          user: {
+            findUnique: jest.fn().mockResolvedValue({ passwordHash }),
+          },
+          paymentAttempt: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          },
+          transaction: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+          },
+          paymentIntent: {
+            deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          },
+        },
+      } as any);
+
+      await expect(
+        (serviceWithMocks as any).deletePaymentIntents({
+          currentEmail: "admin@example.com",
+          currentPassword: "correct-password",
+          ids: ["pi_123"],
+        })
+      ).resolves.toMatchObject({ deleted: 1 });
     });
 
     it("should create a wallet using the real wallet service contract", async () => {
