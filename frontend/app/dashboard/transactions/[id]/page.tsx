@@ -4,7 +4,9 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CreditCard,
+  Eye,
   Loader2,
+  Printer,
   Trash2,
 } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -14,6 +16,7 @@ import { useState } from "react";
 
 import { useTransaction } from "@/features/transactions/hooks/use-transaction";
 import { deleteTransactions } from "@/features/transactions/services/transaction.service";
+import type { Transaction } from "@/features/transactions/types/transaction";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -71,6 +74,52 @@ export default function TransactionDetailPage() {
   }
 
   const status = transaction.status?.toUpperCase() ?? "UNKNOWN";
+
+  function handleViewReceipt() {
+    if (!transaction) {
+      return;
+    }
+
+    const config = readReceiptConfig();
+    const receiptHtml = buildReceiptHtml(transaction, config);
+    const previewWindow = window.open("", "_blank", "width=430,height=900");
+
+    if (!previewWindow) {
+      return;
+    }
+
+    previewWindow.document.write(receiptHtml);
+    previewWindow.document.close();
+    previewWindow.focus();
+  }
+
+  function handlePrintReceipt() {
+    if (!transaction) {
+      return;
+    }
+
+    const receiptText = buildThermalReceiptText(transaction, readReceiptConfig());
+    const printer: { printText?: (text: string) => void; isPrinterConnected?: () => boolean } | undefined =
+      typeof window !== "undefined" ? (window as typeof window & { SmartPOSHardware?: { printText?: (text: string) => void; isPrinterConnected?: () => boolean } }).SmartPOSHardware : undefined;
+
+    if (printer?.isPrinterConnected && printer.isPrinterConnected()) {
+      printer.printText?.(receiptText);
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=420,height=900");
+    if (!printWindow) {
+      return;
+    }
+
+    printWindow.document.write(buildReceiptHtml(transaction, readReceiptConfig()));
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      setTimeout(() => printWindow.close(), 400);
+    }, 300);
+  }
 
   async function handleDelete() {
     if (!deleteEmail.trim() || deletePassword.length < 8) {
@@ -142,19 +191,39 @@ export default function TransactionDetailPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setDeleteEmail(user?.email ?? "");
-              setDeletePassword("");
-              setDeleteError(null);
-              setShowDeleteDialog(true);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete transaction
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleViewReceipt}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Eye className="h-4 w-4" />
+              View receipt
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrintReceipt}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Printer className="h-4 w-4" />
+              Print receipt
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setDeleteEmail(user?.email ?? "");
+                setDeletePassword("");
+                setDeleteError(null);
+                setShowDeleteDialog(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete transaction
+            </button>
+          </div>
         </div>
       </div>
 
@@ -328,6 +397,306 @@ export default function TransactionDetailPage() {
       )}
     </div>
   );
+}
+
+type ReceiptConfig = {
+  payoutNetwork: string;
+  payoutAsset?: string;
+  walletAddress: string;
+  merchantEmail: string;
+};
+
+function readReceiptConfig(): ReceiptConfig {
+  if (typeof window === "undefined") {
+    return {
+      payoutNetwork: "TRC20",
+      payoutAsset: "USDT",
+      walletAddress: "",
+      merchantEmail: "",
+    };
+  }
+
+  try {
+    const saved = window.localStorage.getItem("smartpos_receipt_config");
+    if (!saved) {
+      return {
+        payoutNetwork: "TRC20",
+        payoutAsset: "USDT",
+        walletAddress: "",
+        merchantEmail: "",
+      };
+    }
+
+    const parsed = JSON.parse(saved) as { payoutNetwork?: string; payoutAsset?: string; walletAddress?: string; merchantEmail?: string };
+    return {
+      payoutNetwork: parsed.payoutNetwork || "TRC20",
+      payoutAsset: parsed.payoutAsset || "USDT",
+      walletAddress: parsed.walletAddress || "",
+      merchantEmail: parsed.merchantEmail || "",
+    };
+  } catch {
+    return {
+      payoutNetwork: "TRC20",
+      payoutAsset: "USDT",
+      walletAddress: "",
+      merchantEmail: "",
+    };
+  }
+}
+
+function maskEmail(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "********@gmail.com";
+
+  const atIndex = normalized.lastIndexOf("@");
+  if (atIndex <= 0) {
+    return `${"*".repeat(Math.max(6, normalized.length))}`;
+  }
+
+  const localPart = normalized.slice(0, atIndex);
+  const domainPart = normalized.slice(atIndex + 1);
+  const maskedLocal = localPart.length > 3
+    ? `${"*".repeat(Math.max(6, localPart.length - 2))}`
+    : "***";
+
+  return `${maskedLocal}@${domainPart || "gmail.com"}`;
+}
+
+function maskIdentifier(value: string, keepStart = 4, keepEnd = 4) {
+  const normalized = value.trim();
+  if (!normalized) return "********";
+  if (normalized.length <= keepStart + keepEnd) {
+    return `${normalized.slice(0, keepStart)}${"*".repeat(Math.max(6, normalized.length - keepStart))}`;
+  }
+
+  const start = normalized.slice(0, keepStart);
+  const end = normalized.slice(-keepEnd);
+  const maskedMiddle = "*".repeat(Math.max(8, normalized.length - keepStart - keepEnd));
+  return `${start}${maskedMiddle}${end}`;
+}
+
+function maskCardNumber(value?: string | null) {
+  const normalized = (value ?? "").trim();
+  if (!normalized) return "**** **** **** 0000";
+  const lastFour = normalized.replace(/\D/g, "").slice(-4) || "0000";
+  return `**** **** **** ${lastFour}`;
+}
+
+function formatReceiptStatus(value: string | undefined) {
+  const normalized = (value ?? "UNKNOWN").toUpperCase();
+
+  if (["APPROVED", "SUCCESS", "SUCCEEDED", "SETTLED", "CAPTURED", "PAID", "AUTHORIZED", "COMPLETED"].includes(normalized)) {
+    return "Approved";
+  }
+
+  if (["DECLINED", "FAILED", "ERROR", "DISPUTED"].includes(normalized)) {
+    return "Declined";
+  }
+
+  if (["REJECTED", "CANCELLED", "CANCELED"].includes(normalized)) {
+    return "Rejected";
+  }
+
+  if (["PENDING", "PROCESSING"].includes(normalized)) {
+    return "Approved";
+  }
+
+  return "Approved";
+}
+
+function normalizeCardType(value?: string | null) {
+  const raw = (value ?? "").trim().toLowerCase();
+  if (!raw) return "Card";
+  if (raw.includes("visa")) return "Visa";
+  if (raw.includes("master") || raw.includes("maestro")) return "Master";
+  if (raw.includes("verve")) return "Verve";
+  if (raw.includes("amex")) return "Amex";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function normalizeTransactionType(value?: string | null) {
+  const raw = (value ?? "Card Payment").trim();
+  if (!raw) return "Card Payment";
+  return raw
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildPayoutLabel(config: ReceiptConfig) {
+  const network = config.payoutNetwork || "TRC20";
+  const asset = config.payoutAsset || "USDT";
+  return `${asset} (${network})`;
+}
+
+function buildReceiptLines(transaction: Transaction, config: ReceiptConfig) {
+  const dateValue = new Date(transaction.createdAt).toLocaleString("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  const transactionEmail = config.merchantEmail || transaction.customer?.email || "merchant@smartpos.com";
+  const walletValue = config.walletAddress ? maskIdentifier(config.walletAddress) : "********";
+  const authCode = transaction.authorizationCode || transaction.approvalCode || transaction.authCode || "****";
+
+  return [
+    { label: "Date", value: dateValue },
+    { label: "TXN ID", value: transaction.id },
+    { label: "Terminal Type", value: "Online (Manual)" },
+    { label: "Transaction Type", value: normalizeTransactionType(transaction.type ?? transaction.paymentMethod ?? "Card Payment") },
+    { label: "Email", value: maskEmail(transactionEmail) },
+    { label: "Card No.", value: maskCardNumber(transaction.cardLastFour) },
+    { label: "CVV.", value: "***" },
+    { label: "Card Type", value: normalizeCardType(transaction.cardBrand ?? transaction.paymentMethod) },
+    { label: "Amount", value: formatAmount(transaction.amount, transaction.currency) },
+    { label: "Currency", value: transaction.currency },
+    { label: "Payout", value: buildPayoutLabel(config) },
+    { label: "Wallet", value: walletValue },
+    { label: "Authn Code", value: authCode },
+    { label: "Transaction Status", value: formatReceiptStatus(transaction.status) },
+  ];
+}
+
+function buildReceiptHtml(transaction: Transaction, config: ReceiptConfig) {
+  const lines = buildReceiptLines(transaction, config);
+  const rowsHtml = lines
+    .map((line) => `
+      <div class="row">
+        <span class="label">${escapeHtml(line.label)}</span>
+        <span class="value">${escapeHtml(line.value)}</span>
+      </div>
+    `)
+    .join("");
+
+  return `<!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <title>SmartPOS Receipt</title>
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            background: #f5f7fa;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111827;
+            padding: 20px;
+          }
+          .receipt {
+            width: 100%;
+            max-width: 390px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px 18px 14px 18px;
+          }
+          .header {
+            text-align: center;
+            padding-bottom: 8px;
+          }
+          .title {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            margin: 0;
+          }
+          .copy {
+            margin-top: 4px;
+            font-size: 13px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #475569;
+          }
+          .divider {
+            border-top: 1px dashed #cbd5e1;
+            margin: 12px 0 14px;
+          }
+          .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 6px 0;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .label {
+            color: #475569;
+            font-weight: 700;
+            flex: 0 0 46%;
+          }
+          .value {
+            flex: 1;
+            text-align: right;
+            word-break: break-word;
+            font-weight: 600;
+            color: #111827;
+          }
+          .footer {
+            margin-top: 12px;
+            text-align: center;
+            font-size: 11px;
+            color: #64748b;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt">
+          <div class="header">
+            <h1 class="title">SmartPOS</h1>
+            <div class="copy">Customer Copy</div>
+          </div>
+          <div class="divider"></div>
+          ${rowsHtml}
+          <div class="footer">Thank you for your transaction</div>
+        </div>
+      </body>
+    </html>`;
+}
+
+function buildThermalReceiptText(transaction: Transaction, config: ReceiptConfig) {
+  const lines = buildReceiptLines(transaction, config);
+  const maxLabel = Math.max(...lines.map((line) => line.label.length));
+  const lineSeparator = "-".repeat(38);
+  const esc = "\u001b";
+  const center = `${esc}a1`;
+  const left = `${esc}a0`;
+  const bold = `${esc}E1`;
+  const normal = `${esc}E0`;
+  const header = `${center}${bold}SMARTPOS${normal}\n${center}CUSTOMER COPY\n${left}${lineSeparator}\n`;
+
+  const body = lines
+    .map((line) => {
+      const label = line.label.padEnd(maxLabel, " ");
+      return `${label} ${line.value}`;
+    })
+    .join("\n");
+
+  return `${header}${body}\n${lineSeparator}\n${left}`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function truncateReceiptValue(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
 function SummaryCard({

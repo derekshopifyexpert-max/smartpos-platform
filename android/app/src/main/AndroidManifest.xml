@@ -6,6 +6,8 @@
     <application
         android:allowBackup="false"
         android:hardwareAccelerated="true"
+        android:icon="@drawable/smartpos_logo"
+        android:roundIcon="@drawable/smartpos_logo"
         android:label="SmartPOS"
         android:supportsRtl="true"
         android:theme="@style/Theme.SmartPOS"

@@ -19,6 +19,47 @@ import { ENDPOINTS } from "@/lib/api/endpoints";
 import { useAuthStore } from "@/store/auth.store";
 import { useRouter } from "next/navigation";
 
+type ReceiptConfig = {
+  payoutNetwork: string;
+  payoutAsset: string;
+  walletAddress: string;
+  merchantEmail: string;
+};
+
+const defaultReceiptConfig: ReceiptConfig = {
+  payoutNetwork: "TRC20",
+  payoutAsset: "USDT",
+  walletAddress: "",
+  merchantEmail: "",
+};
+
+function readReceiptConfig(): ReceiptConfig {
+  if (typeof window === "undefined") {
+    return defaultReceiptConfig;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem("smartpos_receipt_config");
+    if (!rawValue) {
+      return defaultReceiptConfig;
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<ReceiptConfig>;
+    return {
+      payoutNetwork: typeof parsed.payoutNetwork === "string" && parsed.payoutNetwork.trim()
+        ? parsed.payoutNetwork.trim()
+        : defaultReceiptConfig.payoutNetwork,
+      payoutAsset: typeof parsed.payoutAsset === "string" && parsed.payoutAsset.trim()
+        ? parsed.payoutAsset.trim()
+        : defaultReceiptConfig.payoutAsset,
+      walletAddress: typeof parsed.walletAddress === "string" ? parsed.walletAddress.trim() : "",
+      merchantEmail: typeof parsed.merchantEmail === "string" ? parsed.merchantEmail.trim() : "",
+    };
+  } catch {
+    return defaultReceiptConfig;
+  }
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
@@ -38,6 +79,8 @@ export default function SettingsPage() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [receiptConfig, setReceiptConfig] = useState<ReceiptConfig>(defaultReceiptConfig);
+  const [receiptSaved, setReceiptSaved] = useState(false);
 
   useEffect(() => {
     if (authenticatedEmail && !currentEmail) {
@@ -46,6 +89,18 @@ export default function SettingsPage() {
       setEmail((value: string) => value || authenticatedEmail);
     }
   }, [authenticatedEmail, currentEmail]);
+
+  useEffect(() => {
+    setReceiptConfig(readReceiptConfig());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem("smartpos_receipt_config", JSON.stringify(receiptConfig));
+  }, [receiptConfig]);
 
   const passwordRules = [
     { label: "At least 8 characters", valid: password.length >= 8 },
@@ -213,6 +268,141 @@ export default function SettingsPage() {
             {error && (
               <p className="md:col-span-2 text-sm text-red-600" role="alert">
                 {error}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 bg-white shadow-sm">
+          <CardHeader className="border-b border-slate-100">
+            <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+              <SettingsIcon className="h-5 w-5 text-blue-600" />
+              Receipt setup
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-5 p-6">
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="space-y-2">
+                <label htmlFor="receipt-payout-network" className="text-sm font-medium text-slate-700">
+                  Payout network
+                </label>
+                <select
+                  id="receipt-payout-network"
+                  value={receiptConfig.payoutNetwork}
+                  onChange={(event) =>
+                    setReceiptConfig((current) => ({
+                      ...current,
+                      payoutNetwork: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="TRC20">TRC20</option>
+                  <option value="ERC20">ERC20</option>
+                  <option value="BEP20">BEP20</option>
+                  <option value="SOL">SOL</option>
+                  <option value="BTC">BTC</option>
+                  <option value="LTC">LTC</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="receipt-payout-asset" className="text-sm font-medium text-slate-700">
+                  Payout asset
+                </label>
+                <select
+                  id="receipt-payout-asset"
+                  value={receiptConfig.payoutAsset}
+                  onChange={(event) =>
+                    setReceiptConfig((current) => ({
+                      ...current,
+                      payoutAsset: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="USDT">USDT</option>
+                  <option value="USDC">USDC</option>
+                  <option value="ETH">ETH</option>
+                  <option value="BTC">BTC</option>
+                  <option value="BNB">BNB</option>
+                  <option value="SOL">SOL</option>
+                </select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label htmlFor="receipt-email" className="text-sm font-medium text-slate-700">
+                  Receipt email
+                </label>
+                <Input
+                  id="receipt-email"
+                  type="email"
+                  value={receiptConfig.merchantEmail}
+                  onChange={(event) =>
+                    setReceiptConfig((current) => ({
+                      ...current,
+                      merchantEmail: event.target.value,
+                    }))
+                  }
+                  placeholder="merchant@smartpos.com"
+                  className="bg-white text-slate-700"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="receipt-wallet-address" className="text-sm font-medium text-slate-700">
+                Wallet address
+              </label>
+              <Input
+                id="receipt-wallet-address"
+                type="text"
+                value={receiptConfig.walletAddress}
+                onChange={(event) =>
+                  setReceiptConfig((current) => ({
+                    ...current,
+                    walletAddress: event.target.value,
+                  }))
+                }
+                placeholder="Paste your crypto wallet address"
+                className="bg-white text-slate-700"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                onClick={() => {
+                  setReceiptConfig(defaultReceiptConfig);
+                  setReceiptSaved(true);
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem("smartpos_receipt_config", JSON.stringify(defaultReceiptConfig));
+                  }
+                }}
+                variant="outline"
+                className="border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                Clear
+              </Button>
+
+              <Button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.localStorage.setItem("smartpos_receipt_config", JSON.stringify(receiptConfig));
+                  }
+                  setReceiptSaved(true);
+                }}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Save receipt details
+              </Button>
+            </div>
+
+            {receiptSaved && (
+              <p className="text-sm text-emerald-600">
+                Receipt payout and wallet details saved.
               </p>
             )}
           </CardContent>

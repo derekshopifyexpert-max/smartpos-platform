@@ -1,0 +1,13 @@
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="smartposGradient" x1="30" y1="20" x2="190" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#12B6FF"/>
+      <stop offset="0.5" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" rx="56" fill="#071827"/>
+  <path d="M172 54C151.6 36.8 124.9 27 96 27C58.7 27 27 58.7 27 96C27 133.3 58.7 165 96 165H125.5C148.2 165 167 146.2 167 123.5C167 108.4 157.8 95.2 144.2 89.7L114.5 76.1C108.3 73.4 101.6 72 94.9 72C71.7 72 53 90.7 53 113.9C53 137.1 71.7 155.8 94.9 155.8H125.1" stroke="url(#smartposGradient)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M157 134.5C172.7 134.5 185.5 121.7 185.5 106C185.5 90.3 172.7 77.5 157 77.5H121.8" stroke="#F8FAFC" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M166 213L196 183" stroke="#F8FAFC" stroke-width="12" stroke-linecap="round"/>
+</svg>
