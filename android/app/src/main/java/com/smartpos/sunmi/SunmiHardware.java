@@ -6,9 +6,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.IBinder;
+import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
+import java.io.ByteArrayInputStream;
 import java.lang.reflect.Method;
 
 public final class SunmiHardware {
@@ -84,13 +88,55 @@ public final class SunmiHardware {
     public void printText(String text) {
         if (printerService == null) return;
         try {
-            Method method = printerService.getClass().getMethod("printText", String.class, Object.class);
-            method.invoke(printerService, text, null);
+            Method method = findPrinterMethod("printText", String.class, Object.class);
+            if (method != null) {
+                method.invoke(printerService, text, null);
+                return;
+            }
+            Method legacy = findPrinterMethod("printText", String.class);
+            if (legacy != null) {
+                legacy.invoke(printerService, text);
+            }
         } catch (Exception ignored) { }
+    }
+
+    @JavascriptInterface
+    public void printImage(String base64Image) {
+        if (printerService == null || base64Image == null || base64Image.isEmpty()) return;
+
+        try {
+            byte[] bytes = Base64.decode(base64Image, Base64.DEFAULT);
+            if (bytes.length == 0) return;
+
+            Bitmap bitmap = BitmapFactory.decodeStream(new ByteArrayInputStream(bytes));
+            if (bitmap == null) return;
+
+            Method method = findPrinterMethod("printBitmap", Bitmap.class, int.class, int.class);
+            if (method != null) {
+                method.invoke(printerService, bitmap, 0, 0);
+                return;
+            }
+
+            Method legacy = findPrinterMethod("printBitmap", Bitmap.class);
+            if (legacy != null) {
+                legacy.invoke(printerService, bitmap);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     @JavascriptInterface
     public boolean isPrinterConnected() {
         return printerService != null;
+    }
+
+    private Method findPrinterMethod(String name, Class<?>... parameterTypes) {
+        if (printerService == null) return null;
+        Class<?> clazz = printerService.getClass();
+        try {
+            return clazz.getMethod(name, parameterTypes);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
     }
 }

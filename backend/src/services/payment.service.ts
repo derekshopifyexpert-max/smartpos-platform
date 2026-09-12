@@ -446,7 +446,7 @@ export default class PaymentService {
           data.paymentMethod,
 
         type:
-          data.type,
+          data.type?.trim() || "Card",
 
         description:
           data.description,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
@@ -13,8 +13,6 @@ import {
 export function TransactionTable() {
   const router = useRouter();
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
   const [page, setPage] = useState(1);
   const [retentionEnabled, setRetentionEnabled] = useState(true);
   const [isUpdatingRetention, setIsUpdatingRetention] = useState(false);
@@ -38,52 +36,7 @@ export function TransactionTable() {
       .catch(() => setRetentionEnabled(true));
   }, []);
 
-  const filteredTransactions = (() => {
-    const query = search.trim().toLowerCase();
-
-    return transactions.filter((transaction) => {
-      const matchesStatus =
-        statusFilter === "ALL" ||
-        transaction.status?.toUpperCase() === statusFilter;
-
-      if (!matchesStatus) {
-        return false;
-      }
-
-      if (!query) {
-        return true;
-      }
-
-      const searchableValues = [
-        transaction.id,
-        transaction.reference,
-        transaction.type,
-        transaction.paymentMethod,
-        transaction.status,
-        transaction.currency,
-      ];
-
-      return searchableValues.some((value) =>
-        String(value ?? "")
-          .toLowerCase()
-          .includes(query)
-      );
-    });
-  })();
-
-  function handleSearchChange(
-    value: string
-  ) {
-    setSearch(value);
-    setPage(1);
-  }
-
-  function handleStatusChange(
-    value: string
-  ) {
-    setStatusFilter(value);
-    setPage(1);
-  }
+  const filteredTransactions = transactions;
 
   async function handleRetentionToggle() {
     setIsUpdatingRetention(true);
@@ -133,6 +86,15 @@ export function TransactionTable() {
     return date.toLocaleString();
   }
 
+  function normalizeTransactionType(value?: string | null) {
+    const raw = (value ?? "Card").trim();
+    if (!raw) return "Card";
+    const normalized = raw.toLowerCase();
+    if (normalized.includes("card")) return "Card";
+    if (normalized.includes("wallet")) return "Wallet";
+    return "Card";
+  }
+
   if (isLoading) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -176,60 +138,7 @@ export function TransactionTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center">
-        <div className="relative flex-1">
-          <Search
-            size={17}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-          />
-
-          <input
-            type="text"
-            value={search}
-            onChange={(event) =>
-              handleSearchChange(
-                event.target.value
-              )
-            }
-            placeholder="Search transactions..."
-            className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(event) =>
-            handleStatusChange(
-              event.target.value
-            )
-          }
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-        >
-          <option value="ALL">
-            All statuses
-          </option>
-
-          <option value="SETTLED">
-            Settled
-          </option>
-
-          <option value="PENDING">
-            Pending
-          </option>
-
-          <option value="FAILED">
-            Failed
-          </option>
-
-          <option value="DECLINED">
-            Declined
-          </option>
-
-          <option value="CANCELLED">
-            Cancelled
-          </option>
-        </select>
-
+      <div className="flex justify-end rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <button
           type="button"
           onClick={() => refetch()}
@@ -247,7 +156,6 @@ export function TransactionTable() {
 
           Refresh
         </button>
-
       </div>
 
       <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -350,8 +258,7 @@ export function TransactionTable() {
                       </td>
 
                       <td className="px-6 py-4 text-sm text-slate-700">
-                        {transaction.type ??
-                          "-"}
+                        {normalizeTransactionType(transaction.type)}
                       </td>
 
                       <td className="px-6 py-4 text-sm text-slate-700">
@@ -465,9 +372,13 @@ function StatusBadge({
   const statusStyles =
     normalizedStatus === "SETTLED" ||
     normalizedStatus === "SUCCESS" ||
-    normalizedStatus === "SUCCEEDED"
+    normalizedStatus === "SUCCEEDED" ||
+    normalizedStatus === "CAPTURED" ||
+    normalizedStatus === "AUTHORIZED" ||
+    normalizedStatus === "APPROVED"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : normalizedStatus === "PENDING"
+      : normalizedStatus === "PENDING" ||
+          normalizedStatus === "PENDING_REVIEW"
         ? "border-amber-200 bg-amber-50 text-amber-700"
         : normalizedStatus === "FAILED" ||
             normalizedStatus === "DECLINED"

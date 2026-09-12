@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CreditCard,
+  Download,
   Eye,
   Loader2,
   Printer,
@@ -93,16 +94,46 @@ export default function TransactionDetailPage() {
     previewWindow.focus();
   }
 
-  function handlePrintReceipt() {
+  async function handleDownloadReceiptImage() {
     if (!transaction) {
       return;
     }
 
-    const receiptText = buildThermalReceiptText(transaction, readReceiptConfig());
-    const printer: { printText?: (text: string) => void; isPrinterConnected?: () => boolean } | undefined =
-      typeof window !== "undefined" ? (window as typeof window & { SmartPOSHardware?: { printText?: (text: string) => void; isPrinterConnected?: () => boolean } }).SmartPOSHardware : undefined;
+    try {
+      const dataUrl = await generateReceiptImage(transaction, readReceiptConfig());
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `smartpos-receipt-${transaction.id}.png`;
+      link.click();
+    } catch {
+      handleViewReceipt();
+    }
+  }
+
+  async function handlePrintReceipt() {
+    if (!transaction) {
+      return;
+    }
+
+    const config = readReceiptConfig();
+    const receiptText = buildThermalReceiptText(transaction, config);
+    const printer: { printText?: (text: string) => void; printImage?: (base64: string) => void; isPrinterConnected?: () => boolean } | undefined =
+      typeof window !== "undefined" ? (window as typeof window & { SmartPOSHardware?: { printText?: (text: string) => void; printImage?: (base64: string) => void; isPrinterConnected?: () => boolean } }).SmartPOSHardware : undefined;
 
     if (printer?.isPrinterConnected && printer.isPrinterConnected()) {
+      try {
+        const imageDataUrl = await generateReceiptImage(transaction, config);
+        if (printer.printImage && imageDataUrl.startsWith("data:image/")) {
+          const base64 = imageDataUrl.split(",")[1] ?? "";
+          if (base64) {
+            printer.printImage(base64);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to text printing if image generation fails.
+      }
+
       printer.printText?.(receiptText);
       return;
     }
@@ -112,7 +143,7 @@ export default function TransactionDetailPage() {
       return;
     }
 
-    printWindow.document.write(buildReceiptHtml(transaction, readReceiptConfig()));
+    printWindow.document.write(buildReceiptHtml(transaction, config));
     printWindow.document.close();
     printWindow.focus();
     setTimeout(() => {
@@ -199,6 +230,15 @@ export default function TransactionDetailPage() {
             >
               <Eye className="h-4 w-4" />
               View receipt
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadReceiptImage}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <Download size={16} />
+              Download image
             </button>
 
             <button
@@ -446,20 +486,18 @@ function readReceiptConfig(): ReceiptConfig {
 
 function maskEmail(value: string) {
   const normalized = value.trim();
-  if (!normalized) return "********@gmail.com";
+  if (!normalized) return "***@gmail.com";
 
   const atIndex = normalized.lastIndexOf("@");
   if (atIndex <= 0) {
-    return `${"*".repeat(Math.max(6, normalized.length))}`;
+    return `${normalized.slice(0, 3)}***`;
   }
 
   const localPart = normalized.slice(0, atIndex);
   const domainPart = normalized.slice(atIndex + 1);
-  const maskedLocal = localPart.length > 3
-    ? `${"*".repeat(Math.max(6, localPart.length - 2))}`
-    : "***";
+  const visibleLocalPart = localPart.slice(0, Math.min(3, localPart.length));
 
-  return `${maskedLocal}@${domainPart || "gmail.com"}`;
+  return `${visibleLocalPart}${"*".repeat(Math.max(3, localPart.length - 3))}@${domainPart || "gmail.com"}`;
 }
 
 function maskIdentifier(value: string, keepStart = 4, keepEnd = 4) {
@@ -489,7 +527,11 @@ function formatReceiptStatus(value: string | undefined) {
     return "Approved";
   }
 
-  if (["DECLINED", "FAILED", "ERROR", "DISPUTED"].includes(normalized)) {
+  if (["PENDING", "PROCESSING", "INITIATED"].includes(normalized)) {
+    return "Pending";
+  }
+
+  if (["FAILED", "ERROR", "DECLINED", "DISPUTED"].includes(normalized)) {
     return "Declined";
   }
 
@@ -497,11 +539,7 @@ function formatReceiptStatus(value: string | undefined) {
     return "Rejected";
   }
 
-  if (["PENDING", "PROCESSING"].includes(normalized)) {
-    return "Approved";
-  }
-
-  return "Approved";
+  return "Pending";
 }
 
 function normalizeCardType(value?: string | null) {
@@ -511,17 +549,16 @@ function normalizeCardType(value?: string | null) {
   if (raw.includes("master") || raw.includes("maestro")) return "Master";
   if (raw.includes("verve")) return "Verve";
   if (raw.includes("amex")) return "Amex";
-  return raw.charAt(0).toUpperCase() + raw.slice(1);
+  return "Card";
 }
 
 function normalizeTransactionType(value?: string | null) {
-  const raw = (value ?? "Card Payment").trim();
-  if (!raw) return "Card Payment";
-  return raw
-    .split(/[_\-\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(" ");
+  const raw = (value ?? "Card").trim();
+  if (!raw) return "Card";
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("card")) return "Card";
+  if (normalized.includes("wallet")) return "Wallet";
+  return "Card";
 }
 
 function buildPayoutLabel(config: ReceiptConfig) {
@@ -598,21 +635,37 @@ function buildReceiptHtml(transaction: Transaction, config: ReceiptConfig) {
             padding: 20px 18px 14px 18px;
           }
           .header {
-            text-align: center;
-            padding-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 12px 10px 10px;
+            border-radius: 12px 12px 0 0;
+            background: linear-gradient(135deg, #071827 0%, #0f172a 100%);
+            color: #ffffff;
+          }
+          .brand-mark {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.08);
+            padding: 4px;
           }
           .title {
-            font-size: 28px;
+            font-size: 25px;
             font-weight: 800;
             letter-spacing: 0.04em;
             margin: 0;
+            color: #ffffff;
           }
           .copy {
-            margin-top: 4px;
-            font-size: 13px;
+            margin-top: 2px;
+            font-size: 11px;
             letter-spacing: 0.12em;
             text-transform: uppercase;
-            color: #475569;
+            color: rgba(255,255,255,0.72);
           }
           .divider {
             border-top: 1px dashed #cbd5e1;
@@ -651,8 +704,11 @@ function buildReceiptHtml(transaction: Transaction, config: ReceiptConfig) {
       <body>
         <div class="receipt">
           <div class="header">
-            <h1 class="title">SmartPOS</h1>
-            <div class="copy">Customer Copy</div>
+            <img class="brand-mark" src="/smartpos-logo.svg" alt="SmartPOS logo" />
+            <div>
+              <h1 class="title">SmartPOS</h1>
+              <div class="copy">Customer Copy</div>
+            </div>
           </div>
           <div class="divider"></div>
           ${rowsHtml}
@@ -660,6 +716,69 @@ function buildReceiptHtml(transaction: Transaction, config: ReceiptConfig) {
         </div>
       </body>
     </html>`;
+}
+
+async function generateReceiptImage(transaction: Transaction, config: ReceiptConfig): Promise<string> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 420;
+  canvas.height = 760;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas unavailable");
+  }
+
+  context.fillStyle = "#f5f7fa";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  const logo = await loadImage("/smartpos-logo.svg");
+  context.fillStyle = "#071827";
+  context.fillRect(0, 0, canvas.width, 110);
+  context.drawImage(logo, 24, 18, 72, 72);
+  context.fillStyle = "#ffffff";
+  context.font = "700 28px Arial";
+  context.fillText("SmartPOS", 112, 52);
+  context.font = "600 11px Arial";
+  context.fillStyle = "rgba(255,255,255,0.8)";
+  context.fillText("CUSTOMER COPY", 112, 76);
+
+  const lines = buildReceiptLines(transaction, config);
+  let y = 146;
+  const lineHeight = 24;
+
+  context.fillStyle = "#111827";
+  context.font = "600 12px Arial";
+
+  for (const line of lines) {
+    const label = `${line.label}:`;
+    const value = truncateReceiptValue(line.value, 26);
+    context.fillStyle = "#475569";
+    context.fillText(label, 20, y);
+    context.fillStyle = "#111827";
+    context.fillText(value, 150, y, 240);
+    y += lineHeight;
+  }
+
+  context.strokeStyle = "#cbd5e1";
+  context.beginPath();
+  context.moveTo(20, y + 12);
+  context.lineTo(canvas.width - 20, y + 12);
+  context.stroke();
+
+  context.fillStyle = "#64748b";
+  context.font = "600 11px Arial";
+  context.fillText("THANK YOU FOR YOUR TRANSACTION", 82, y + 40);
+
+  return canvas.toDataURL("image/png");
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    image.src = src;
+  });
 }
 
 function buildThermalReceiptText(transaction: Transaction, config: ReceiptConfig) {
@@ -763,13 +882,18 @@ function StatusBadge({
   const styles =
     normalized === "SETTLED" ||
     normalized === "SUCCESS" ||
-    normalized === "SUCCEEDED"
+    normalized === "SUCCEEDED" ||
+    normalized === "AUTHORIZED" ||
+    normalized === "CAPTURED" ||
+    normalized === "APPROVED"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : normalized === "PENDING"
+      : normalized === "PENDING" || normalized === "PENDING_REVIEW"
         ? "border-amber-200 bg-amber-50 text-amber-700"
-        : normalized === "FAILED"
+        : normalized === "FAILED" || normalized === "DECLINED"
           ? "border-red-200 bg-red-50 text-red-700"
-          : "border-slate-200 bg-slate-100 text-slate-700";
+          : normalized === "CANCELLED" || normalized === "CANCELED"
+            ? "border-slate-200 bg-slate-100 text-slate-700"
+            : "border-blue-200 bg-blue-50 text-blue-700";
 
   return (
     <span

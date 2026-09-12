@@ -1,10 +1,59 @@
 import crypto from "node:crypto";
 import {
+  CardBrand,
   Prisma,
   ProviderWebhookEvent,
+  TransactionStatus,
 } from "@prisma/client";
 
 import FlutterwaveProvider from "../providers/flutterwave.provider.js";
+
+export function normalizeFlutterwaveCardBrand(value?: unknown): CardBrand | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+
+  if (!raw) {
+    return null;
+  }
+
+  if (raw.includes("visa")) return CardBrand.VISA;
+  if (raw.includes("master") || raw.includes("maestro")) return CardBrand.MASTERCARD;
+  if (raw.includes("amex")) return CardBrand.AMEX;
+  if (raw.includes("discover")) return CardBrand.DISCOVER;
+  if (raw.includes("diners")) return CardBrand.DINERS;
+  if (raw.includes("jcb")) return CardBrand.JCB;
+  if (raw.includes("union")) return CardBrand.UNIONPAY;
+  if (raw.includes("verve")) return CardBrand.VERVE;
+  if (raw.includes("rupay")) return CardBrand.RUPAY;
+
+  return null;
+}
+
+export function mapFlutterwaveStatusToTransactionStatus(status?: string | null): TransactionStatus {
+  const normalized = String(status ?? "").trim().toLowerCase();
+
+  const mapping: Record<string, TransactionStatus> = {
+    successful: TransactionStatus.SETTLED,
+    success: TransactionStatus.SETTLED,
+    paid: TransactionStatus.SETTLED,
+    completed: TransactionStatus.SETTLED,
+    approved: TransactionStatus.APPROVED,
+    authorized: TransactionStatus.AUTHORIZED,
+    captured: TransactionStatus.CAPTURED,
+    pending: TransactionStatus.PENDING,
+    processing: TransactionStatus.PENDING,
+    failed: TransactionStatus.FAILED,
+    declined: TransactionStatus.DECLINED,
+    cancelled: TransactionStatus.CANCELLED,
+    canceled: TransactionStatus.CANCELLED,
+    expired: TransactionStatus.EXPIRED,
+    refunded: TransactionStatus.REFUNDED,
+    reversed: TransactionStatus.REVERSED,
+    chargeback: TransactionStatus.CHARGEBACK,
+    disputed: TransactionStatus.DISPUTED,
+  };
+
+  return mapping[normalized] ?? TransactionStatus.PENDING;
+}
 
 export type FlutterwaveWebhookPayload = {
   id?: string | number;
@@ -198,6 +247,12 @@ export default class FlutterwaveWebhookService {
           select: {
             id: true,
             reference: true,
+            metadata: true,
+            paymentMethod: true,
+            cardBrand: true,
+            cardLastFour: true,
+            gatewayTransactionId: true,
+            gatewayProvider: true,
           },
         });
 
@@ -221,8 +276,10 @@ export default class FlutterwaveWebhookService {
           ? String(payload.data.id)
           : webhook.providerReference;
 
+      let verification: Awaited<ReturnType<FlutterwaveProvider["verifyPayment"]>> | undefined;
+
       if (providerTransactionId) {
-        const verification =
+        verification =
           await this.provider.verifyPayment({
             transactionId:
               providerTransactionId,
@@ -232,19 +289,75 @@ export default class FlutterwaveWebhookService {
           verification.success;
 
         providerStatus =
-          verification.status;
+          verification.status ||
+          payload?.data?.status ||
+          undefined;
       }
 
-      /*
-       * We intentionally do not invent a Transaction enum
-       * transition here. The existing payment/transaction
-       * orchestration remains the authority for SmartPOS
-       * payment state transitions.
-       *
-       * The provider event is marked processed only after
-       * the Flutterwave event has been correlated and,
-       * when possible, verified against Flutterwave.
-       */
+      const flutterwaveStatus =
+        providerStatus ||
+        payload?.data?.status ||
+        "pending";
+
+      const providerPayload =
+        (verification?.raw ?? payload?.data ?? {}) as Record<string, unknown>;
+
+      const providerData =
+        providerPayload && typeof providerPayload === "object"
+          ? providerPayload
+          : {};
+
+      const cardData =
+        (providerData.card ?? providerData.card_details ?? providerData.cardDetails ?? providerData.authorization ?? {}) as Record<string, unknown>;
+
+      const normalizedCardBrand =
+        normalizeFlutterwaveCardBrand(
+          cardData.brand ??
+            cardData.type ??
+            cardData.network ??
+            providerData.card_type ??
+            providerData.cardType,
+        );
+
+      const normalizedCardLastFour =
+        typeof cardData.last4 === "string"
+          ? cardData.last4
+          : typeof cardData.last_4 === "string"
+            ? cardData.last_4
+            : typeof cardData.pan === "string"
+              ? cardData.pan.slice(-4)
+              : typeof providerData.last4 === "string"
+                ? providerData.last4
+                : transaction?.cardLastFour ?? null;
+
+      const existingMetadata =
+        transaction?.metadata && typeof transaction.metadata === "object" && !Array.isArray(transaction.metadata)
+          ? transaction.metadata
+          : {};
+
+      await this.app.prisma.transaction.update({
+        where: {
+          id: transaction.id,
+        },
+        data: {
+          status: mapFlutterwaveStatusToTransactionStatus(flutterwaveStatus),
+          gatewayTransactionId:
+            providerTransactionId || transaction.gatewayTransactionId || null,
+          gatewayProvider: "flutterwave",
+          cardBrand: normalizedCardBrand ?? transaction.cardBrand ?? null,
+          cardLastFour:
+            normalizedCardLastFour && String(normalizedCardLastFour).trim()
+              ? String(normalizedCardLastFour).trim()
+              : transaction.cardLastFour ?? null,
+          metadata: {
+            ...(existingMetadata as Prisma.InputJsonObject),
+            flutterwaveStatus,
+            flutterwaveProviderTransactionId: providerTransactionId ?? transaction.gatewayTransactionId ?? null,
+            flutterwaveVerification: { success: verified, status: providerStatus ?? flutterwaveStatus },
+          },
+        },
+      });
+
       const processed =
         await this.app.prisma.providerWebhookEvent.update({
           where: {

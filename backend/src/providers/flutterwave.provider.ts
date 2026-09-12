@@ -217,8 +217,9 @@ export default class FlutterwaveProvider
       const successful =
         responseData?.status ===
           "success" &&
-        transaction?.status ===
-          "successful";
+        ["successful", "success", "paid", "completed"].includes(
+          String(transaction?.status ?? "").toLowerCase(),
+        );
 
       return {
         success:
@@ -240,6 +241,18 @@ export default class FlutterwaveProvider
           transaction?.id !== null
             ? String(transaction.id)
             : input.transactionId,
+
+        status:
+          typeof transaction?.status === "string"
+            ? transaction.status
+            : typeof responseData?.status === "string"
+              ? responseData.status
+              : undefined,
+
+        authorizationCode:
+          transaction?.auth_model ||
+          transaction?.app_fee ||
+          undefined,
 
         raw:
           responseData,

@@ -815,7 +815,7 @@ export default class PaymentOrchestratorService {
             "card",
 
           type:
-            "payment",
+            "Card",
 
           description:
             paymentIntent.description ??
@@ -1448,7 +1448,7 @@ export default class PaymentOrchestratorService {
           "card",
 
         type:
-          "payment",
+          "Card",
 
         description:
           paymentIntent.description ??
