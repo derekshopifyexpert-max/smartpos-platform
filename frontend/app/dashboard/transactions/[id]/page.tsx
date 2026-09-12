@@ -4,7 +4,6 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CreditCard,
-  Download,
   Eye,
   Loader2,
   Printer,
@@ -92,22 +91,6 @@ export default function TransactionDetailPage() {
     previewWindow.document.write(receiptHtml);
     previewWindow.document.close();
     previewWindow.focus();
-  }
-
-  async function handleDownloadReceiptImage() {
-    if (!transaction) {
-      return;
-    }
-
-    try {
-      const dataUrl = await generateReceiptImage(transaction, readReceiptConfig());
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = `smartpos-receipt-${transaction.id}.png`;
-      link.click();
-    } catch {
-      handleViewReceipt();
-    }
   }
 
   async function handlePrintReceipt() {
@@ -230,15 +213,6 @@ export default function TransactionDetailPage() {
             >
               <Eye className="h-4 w-4" />
               View receipt
-            </button>
-
-            <button
-              type="button"
-              onClick={handleDownloadReceiptImage}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <Download size={16} />
-              Download image
             </button>
 
             <button
